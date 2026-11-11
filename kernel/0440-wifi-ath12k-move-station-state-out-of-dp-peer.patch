@@ -1,0 +1,432 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/2] wifi: ath12k: station pointer and is_authorized cleanups
+
+Two patches of one series by Aishwarya R, queued in ath-next. The
+logical link id series that follows is written on top of them.
+
+ 1/2 wifi: ath12k: store station pointer only in dp_peer
+     Author: Aishwarya R <aishwarya.r@oss.qualcomm.com>
+     Message-ID: <20260925051036.2838210-2-aishwarya.r@oss.qualcomm.com>
+ 2/2 wifi: ath12k: move is_authorized flag to ath12k_sta
+     Author: Aishwarya R <aishwarya.r@oss.qualcomm.com>
+     Message-ID: <20260925051036.2838210-3-aishwarya.r@oss.qualcomm.com>
+
+From 9644e64b916eba0cc0a1a116d361082c9e00a850 Mon Sep 17 00:00:00 2001
+From: Aishwarya R <aishwarya.r@oss.qualcomm.com>
+Date: Fri, 25 Sep 2026 10:40:35 +0530
+Subject: [PATCH 1/2] wifi: ath12k: store station pointer only in dp_peer
+
+The station pointer is currently stored in both ath12k_dp_peer and
+ath12k_dp_link_peer. Since the station association is peer-wide rather
+than link-specific, keeping a copy in the link peer duplicates state
+without providing additional value.
+
+Remove the duplicate pointer from ath12k_dp_link_peer and access the
+station through the dp_peer instead. Add helper accessors and
+update the remaining users accordingly. Remove the unused
+ath12k_dp_link_peer_to_link_sta() helper as well.
+
+This consolidates peer ownership information in a single location and
+avoids maintaining duplicate state.
+
+Tested-on: QCN9274 hw2.0 PCI WLAN.WBE.1.6-01243-QCAHKSWPL_SILICONZ-1
+
+Co-developed-by: Harsh Kumar Bijlani <harsh.bijlani@oss.qualcomm.com>
+Signed-off-by: Harsh Kumar Bijlani <harsh.bijlani@oss.qualcomm.com>
+Signed-off-by: Aishwarya R <aishwarya.r@oss.qualcomm.com>
+Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
+Reviewed-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Link: https://patch.msgid.link/20260925051036.2838210-2-aishwarya.r@oss.qualcomm.com
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+---
+ drivers/net/wireless/ath/ath12k/dp_htt.c      |  2 +-
+ drivers/net/wireless/ath/ath12k/dp_peer.c     | 29 -------------------
+ drivers/net/wireless/ath/ath12k/dp_peer.h     | 16 ++++++++--
+ drivers/net/wireless/ath/ath12k/dp_rx.c       |  2 +-
+ drivers/net/wireless/ath/ath12k/mac.c         | 11 +++----
+ drivers/net/wireless/ath/ath12k/peer.c        |  2 --
+ .../net/wireless/ath/ath12k/wifi7/dp_mon.c    |  2 +-
+ drivers/net/wireless/ath/ath12k/wifi7/dp_tx.c | 15 +++++-----
+ 8 files changed, 30 insertions(+), 49 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/dp_htt.c b/drivers/net/wireless/ath/ath12k/dp_htt.c
+index 68968f96b4f1..72069640bd38 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_htt.c
++++ b/drivers/net/wireless/ath/ath12k/dp_htt.c
+@@ -276,7 +276,7 @@ ath12k_update_per_peer_tx_stats(struct ath12k_pdev_dp *dp_pdev,
+ 	rcu_read_lock();
+ 	peer = ath12k_dp_link_peer_find_by_peerid(dp_pdev, usr_stats->peer_id);
+ 
+-	if (!peer || !peer->sta) {
++	if (!ath12k_dp_link_peer_get_sta(peer)) {
+ 		rcu_read_unlock();
+ 		return;
+ 	}
+diff --git a/drivers/net/wireless/ath/ath12k/dp_peer.c b/drivers/net/wireless/ath/ath12k/dp_peer.c
+index bb5341b4251a..06f6eccfb574 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.c
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.c
+@@ -195,35 +195,6 @@ void ath12k_dp_link_peer_map_event(struct ath12k_base *ab, u8 vdev_id, u16 peer_
+ 	spin_unlock_bh(&dp->dp_lock);
+ }
+ 
+-struct ath12k_link_sta *ath12k_dp_link_peer_to_link_sta(struct ath12k_base *ab,
+-							struct ath12k_dp_link_peer *peer)
+-{
+-	struct ath12k_sta *ahsta;
+-	struct ath12k_link_sta *arsta;
+-
+-	RCU_LOCKDEP_WARN(!rcu_read_lock_held(),
+-			 "ath12k_dp_link_peer to ath12k_link_sta called without rcu lock");
+-
+-	if (!peer->sta)
+-		return NULL;
+-
+-	ahsta = ath12k_sta_to_ahsta(peer->sta);
+-	if (peer->ml_id & ATH12K_PEER_ML_ID_VALID) {
+-		if (!(ahsta->links_map & BIT(peer->link_id))) {
+-			ath12k_warn(ab, "peer %pM id %d link_id %d can't found in STA link_map 0x%x\n",
+-				    peer->addr, peer->peer_id, peer->link_id,
+-				    ahsta->links_map);
+-			return NULL;
+-		}
+-		arsta = rcu_dereference(ahsta->link[peer->link_id]);
+-		if (!arsta)
+-			return NULL;
+-	} else {
+-		arsta =  &ahsta->deflink;
+-	}
+-	return arsta;
+-}
+-
+ static int ath12k_dp_link_peer_rhash_addr_tbl_init(struct ath12k_dp *dp)
+ {
+ 	struct ath12k_base *ab = dp->ab;
+diff --git a/drivers/net/wireless/ath/ath12k/dp_peer.h b/drivers/net/wireless/ath/ath12k/dp_peer.h
+index 3503840b0329..256fc79d714e 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.h
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.h
+@@ -70,7 +70,6 @@ DECLARE_EWMA(avg_rssi, 10, 8)
+ 
+ struct ath12k_dp_link_peer {
+ 	struct list_head list;
+-	struct ieee80211_sta *sta;
+ 	struct ath12k_dp_peer *dp_peer;
+ 	int vdev_id;
+ 	u8 addr[ETH_ALEN];
+@@ -159,8 +158,6 @@ ath12k_dp_link_peer_find_by_ast(struct ath12k_dp *dp, int ast_hash);
+ struct ath12k_dp_link_peer *
+ ath12k_dp_link_peer_find_by_pdev_and_addr(struct ath12k_dp *dp, u8 pdev_idx,
+ 					  const u8 *addr);
+-struct ath12k_link_sta *ath12k_dp_link_peer_to_link_sta(struct ath12k_base *ab,
+-							struct ath12k_dp_link_peer *peer);
+ int ath12k_dp_link_peer_rhash_tbl_init(struct ath12k_dp *dp);
+ void ath12k_dp_link_peer_rhash_tbl_destroy(struct ath12k_dp *dp);
+ int ath12k_dp_link_peer_rhash_add(struct ath12k_dp *dp,
+@@ -183,4 +180,17 @@ ath12k_dp_link_peer_find_by_peerid(struct ath12k_pdev_dp *dp_pdev, u16 peer_id);
+ void ath12k_dp_link_peer_free(struct ath12k_dp_link_peer *peer);
+ int ath12k_dp_peer_fixup_peer_id(struct ath12k_base *ab, const u8 *peer_addr,
+ 				 u16 peer_id);
++
++static inline struct ieee80211_sta *__must_check
++ath12k_dp_peer_get_sta(const struct ath12k_dp_peer *peer)
++{
++	return peer ? peer->sta : NULL;
++}
++
++static inline struct ieee80211_sta *__must_check
++ath12k_dp_link_peer_get_sta(const struct ath12k_dp_link_peer *link_peer)
++{
++	return link_peer && link_peer->dp_peer ?
++		link_peer->dp_peer->sta : NULL;
++}
+ #endif
+diff --git a/drivers/net/wireless/ath/ath12k/dp_rx.c b/drivers/net/wireless/ath/ath12k/dp_rx.c
+index 36be543b7c50..f11810c6e0d4 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath12k/dp_rx.c
+@@ -1366,7 +1366,7 @@ void ath12k_dp_rx_deliver_msdu(struct ath12k_pdev_dp *dp_pdev, struct napi_struc
+ 
+ 	peer = ath12k_dp_peer_find_by_peerid(dp_pdev, rxcb->peer_id);
+ 
+-	pubsta = peer ? peer->sta : NULL;
++	pubsta = ath12k_dp_peer_get_sta(peer);
+ 
+ 	if (pubsta) {
+ 		if (pubsta->valid_links) {
+diff --git a/drivers/net/wireless/ath/ath12k/mac.c b/drivers/net/wireless/ath/ath12k/mac.c
+index 7872e7cb3c06..f5d5fc036cd2 100644
+--- a/drivers/net/wireless/ath/ath12k/mac.c
++++ b/drivers/net/wireless/ath/ath12k/mac.c
+@@ -1232,7 +1232,7 @@ void ath12k_mac_peer_cleanup_all(struct ath12k *ar)
+ 	spin_lock_bh(&dp->dp_lock);
+ 	list_for_each_entry_safe(peer, tmp, &dp->peers, list) {
+ 		/* Skip Rx TID cleanup for self peer */
+-		if (peer->sta && peer->dp_peer)
++		if (ath12k_dp_link_peer_get_sta(peer))
+ 			ath12k_dp_rx_peer_tid_cleanup(ar, peer);
+ 
+ 		/* cleanup dp peer */
+@@ -7023,10 +7023,9 @@ static void ath12k_mac_station_post_remove(struct ath12k *ar,
+ 
+ 	peer = ath12k_dp_link_peer_find_by_vdev_and_addr(dp, arvif->vdev_id,
+ 							 arsta->addr);
+-	if (peer && peer->sta == sta) {
++	if (peer && ath12k_dp_link_peer_get_sta(peer) == sta) {
+ 		ath12k_warn(ar->ab, "Found peer entry %pM n vdev %i after it was supposedly removed\n",
+ 			    vif->addr, arvif->vdev_id);
+-		peer->sta = NULL;
+ 
+ 		ath12k_dp_link_peer_free(peer);
+ 		ar->num_peers--;
+@@ -13316,6 +13315,7 @@ ath12k_mac_validate_fixed_rate_settings(struct ath12k *ar, enum nl80211_band ban
+ 	bool eht_fixed_rate = false, he_fixed_rate = false, vht_fixed_rate = false;
+ 	const u16 *vht_mcs_mask, *he_mcs_mask, *eht_mcs_mask;
+ 	struct ieee80211_link_sta *link_sta;
++	struct ieee80211_sta *sta;
+ 	struct ath12k_dp_link_peer *peer, *tmp;
+ 	u8 vht_nss, he_nss, eht_nss;
+ 	int ret = true;
+@@ -13345,8 +13345,9 @@ ath12k_mac_validate_fixed_rate_settings(struct ath12k *ar, enum nl80211_band ban
+ 	rcu_read_lock();
+ 	spin_lock_bh(&dp->dp_lock);
+ 	list_for_each_entry_safe(peer, tmp, &dp->peers, list) {
+-		if (peer->sta) {
+-			link_sta = rcu_dereference(peer->sta->link[link_id]);
++		sta = ath12k_dp_link_peer_get_sta(peer);
++		if (sta) {
++			link_sta = rcu_dereference(sta->link[link_id]);
+ 			if (!link_sta) {
+ 				ret = false;
+ 				goto exit;
+diff --git a/drivers/net/wireless/ath/ath12k/peer.c b/drivers/net/wireless/ath/ath12k/peer.c
+index 80edebf0e364..0e894408e97f 100644
+--- a/drivers/net/wireless/ath/ath12k/peer.c
++++ b/drivers/net/wireless/ath/ath12k/peer.c
+@@ -266,8 +266,6 @@ int ath12k_peer_create(struct ath12k *ar, struct ath12k_link_vif *arvif,
+ 	}
+ 
+ 	peer->pdev_idx = ar->pdev_idx;
+-	peer->sta = sta;
+-
+ 	if (vif->type == NL80211_IFTYPE_STATION) {
+ 		dp_link_vif->ast_hash = peer->ast_hash;
+ 		dp_link_vif->ast_idx = peer->hw_peer_id;
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/dp_mon.c b/drivers/net/wireless/ath/ath12k/wifi7/dp_mon.c
+index 1e29c13ad66d..c90b60eee535 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/dp_mon.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/dp_mon.c
+@@ -3365,7 +3365,7 @@ ath12k_wifi7_dp_mon_srng_process(struct ath12k_pdev_dp *pdev_dp, int *budget,
+ 
+ 		rcu_read_lock();
+ 		peer = ath12k_dp_link_peer_find_by_peerid(pdev_dp, ppdu_info->peer_id);
+-		if (!peer || !peer->sta) {
++		if (!ath12k_dp_link_peer_get_sta(peer)) {
+ 			ath12k_dbg(ab, ATH12K_DBG_DATA,
+ 				   "failed to find the peer with monitor peer_id %d\n",
+ 				   ppdu_info->peer_id);
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/dp_tx.c b/drivers/net/wireless/ath/ath12k/wifi7/dp_tx.c
+index 41abf1865702..6f4dae8b2c6b 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/dp_tx.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/dp_tx.c
+@@ -561,13 +561,12 @@ ath12k_dp_tx_htt_tx_complete_buf(struct ath12k_dp *dp,
+ 	}
+ 
+ 	peer = ath12k_dp_link_peer_find_by_peerid(dp_pdev, peer_id);
+-	if (!peer || !peer->sta) {
++	status.sta = ath12k_dp_link_peer_get_sta(peer);
++	if (!status.sta) {
+ 		ath12k_dbg(ab, ATH12K_DBG_DATA,
+ 			   "dp_tx: failed to find the peer with peer_id %d\n", peer_id);
+ 		ieee80211_free_txskb(ath12k_pdev_dp_to_hw(dp_pdev), msdu);
+ 		goto exit;
+-	} else {
+-		status.sta = peer->sta;
+ 	}
+ 
+ 	status.info = info;
+@@ -637,7 +636,8 @@ static void ath12k_wifi7_dp_tx_update_txcompl(struct ath12k_pdev_dp *dp_pdev,
+ 	int ret;
+ 
+ 	peer = ath12k_dp_link_peer_find_by_peerid(dp_pdev, ts->peer_id);
+-	if (!peer || !peer->sta) {
++	sta = ath12k_dp_link_peer_get_sta(peer);
++	if (!sta) {
+ 		ath12k_dbg(dp->ab, ATH12K_DBG_DP_TX,
+ 			   "failed to find the peer by id %u\n", ts->peer_id);
+ 		return;
+@@ -645,7 +645,6 @@ static void ath12k_wifi7_dp_tx_update_txcompl(struct ath12k_pdev_dp *dp_pdev,
+ 
+ 	spin_lock_bh(&dp->dp_lock);
+ 
+-	sta = peer->sta;
+ 	ahsta = ath12k_sta_to_ahsta(sta);
+ 	arsta = &ahsta->deflink;
+ 
+@@ -762,6 +761,7 @@ static void ath12k_wifi7_dp_tx_complete_msdu(struct ath12k_pdev_dp *dp_pdev,
+ 	struct ieee80211_rate_status status_rate = {};
+ 	struct ath12k_dp_link_peer *peer;
+ 	struct rate_info rate;
++	struct ieee80211_sta *sta;
+ 
+ 	if (WARN_ON_ONCE(ts->buf_rel_source != HAL_WBM_REL_SRC_MODULE_TQM)) {
+ 		/* Must not happen */
+@@ -856,7 +856,8 @@ static void ath12k_wifi7_dp_tx_complete_msdu(struct ath12k_pdev_dp *dp_pdev,
+ 	ath12k_wifi7_dp_tx_update_txcompl(dp_pdev, ts);
+ 
+ 	peer = ath12k_dp_link_peer_find_by_peerid(dp_pdev, ts->peer_id);
+-	if (!peer || !peer->sta) {
++	sta = ath12k_dp_link_peer_get_sta(peer);
++	if (!sta) {
+ 		ath12k_err(ab,
+ 			   "dp_tx: failed to find the peer with peer_id %d\n",
+ 			   ts->peer_id);
+@@ -864,7 +865,7 @@ static void ath12k_wifi7_dp_tx_complete_msdu(struct ath12k_pdev_dp *dp_pdev,
+ 		goto exit;
+ 	}
+ 
+-	status.sta = peer->sta;
++	status.sta = sta;
+ 	status.info = info;
+ 	status.skb = msdu;
+ 	rate = peer->last_txrate;
+From 1724b23f86e3ef67d1109f95904e4d6b4264d437 Mon Sep 17 00:00:00 2001
+From: Aishwarya R <aishwarya.r@oss.qualcomm.com>
+Date: Fri, 25 Sep 2026 10:40:36 +0530
+Subject: [PATCH 2/2] wifi: ath12k: move is_authorized flag to ath12k_sta
+
+Authorization state is shared across all link peers that belong to the
+station level property. Storing is_authorized in struct
+ath12k_dp_link_peer duplicates the same state for every link and
+requires all copies to be updated whenever the authorization state
+changes.
+
+Move is_authorized to ath12k_sta and update the authorize/unauthorize
+handlers to set it there directly. ath12k_bss_assoc() only reads the
+flag to decide whether to re-authorize the BSS peer after vdev up, so
+read it from ahsta instead of looking up the dp_peer.
+
+Previously, is_authorized was protected by dp_lock. After moving it to
+ath12k_sta, all accesses are serialized by the wiphy mutex, so the flag
+is now protected by the wiphy lock instead.
+
+Tested-on: QCN9274 hw2.0 PCI WLAN.WBE.1.6-01243-QCAHKSWPL_SILICONZ-1
+
+Signed-off-by: Aishwarya R <aishwarya.r@oss.qualcomm.com>
+Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
+Reviewed-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Link: https://patch.msgid.link/20260925051036.2838210-3-aishwarya.r@oss.qualcomm.com
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+---
+ drivers/net/wireless/ath/ath12k/core.h    |  2 ++
+ drivers/net/wireless/ath/ath12k/dp_peer.h |  1 -
+ drivers/net/wireless/ath/ath12k/mac.c     | 36 ++---------------------
+ 3 files changed, 5 insertions(+), 34 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/core.h b/drivers/net/wireless/ath/ath12k/core.h
+index 99d71dab7c04..e8ecab383a45 100644
+--- a/drivers/net/wireless/ath/ath12k/core.h
++++ b/drivers/net/wireless/ath/ath12k/core.h
+@@ -528,6 +528,8 @@ struct ath12k_sta {
+ 	enum ieee80211_sta_state state;
+ 
+ 	bool enable_4addr;
++
++	bool is_authorized;
+ };
+ 
+ #define ATH12K_HALF_20MHZ_BW	10
+diff --git a/drivers/net/wireless/ath/ath12k/dp_peer.h b/drivers/net/wireless/ath/ath12k/dp_peer.h
+index 256fc79d714e..d01ef1aea48b 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.h
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.h
+@@ -80,7 +80,6 @@ struct ath12k_dp_link_peer {
+ 
+ 	struct ppdu_user_delayba ppdu_stats_delayba;
+ 	bool delayba_flag;
+-	bool is_authorized;
+ 	bool mlo;
+ 	/* protected by ab->data_lock */
+ 
+diff --git a/drivers/net/wireless/ath/ath12k/mac.c b/drivers/net/wireless/ath/ath12k/mac.c
+index f5d5fc036cd2..d820d36882ac 100644
+--- a/drivers/net/wireless/ath/ath12k/mac.c
++++ b/drivers/net/wireless/ath/ath12k/mac.c
+@@ -3932,11 +3932,8 @@ static void ath12k_bss_assoc(struct ath12k *ar,
+ 	struct ath12k_link_sta *arsta;
+ 	struct ieee80211_sta *ap_sta;
+ 	struct ath12k_sta *ahsta;
+-	struct ath12k_dp_link_peer *peer;
+-	bool is_auth = false;
+ 	u32 hemode = 0;
+ 	int ret;
+-	struct ath12k_dp *dp = ath12k_ab_to_dp(ar->ab);
+ 
+ 	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
+ 
+@@ -4040,17 +4037,8 @@ static void ath12k_bss_assoc(struct ath12k *ar,
+ 		   "mac vdev %d up (associated) bssid %pM aid %d\n",
+ 		   arvif->vdev_id, bss_conf->bssid, vif->cfg.aid);
+ 
+-	spin_lock_bh(&dp->dp_lock);
+-
+-	peer = ath12k_dp_link_peer_find_by_vdev_and_addr(dp, arvif->vdev_id,
+-							 arvif->bssid);
+-	if (peer && peer->is_authorized)
+-		is_auth = true;
+-
+-	spin_unlock_bh(&dp->dp_lock);
+-
+ 	/* Authorize BSS Peer */
+-	if (is_auth) {
++	if (ahsta->is_authorized) {
+ 		ret = ath12k_wmi_set_peer_param(ar, arvif->bssid,
+ 						arvif->vdev_id,
+ 						WMI_PEER_AUTHORIZE,
+@@ -7038,20 +7026,11 @@ static int ath12k_mac_station_unauthorize(struct ath12k *ar,
+ 					  struct ath12k_link_vif *arvif,
+ 					  struct ath12k_link_sta *arsta)
+ {
+-	struct ath12k_dp_link_peer *peer;
+ 	int ret;
+-	struct ath12k_dp *dp = ath12k_ab_to_dp(ar->ab);
+ 
+ 	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
+ 
+-	spin_lock_bh(&dp->dp_lock);
+-
+-	peer = ath12k_dp_link_peer_find_by_vdev_and_addr(dp, arvif->vdev_id,
+-							 arsta->addr);
+-	if (peer)
+-		peer->is_authorized = false;
+-
+-	spin_unlock_bh(&dp->dp_lock);
++	arsta->ahsta->is_authorized = false;
+ 
+ 	/* Driver must clear the keys during the state change from
+ 	 * IEEE80211_STA_AUTHORIZED to IEEE80211_STA_ASSOC, since after
+@@ -7073,21 +7052,12 @@ static int ath12k_mac_station_authorize(struct ath12k *ar,
+ 					struct ath12k_link_vif *arvif,
+ 					struct ath12k_link_sta *arsta)
+ {
+-	struct ath12k_dp_link_peer *peer;
+ 	struct ieee80211_vif *vif = ath12k_ahvif_to_vif(arvif->ahvif);
+ 	int ret;
+-	struct ath12k_dp *dp = ath12k_ab_to_dp(ar->ab);
+ 
+ 	lockdep_assert_wiphy(ath12k_ar_to_hw(ar)->wiphy);
+ 
+-	spin_lock_bh(&dp->dp_lock);
+-
+-	peer = ath12k_dp_link_peer_find_by_vdev_and_addr(dp, arvif->vdev_id,
+-							 arsta->addr);
+-	if (peer)
+-		peer->is_authorized = true;
+-
+-	spin_unlock_bh(&dp->dp_lock);
++	arsta->ahsta->is_authorized = true;
+ 
+ 	if (vif->type == NL80211_IFTYPE_STATION && arvif->is_up) {
+ 		ret = ath12k_wmi_set_peer_param(ar, arsta->addr,

@@ -1,0 +1,100 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/2] ASoC: qcom: raw WSA V/I sense capture
+
+Lets a capture front end record the WSA V/I sense data correctly.
+
+ 1/2 ASoC: qcom: x1e80100: run a WSA V/I capture BE link at 8 kHz S32_LE
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 2/2 ASoC: qcom: q6apm-dai: label multichannel capture like the codec DMA source
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+
+From 16d4c865d5199dac90cf52df7824596f435ed8a8 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Mon, 9 Nov 2026 20:03:42 -0500
+Subject: [PATCH 1/2] ASoC: qcom: x1e80100: run a WSA V/I capture BE link at 8 kHz
+ S32_LE
+
+The BE fixup forces 48 kHz on every link. WSA V/I sense data is one
+32-bit word per speaker at 8 kHz, as the multi-direction WSA Playback
+link already uses. Use the same for a separate WSA_CODEC_DMA_TX_0
+capture link, so raw V/I samples can be captured for diagnostics.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/x1e80100.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
+index 90a2f7164d3a..ad2cc6297ae7 100644
+--- a/sound/soc/qcom/x1e80100.c
++++ b/sound/soc/qcom/x1e80100.c
+@@ -187,6 +187,14 @@ static int x1e80100_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
+ 
+ 	rate->min = rate->max = 48000;
+ 	switch (cpu_dai->id) {
++	case WSA_CODEC_DMA_TX_0:
++		/* V/I sense: 8 kHz, one S32 word per speaker */
++		rate->min = 8000;
++		rate->max = 8000;
++		snd_mask_none(hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT));
++		snd_mask_set_format(hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT),
++				    SNDRV_PCM_FORMAT_S32_LE);
++		break;
+ 	case TX_CODEC_DMA_TX_0:
+ 	case TX_CODEC_DMA_TX_1:
+ 	case TX_CODEC_DMA_TX_2:
+From efa4518264d6995fe3acf09528fdf5527198303d Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Tue, 10 Nov 2026 23:08:51 -0500
+Subject: [PATCH 2/2] ASoC: qcom: q6apm-dai: label multichannel capture like the
+ codec DMA source
+
+PARAM_ID_HW_EP_MF_CFG carries no channel map, so a codec DMA source
+labels its channels 1..N (FL, FR, FC, LS for four). The capture front
+end asks for the default map (FL, FR, LS, RS), so the stream MFC
+downmixes FC into FL/FR and leaves the last channel silent, which on
+the WSA V/I sense capture mixes V and I words of different speakers.
+
+Use the 1..N labels for captures of more than two channels so the MFC
+passes them through. Mono and stereo keep the default map.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/qdsp6/q6apm-dai.c | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/q6apm-dai.c b/sound/soc/qcom/qdsp6/q6apm-dai.c
+index 56c4c1009cf3..2ba66101c0c6 100644
+--- a/sound/soc/qcom/qdsp6/q6apm-dai.c
++++ b/sound/soc/qcom/qdsp6/q6apm-dai.c
+@@ -331,7 +331,7 @@ static int q6apm_dai_prepare(struct snd_soc_component *component,
+ 	struct audioreach_module_config cfg = {};
+ 	struct device *dev = component->dev;
+ 	struct q6apm_dai_data *pdata;
+-	int ret;
++	int ret, i;
+ 
+ 	pdata = snd_soc_component_get_drvdata(component);
+ 	if (!pdata)
+@@ -347,7 +347,16 @@ static int q6apm_dai_prepare(struct snd_soc_component *component,
+ 	cfg.num_channels = runtime->channels;
+ 	cfg.bit_width = prtd->bits_per_sample;
+ 	cfg.fmt = SND_AUDIOCODEC_PCM;
+-	audioreach_set_default_channel_mapping(cfg.channel_map, runtime->channels);
++	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE && runtime->channels > 2) {
++		/*
++		 * Codec DMA sources label channels 1..N; any other map makes
++		 * the stream MFC remix them, corrupting packed sample words.
++		 */
++		for (i = 0; i < runtime->channels; i++)
++			cfg.channel_map[i] = i + 1;
++	} else {
++		audioreach_set_default_channel_mapping(cfg.channel_map, runtime->channels);
++	}
+ 	if (prtd->state) {
+ 		/* clear the previous setup if any  */
+ 		q6apm_graph_stop(prtd->graph);

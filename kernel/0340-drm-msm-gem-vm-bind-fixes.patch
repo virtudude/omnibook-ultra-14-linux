@@ -1,0 +1,173 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/4] drm/msm/gem: VM_BIND fixes
+
+Four VM_BIND fixes posted together by Rob Clark, queued in drm/msm
+msm-fixes.
+
+ 1/4 drm/msm/gem: Fix VM_BIND range check
+     Author: Rob Clark <robin.clark@oss.qualcomm.com>
+     Message-ID: <20261102172001.508440-2-robin.clark@oss.qualcomm.com>
+ 2/4 drm/msm/gem: Disallow nr_bos for VM_BIND contexts
+     Author: Rob Clark <robin.clark@oss.qualcomm.com>
+     Message-ID: <20261102172001.508440-3-robin.clark@oss.qualcomm.com>
+ 3/4 drm/msm/gem: Decrement loop idx if handle lookup fails
+     Author: Rob Clark <robin.clark@oss.qualcomm.com>
+     Message-ID: <20261102172001.508440-4-robin.clark@oss.qualcomm.com>
+ 4/4 drm/msm/gem: Clear nr_ops in lookup_ops() failure path
+     Author: Rob Clark <robin.clark@oss.qualcomm.com>
+     Message-ID: <20261102172001.508440-5-robin.clark@oss.qualcomm.com>
+
+From 1a80fbe74b9b934f22030b668fd669939e234b81 Mon Sep 17 00:00:00 2001
+From: Rob Clark <robin.clark@oss.qualcomm.com>
+Date: Mon, 2 Nov 2026 09:19:57 -0800
+Subject: [PATCH 1/4] drm/msm/gem: Fix VM_BIND range check
+
+Use size_add() to guard against overflow.
+
+Reported-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
+Fixes: 3a3bef68a6c1 ("drm/msm: Fix missing VM_BIND offset/range validation")
+Reviewed-by: Dmitry Baryshkov <dmitry.baryshkov@oss.qualcomm.com>
+Signed-off-by: Rob Clark <robin.clark@oss.qualcomm.com>
+Reviewed-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
+Patchwork: https://patchwork.freedesktop.org/patch/765329/
+Message-ID: <20261102172001.508440-2-robin.clark@oss.qualcomm.com>
+---
+ drivers/gpu/drm/msm/msm_gem_vma.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/msm_gem_vma.c b/drivers/gpu/drm/msm/msm_gem_vma.c
+index f687a629629d..bd1c3ceeea51 100644
+--- a/drivers/gpu/drm/msm/msm_gem_vma.c
++++ b/drivers/gpu/drm/msm/msm_gem_vma.c
+@@ -1012,10 +1012,10 @@ lookup_op(struct msm_vm_bind_job *job, const struct drm_msm_vm_bind_op *op)
+ 	if (invalid_alignment(op->iova))
+ 		ret = UERR(EINVAL, dev, "invalid address: %016llx\n", op->iova);
+ 
+-	if (invalid_alignment(op->obj_offset))
++	if (invalid_alignment(op->obj_offset) || (op->obj_offset > SIZE_MAX))
+ 		ret = UERR(EINVAL, dev, "invalid bo_offset: %016llx\n", op->obj_offset);
+ 
+-	if (invalid_alignment(op->range))
++	if (invalid_alignment(op->range) || (op->range > SIZE_MAX) || !op->range)
+ 		ret = UERR(EINVAL, dev, "invalid range: %016llx\n", op->range);
+ 
+ 	if (!drm_gpuvm_range_valid(job->vm, op->iova, op->range))
+@@ -1118,7 +1118,7 @@ vm_bind_job_lookup_ops(struct msm_vm_bind_job *job, struct drm_msm_vm_bind *args
+ 		op->obj = obj;
+ 		cnt++;
+ 
+-		if ((op->range + op->obj_offset) > obj->size) {
++		if (size_add(op->range, op->obj_offset) > obj->size) {
+ 			ret = UERR(EINVAL, dev, "invalid range: %016llx + %016llx > %016zx\n",
+ 				   op->range, op->obj_offset, obj->size);
+ 			goto out_unlock;
+From 8b1e853a3de2ade056325b32dbb6373c5abba15f Mon Sep 17 00:00:00 2001
+From: Rob Clark <robin.clark@oss.qualcomm.com>
+Date: Mon, 2 Nov 2026 09:19:58 -0800
+Subject: [PATCH 2/4] drm/msm/gem: Disallow nr_bos for VM_BIND contexts
+
+If using VM_BIND, it is invalid to attach BOs to a GEM_SUBMIT ioctl.
+Only the VM_BIND ioctl should be used for binding objects.
+
+Fixes: 2e6a8a1fe2b2 ("drm/msm: Add VM_BIND ioctl")
+Reviewed-by: Dmitry Baryshkov <dmitry.baryshkov@oss.qualcomm.com>
+Signed-off-by: Rob Clark <robin.clark@oss.qualcomm.com>
+Reviewed-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
+Patchwork: https://patchwork.freedesktop.org/patch/765330/
+Message-ID: <20261102172001.508440-3-robin.clark@oss.qualcomm.com>
+---
+ drivers/gpu/drm/msm/msm_gem_submit.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/msm/msm_gem_submit.c b/drivers/gpu/drm/msm/msm_gem_submit.c
+index 5862db05297a..c03410c568a5 100644
+--- a/drivers/gpu/drm/msm/msm_gem_submit.c
++++ b/drivers/gpu/drm/msm/msm_gem_submit.c
+@@ -272,7 +272,7 @@ static int submit_lock_objects_vmbind(struct msm_gem_submit *submit)
+ 	struct drm_exec *exec = &submit->exec;
+ 	int ret = 0;
+ 
+-	drm_exec_init(&submit->exec, flags, submit->nr_bos);
++	drm_exec_init(&submit->exec, flags, 0);
+ 	submit->has_exec = true;
+ 
+ 	drm_exec_until_all_locked (&submit->exec) {
+@@ -589,6 +589,9 @@ int msm_ioctl_gem_submit(struct drm_device *dev, void *data,
+ 			return -EINVAL;
+ 	}
+ 
++	if (msm_context_is_vmbind(ctx) && args->nr_bos)
++		return UERR(EINVAL, dev, "invalid nr_bos, must be zero for VM_BIND contexts");
++
+ 	queue = msm_submitqueue_get(ctx, args->queueid);
+ 	if (!queue)
+ 		return -ENOENT;
+From 51369065c5d124eb3a2479eb6d1e74888f18353f Mon Sep 17 00:00:00 2001
+From: Rob Clark <robin.clark@oss.qualcomm.com>
+Date: Mon, 2 Nov 2026 09:19:59 -0800
+Subject: [PATCH 3/4] drm/msm/gem: Decrement loop idx if handle lookup fails
+
+In the out_unlock unlock loop, we should skip the op which still has the
+gem handle instead of gem obj ptr.
+
+Fixes: 2e6a8a1fe2b2 ("drm/msm: Add VM_BIND ioctl")
+Signed-off-by: Rob Clark <robin.clark@oss.qualcomm.com>
+Reviewed-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
+Patchwork: https://patchwork.freedesktop.org/patch/765328/
+Message-ID: <20261102172001.508440-4-robin.clark@oss.qualcomm.com>
+---
+ drivers/gpu/drm/msm/msm_gem_vma.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/gpu/drm/msm/msm_gem_vma.c b/drivers/gpu/drm/msm/msm_gem_vma.c
+index bd1c3ceeea51..3177461d7ad0 100644
+--- a/drivers/gpu/drm/msm/msm_gem_vma.c
++++ b/drivers/gpu/drm/msm/msm_gem_vma.c
+@@ -1110,6 +1110,7 @@ vm_bind_job_lookup_ops(struct msm_vm_bind_job *job, struct drm_msm_vm_bind *args
+ 		obj = idr_find(&file->object_idr, op->handle);
+ 		if (!obj) {
+ 			ret = UERR(EINVAL, dev, "invalid handle %u at index %u\n", op->handle, i);
++			i--;
+ 			goto out_unlock;
+ 		}
+ 
+From 36d995d0d5f039ed16b7d2cbb4016bf7fc33c86e Mon Sep 17 00:00:00 2001
+From: Rob Clark <robin.clark@oss.qualcomm.com>
+Date: Mon, 2 Nov 2026 09:20:00 -0800
+Subject: [PATCH 4/4] drm/msm/gem: Clear nr_ops in lookup_ops() failure path
+
+We've already dropped the references taken in the handle lookup loop, so
+we don't want to drop them again in msm_vma_job_free().
+
+Signed-off-by: Rob Clark <robin.clark@oss.qualcomm.com>
+Fixes: 2e6a8a1fe2b2 ("drm/msm: Add VM_BIND ioctl")
+Patchwork: https://patchwork.freedesktop.org/patch/765324/
+Message-ID: <20261102172001.508440-5-robin.clark@oss.qualcomm.com>
+---
+ drivers/gpu/drm/msm/msm_gem_vma.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/msm/msm_gem_vma.c b/drivers/gpu/drm/msm/msm_gem_vma.c
+index 3177461d7ad0..8b702422030a 100644
+--- a/drivers/gpu/drm/msm/msm_gem_vma.c
++++ b/drivers/gpu/drm/msm/msm_gem_vma.c
+@@ -1088,7 +1088,6 @@ vm_bind_job_lookup_ops(struct msm_vm_bind_job *job, struct drm_msm_vm_bind *args
+ 	}
+ 
+ 	if (ret) {
+-		job->nr_ops = 0;
+ 		goto out;
+ 	}
+ 
+@@ -1143,6 +1142,9 @@ vm_bind_job_lookup_ops(struct msm_vm_bind_job *job, struct drm_msm_vm_bind *args
+ 		}
+ 	}
+ out:
++	if (ret)
++		job->nr_ops = 0;
++
+ 	return ret;
+ }
+ 

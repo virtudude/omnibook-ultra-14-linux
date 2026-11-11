@@ -1,0 +1,56 @@
+From b00b230ebfa02f6aa232bba2c867a459810f4c35 Mon Sep 17 00:00:00 2001
+From: Burke Cates <burke.cates@gmail.com>
+Date: Tue, 3 Nov 2026 23:20:48 -0800
+Subject: [PATCH] drm/msm/dp: skip the link teardown after a failed enable
+
+Commit 1bda647ce61b ("drm/msm/dp: move link-level teardown from
+display_disable to display_unprepare") moved msm_dp_ctrl_off_link() and
+the PHY exit into msm_dp_display_unprepare(). Unlike
+msm_dp_display_disable(), that function does not check power_on.
+
+When link training fails, msm_dp_ctrl_on_link() has already turned the
+link clocks and the PHY off, and .atomic_enable() returns with power_on
+still false. The next disable now runs msm_dp_ctrl_off_link() anyway,
+which writes REG_DP_MAINLINK_CTRL and pulses DP_SW_RESET with the link
+clocks off. On an ASUS Zenbook A16 (Glymur, eDP) the SoC then resets.
+
+Skip the link teardown when power_on is false, as before that commit,
+but still drop the runtime PM reference.
+
+Tested on the A16 by forcing link training to fail and then blanking
+the display: the SoC reset 2/2 times without this patch and 0/3 with
+it.
+
+Fixes: 1bda647ce61b ("drm/msm/dp: move link-level teardown from display_disable to display_unprepare")
+Signed-off-by: Burke Cates <burke.cates@gmail.com>
+---
+ drivers/gpu/drm/msm/dp/dp_display.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/gpu/drm/msm/dp/dp_display.c b/drivers/gpu/drm/msm/dp/dp_display.c
+index c0c150e2c575..6387ef7e75d6 100644
+--- a/drivers/gpu/drm/msm/dp/dp_display.c
++++ b/drivers/gpu/drm/msm/dp/dp_display.c
+@@ -1528,6 +1528,14 @@ static void msm_dp_display_unprepare(struct msm_dp_display_private *dp)
+ {
+ 	struct msm_dp *msm_dp_display = &dp->msm_dp_display;
+ 
++	/*
++	 * Failed link training leaves the link clocks off. Avoid accessing
++	 * link registers after a failed enable, but still release the
++	 * runtime-PM reference below.
++	 */
++	if (!msm_dp_display->power_on)
++		goto out;
++
+ 	/* dongle is still connected but sinks are disconnected */
+ 	if (dp->link->sink_count == 0)
+ 		msm_dp_link_psm_config(dp->link, &dp->panel->link_info, true);
+@@ -1542,6 +1550,7 @@ static void msm_dp_display_unprepare(struct msm_dp_display_private *dp)
+ 
+ 	msm_dp_display->power_on = false;
+ 
++out:
+ 	pm_runtime_put_sync(&msm_dp_display->pdev->dev);
+ 
+ 	drm_dbg_dp(dp->drm_dev, "type=%d Done\n", msm_dp_display->connector_type);

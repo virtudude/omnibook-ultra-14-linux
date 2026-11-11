@@ -1,0 +1,34 @@
+From 97a07148bc8bf2322f526f8c81787dc17c48ad32 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Tue, 10 Nov 2026 23:08:56 -0500
+Subject: [PATCH] ASoC: qcom: topology: bound a module's output ports by its
+ link arrays
+
+audioreach_parse_common_tokens() takes max_op_port from the topology
+unchecked and walks the AR_MAX_MOD_LINKS-sized connection arrays up to
+it, reading past their end for a module with more output ports. Clamp
+it to AR_MAX_MOD_LINKS with a warning: the tokens cannot carry more
+connections anyway, and failing here would leak the allocated module.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/qdsp6/topology.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/sound/soc/qcom/qdsp6/topology.c b/sound/soc/qcom/qdsp6/topology.c
+index 75381d9a1435..38e8cb99689a 100644
+--- a/sound/soc/qcom/qdsp6/topology.c
++++ b/sound/soc/qcom/qdsp6/topology.c
+@@ -709,6 +709,12 @@ static struct audioreach_module *audioreach_parse_common_tokens(struct q6apm *ap
+ 	if (mod) {
+ 		int pn, id = 0;
+ 
++		if (max_op_port > AR_MAX_MOD_LINKS) {
++			dev_warn(apm->dev, "module 0x%x has %u output ports, using the first %d\n",
++				 instance_id, max_op_port, AR_MAX_MOD_LINKS);
++			max_op_port = AR_MAX_MOD_LINKS;
++		}
++
+ 		mod->module_id = module_id;
+ 		mod->max_ip_port = max_ip_port;
+ 		mod->max_op_port = max_op_port;

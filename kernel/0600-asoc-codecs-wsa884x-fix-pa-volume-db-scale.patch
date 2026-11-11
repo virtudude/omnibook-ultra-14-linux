@@ -1,0 +1,61 @@
+From 5e19ac5a0c0d0ae544af28db150942612a96b669 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Tue, 10 Nov 2026 23:08:33 -0500
+Subject: [PATCH] ASoC: codecs: wsa884x: fix PA Volume dB scale
+
+The PA Volume TLV claims -9 dB at control 0 rising in 1.5 dB steps to
++37.5 dB. The control writes the gain code inverted (code = 31 -
+control), and per enum wsa884x_gain code 0 is +21 dB, each code 1.5 dB
+less. Codes 21..31 are undocumented.
+
+On WSA8845, controls 0..17 (codes 31..14) all deliver the same full
+scale, as commit b53cc6144a3f ("ASoC: codecs: wsa883x: fix PA volume
+control") found for wsa883x, and control 18 is 4.5 dB above it. So the
+documented values hold from code 13 (+1.5 dB) up and the floor is -3 dB.
+
+Describe that: -3 dB for controls 0..17, then +1.5 dB per step to +21 dB
+at 31. Register values are unchanged; fix the x1e80100 limit comment.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/codecs/wsa884x.c | 10 +++++++++-
+ sound/soc/qcom/x1e80100.c  |  5 +++--
+ 2 files changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/sound/soc/codecs/wsa884x.c b/sound/soc/codecs/wsa884x.c
+index c8d3c353ec34..b1260674b62c 100644
+--- a/sound/soc/codecs/wsa884x.c
++++ b/sound/soc/codecs/wsa884x.c
+@@ -1738,7 +1738,15 @@ static const struct snd_soc_dapm_widget wsa884x_dapm_widgets[] = {
+ 	SND_SOC_DAPM_SPK("SPKR", wsa884x_spkr_event),
+ };
+ 
+-static const DECLARE_TLV_DB_SCALE(pa_gain, -900, 150, -900);
++/*
++ * The CSR gain field is inverted: control 31 is code 0 (G_21_DB), and code c
++ * is documented as 21 - 1.5 * c dB. As on wsa883x, codes 14..31 (controls
++ * 0..17) measure the same on WSA8845: a -3 dB floor.
++ */
++static const SNDRV_CTL_TLVD_DECLARE_DB_RANGE(pa_gain,
++	0, 17, TLV_DB_SCALE_ITEM(-300, 0, 0),
++	18, 31, TLV_DB_SCALE_ITEM(150, 150, 0),
++);
+ 
+ static const struct snd_kcontrol_new wsa884x_snd_controls[] = {
+ 	SOC_SINGLE_RANGE_TLV("PA Volume", WSA884X_DRE_CTL_1,
+diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
+index 014f803f6891..7a54f6d49f00 100644
+--- a/sound/soc/qcom/x1e80100.c
++++ b/sound/soc/qcom/x1e80100.c
+@@ -89,8 +89,9 @@ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
+ 		fallthrough;
+ 	case WSA_CODEC_DMA_RX_1:
+ 		/*
+-		 * Set limit of -3 dB on Digital Volume and 0 dB on PA Volume
+-		 * to reduce the risk of speaker damage until we have active
++		 * Set limit of -3 dB on Digital Volume and keep PA Volume at
++		 * control 6, the amplifier's gain floor (-3 dB on WSA8845), to
++		 * reduce the risk of speaker damage until we have active
+ 		 * speaker protection in place.
+ 		 */
+ 		snd_soc_limit_volume(card, "WSA WSA_RX0 Digital Volume", 81);

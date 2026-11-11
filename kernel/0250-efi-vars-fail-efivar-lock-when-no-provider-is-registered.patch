@@ -1,0 +1,29 @@
+From a9749c95e597301c7c0277fd3b7aed947dc0296a Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Tue, 10 Nov 2026 23:30:49 -0500
+Subject: [PATCH] efi: vars: fail efivar_lock() when no provider is registered
+
+efivar_lock() dereferences __efivars unchecked. Callers check
+efivar_is_available() first, but not under efivars_lock, so a provider
+that unregisters in between (uefisecapp can be unbound) leaves
+efivar_lock() dereferencing NULL. efivars_unregister() clears __efivars
+under the same semaphore, so check it there and fail with -ENODEV.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ drivers/firmware/efi/vars.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/firmware/efi/vars.c b/drivers/firmware/efi/vars.c
+index 3700e9869767..e591fe7144c9 100644
+--- a/drivers/firmware/efi/vars.c
++++ b/drivers/firmware/efi/vars.c
+@@ -143,7 +143,7 @@ int efivar_lock(void)
+ {
+ 	if (down_interruptible(&efivars_lock))
+ 		return -EINTR;
+-	if (!__efivars->ops) {
++	if (!__efivars || !__efivars->ops) {
+ 		up(&efivars_lock);
+ 		return -ENODEV;
+ 	}

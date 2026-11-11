@@ -1,0 +1,975 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/5] ASoC: qcom: run the speakers at a DT operating point
+
+Describes a per-amplifier PA gain ceiling and full scale in DT, caps
+the wsa884x PA Volume there, checks the SP VI full scale against it,
+and has the x1e80100 card run the speakers at it.
+
+ 1/5 ASoC: dt-bindings: qcom,wsa8840: describe the speaker operating point
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 2/5 ASoC: dt-bindings: qcom,sm8250: describe the speaker operating point
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 3/5 ASoC: codecs: wsa884x: cap PA Volume at the board's operating point
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 4/5 ASoC: qcom: audioreach: check the SP VI full scale against the amplifiers
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 5/5 ASoC: qcom: x1e80100: run the speakers at their DT operating point
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+
+From 9cb610e645c68f9d5f0a85a8e9c35244e31a4cf9 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 15:07:47 -0500
+Subject: [PATCH 1/5] ASoC: dt-bindings: qcom,wsa8840: describe the speaker
+ operating point
+
+How loud a WSA884x speaker may be driven is board data, depending on
+the speaker and on how the board was qualified with speaker protection.
+Describe that operating point per amplifier:
+
+- qcom,pa-gain-max-millidecibel: the highest PA gain the board may use,
+  on the PA Volume control's scale.
+- qcom,speaker-full-scale-microvolt: the peak terminal voltage for
+  0 dBFS at that gain, with unity digital gain and the compander off,
+  which speaker protection's V/I model must assume.
+
+Each requires the other, and the gain must be a PA Volume step.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ .../bindings/sound/qcom,wsa8840.yaml          | 26 +++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/sound/qcom,wsa8840.yaml b/Documentation/devicetree/bindings/sound/qcom,wsa8840.yaml
+index aff26a95a50b..15b48364c41b 100644
+--- a/Documentation/devicetree/bindings/sound/qcom,wsa8840.yaml
++++ b/Documentation/devicetree/bindings/sound/qcom,wsa8840.yaml
+@@ -58,6 +58,25 @@ properties:
+       The amplifier drives a tweeter, which may only run speaker protection
+       behind a DSP high-pass filter.
+ 
++  qcom,pa-gain-max-millidecibel:
++    $ref: /schemas/types.yaml#/definitions/int32
++    enum: [-3000, 1500, 3000, 4500, 6000, 7500, 9000, 10500, 12000, 13500,
++           15000, 16500, 18000, 19500, 21000]
++    description:
++      Highest nominal PA gain, in millidecibels on the PA Volume scale (-3 dB
++      floor, then 1.5 dB steps up to +21 dB), the board may run this amplifier
++      at in speaker mode with the CSR gain path. With
++      qcom,speaker-full-scale-microvolt it describes the calibrated operating
++      point.
++
++  qcom,speaker-full-scale-microvolt:
++    minimum: 1
++    maximum: 63999999
++    description:
++      Peak voltage at the speaker terminals for a 0 dBFS signal, measured on
++      the board with the PA at qcom,pa-gain-max-millidecibel, unity digital
++      gain ahead of the amplifier and the compander off.
++
+   vdd-1p8-supply: true
+   vdd-io-supply: true
+ 
+@@ -74,6 +93,10 @@ oneOf:
+   - required:
+       - reset-gpios
+ 
++dependentRequired:
++  qcom,pa-gain-max-millidecibel: [ 'qcom,speaker-full-scale-microvolt' ]
++  qcom,speaker-full-scale-microvolt: [ 'qcom,pa-gain-max-millidecibel' ]
++
+ unevaluatedProperties: false
+ 
+ examples:
+@@ -92,6 +115,9 @@ examples:
+             powerdown-gpios = <&lpass_tlmm 18 GPIO_ACTIVE_LOW>;
+             #sound-dai-cells = <0>;
+             sound-name-prefix = "SpkrRight";
++            qcom,vi-guard;
++            qcom,pa-gain-max-millidecibel = <7500>;
++            qcom,speaker-full-scale-microvolt = <3283000>;
+             vdd-1p8-supply = <&vreg_l15b_1p8>;
+             vdd-io-supply = <&vreg_l3g_1p2>;
+         };
+From 8bddebccc961512eb9c9ec8c0ab7244043cc84cf Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 15:07:47 -0500
+Subject: [PATCH 2/5] ASoC: dt-bindings: qcom,sm8250: describe the speaker
+ operating point
+
+With qcom,speaker-protection-required the x1e80100 and Glymur cards
+keep the speakers at conservative gain limits. Describe that when every
+amplifier on the WSA playback link has an operating point and
+qcom,vi-guard, the amplifiers run at it with the link's gain and
+routing controls fixed, and speaker protection must assume its full
+scale.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ Documentation/devicetree/bindings/sound/qcom,sm8250.yaml | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml b/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml
+index 3a7636774c67..54a398044b4d 100644
+--- a/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml
++++ b/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml
+@@ -93,7 +93,11 @@ properties:
+     type: boolean
+     description:
+       The speakers on the WSA playback link must not be driven without DSP
+-      speaker protection fed by V/I sense from every amplifier.
++      speaker protection fed by V/I sense from every amplifier. If every
++      amplifier on the link has qcom,vi-guard and an operating point
++      (qcom,pa-gain-max-millidecibel and qcom,speaker-full-scale-microvolt),
++      the speakers may run at it; otherwise they are held at conservative
++      gain limits.
+ 
+   qcom,uefi-speaker-calibration:
+     type: boolean
+From db9226a1c8aaf9ef268a8ddd8e4b43a30cedca76 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 15:08:53 -0500
+Subject: [PATCH 3/5] ASoC: codecs: wsa884x: cap PA Volume at the board's operating
+ point
+
+The safe gain is per amplifier (woofers and tweeters differ), but a
+limit set with snd_soc_limit_volume() lands in the static control
+template that all wsa884x instances share.
+
+Read the operating point from the DT node, and give each amplifier its
+own PA Volume control whose info and put cap it at that gain whatever a
+machine driver sets. The reset gain is lowered to the ceiling at
+component probe. An invalid gain, or only one of the two properties,
+fails the probe; without them nothing changes.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/codecs/wsa884x.c | 135 +++++++++++++++++++++++++++++++++----
+ 1 file changed, 121 insertions(+), 14 deletions(-)
+
+diff --git a/sound/soc/codecs/wsa884x.c b/sound/soc/codecs/wsa884x.c
+index 7deaa4833351..a8820b971ff3 100644
+--- a/sound/soc/codecs/wsa884x.c
++++ b/sound/soc/codecs/wsa884x.c
+@@ -774,6 +774,9 @@ struct wsa884x_priv {
+ 	struct dentry *debugfs;
+ 	/* Battery stacking reported by VPHX_SYS_EN_STATUS */
+ 	unsigned int supply_cfg;
++	/* This amplifier's PA Volume control, and its ceiling from the DT */
++	struct soc_mixer_control pa_mc;
++	int pa_max;
+ };
+ 
+ #define WSA884X_VI_GUARD_PERIOD_MS	20
+@@ -1916,13 +1919,89 @@ static int wsa884x_set_swr_port(struct snd_kcontrol *kcontrol,
+ 	return 1;
+ }
+ 
++static int wsa884x_pa_volume_info(struct snd_kcontrol *kcontrol,
++				  struct snd_ctl_elem_info *uinfo)
++{
++	struct snd_soc_component *comp = snd_kcontrol_chip(kcontrol);
++	struct wsa884x_priv *wsa884x = snd_soc_component_get_drvdata(comp);
++	int ret;
++
++	ret = snd_soc_info_volsw(kcontrol, uinfo);
++	if (ret)
++		return ret;
++
++	uinfo->value.integer.max = min_t(long, uinfo->value.integer.max, wsa884x->pa_max);
++
++	return 0;
++}
++
++static int wsa884x_pa_volume_put(struct snd_kcontrol *kcontrol,
++				 struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *comp = snd_kcontrol_chip(kcontrol);
++	struct wsa884x_priv *wsa884x = snd_soc_component_get_drvdata(comp);
++
++	if (ucontrol->value.integer.value[0] > wsa884x->pa_max)
++		return -EINVAL;
++
++	return snd_soc_put_volsw(kcontrol, ucontrol);
++}
++
++/*
++ * The CSR gain field is inverted: control 31 is code 0 (G_21_DB), and code c
++ * is documented as 21 - 1.5 * c dB. As on wsa883x, codes 14..31 (controls
++ * 0..17) measure the same on WSA8845: a -3 dB floor.
++ */
++static const SNDRV_CTL_TLVD_DECLARE_DB_RANGE(pa_gain,
++	0, 17, TLV_DB_SCALE_ITEM(-300, 0, 0),
++	18, 31, TLV_DB_SCALE_ITEM(150, 150, 0),
++);
++
++#define WSA884X_PA_VOLUME_MAX	0x1f
++#define WSA884X_PA_VOLUME_FLOOR	17
++
++static const struct snd_kcontrol_new wsa884x_pa_volume =
++	SOC_SINGLE_RANGE_TLV("PA Volume", WSA884X_DRE_CTL_1,
++			     WSA884X_DRE_CTL_1_CSR_GAIN_SHIFT,
++			     0x0, WSA884X_PA_VOLUME_MAX, 1, pa_gain);
++
++/*
++ * A per-amplifier copy, so each amplifier has its own ceiling: a machine
++ * driver's limit would otherwise land in the shared template. The reset gain
++ * (code 2) is lowered to the ceiling before the control exists.
++ */
++static int wsa884x_add_pa_volume(struct snd_soc_component *comp,
++				 struct wsa884x_priv *wsa884x)
++{
++	struct snd_kcontrol_new kc = wsa884x_pa_volume;
++	unsigned int code;
++	int ret;
++
++	wsa884x->pa_mc = *(struct soc_mixer_control *)wsa884x_pa_volume.private_value;
++	kc.private_value = (unsigned long)&wsa884x->pa_mc;
++	kc.info = wsa884x_pa_volume_info;
++	kc.put = wsa884x_pa_volume_put;
++
++	code = snd_soc_component_read_field(comp, WSA884X_DRE_CTL_1,
++					    WSA884X_DRE_CTL_1_CSR_GAIN_MASK);
++	if (WSA884X_PA_VOLUME_MAX - (int)code > wsa884x->pa_max) {
++		ret = snd_soc_component_write_field(comp, WSA884X_DRE_CTL_1,
++						    WSA884X_DRE_CTL_1_CSR_GAIN_MASK,
++						    WSA884X_PA_VOLUME_MAX - wsa884x->pa_max);
++		if (ret < 0)
++			return ret;
++	}
++
++	return snd_soc_add_component_controls(comp, &kc, 1);
++}
++
+ static int wsa884x_codec_probe(struct snd_soc_component *comp)
+ {
+ 	struct wsa884x_priv *wsa884x = snd_soc_component_get_drvdata(comp);
+ 
+ 	snd_soc_component_init_regmap(comp, wsa884x->regmap);
+ 
+-	return 0;
++	return wsa884x_add_pa_volume(comp, wsa884x);
+ }
+ 
+ static void wsa884x_spkr_post_pmu(struct snd_soc_component *component,
+@@ -2003,20 +2082,7 @@ static const struct snd_soc_dapm_widget wsa884x_dapm_widgets[] = {
+ 	SND_SOC_DAPM_SPK("SPKR", wsa884x_spkr_event),
+ };
+ 
+-/*
+- * The CSR gain field is inverted: control 31 is code 0 (G_21_DB), and code c
+- * is documented as 21 - 1.5 * c dB. As on wsa883x, codes 14..31 (controls
+- * 0..17) measure the same on WSA8845: a -3 dB floor.
+- */
+-static const SNDRV_CTL_TLVD_DECLARE_DB_RANGE(pa_gain,
+-	0, 17, TLV_DB_SCALE_ITEM(-300, 0, 0),
+-	18, 31, TLV_DB_SCALE_ITEM(150, 150, 0),
+-);
+-
+ static const struct snd_kcontrol_new wsa884x_snd_controls[] = {
+-	SOC_SINGLE_RANGE_TLV("PA Volume", WSA884X_DRE_CTL_1,
+-			     WSA884X_DRE_CTL_1_CSR_GAIN_SHIFT,
+-			     0x0, 0x1f, 1, pa_gain),
+ 	SOC_ENUM_EXT("WSA MODE", wsa884x_dev_mode_enum,
+ 		     wsa884x_dev_mode_get, wsa884x_dev_mode_put),
+ 	SOC_SINGLE_EXT("DAC Switch", WSA884X_PORT_DAC, 0, 1, 0,
+@@ -2446,6 +2512,43 @@ static int wsa884x_get_reset(struct device *dev, struct wsa884x_priv *wsa884x)
+ 	return 0;
+ }
+ 
++/*
++ * Optional DT operating point: the highest PA gain (mdB, PA Volume scale)
++ * and the full scale measured there. The gain caps PA Volume.
++ */
++static int wsa884x_parse_operating_point(struct wsa884x_priv *wsa884x)
++{
++	struct device_node *np = wsa884x->dev->of_node;
++	bool has_gain = of_property_present(np, "qcom,pa-gain-max-millidecibel");
++	bool has_fs = of_property_present(np, "qcom,speaker-full-scale-microvolt");
++	s32 mdb;
++
++	wsa884x->pa_max = WSA884X_PA_VOLUME_MAX;
++	if (!has_gain && !has_fs)
++		return 0;
++	if (has_gain != has_fs)
++		return dev_err_probe(wsa884x->dev, -EINVAL,
++				     "qcom,pa-gain-max-millidecibel and qcom,speaker-full-scale-microvolt go together\n");
++
++	if (of_property_read_s32(np, "qcom,pa-gain-max-millidecibel", &mdb))
++		return dev_err_probe(wsa884x->dev, -EINVAL,
++				     "unreadable qcom,pa-gain-max-millidecibel\n");
++
++	/* The PA Volume TLV: -3 dB at the floor, then +1.5 dB per control */
++	if (mdb == -3000)
++		wsa884x->pa_max = WSA884X_PA_VOLUME_FLOOR;
++	else if (mdb >= 1500 && mdb <= 21000 && !(mdb % 1500))
++		wsa884x->pa_max = WSA884X_PA_VOLUME_FLOOR + mdb / 1500;
++	else
++		return dev_err_probe(wsa884x->dev, -EINVAL,
++				     "qcom,pa-gain-max-millidecibel %d is not a PA Volume step\n",
++				     mdb);
++
++	dev_info(wsa884x->dev, "PA gain ceiling %d mdB (PA Volume %d)\n", mdb, wsa884x->pa_max);
++
++	return 0;
++}
++
+ static int wsa884x_probe(struct sdw_slave *pdev,
+ 			 const struct sdw_device_id *id)
+ {
+@@ -2509,6 +2612,10 @@ static int wsa884x_probe(struct sdw_slave *pdev,
+ 	INIT_DELAYED_WORK(&wsa884x->vi_guard_work, wsa884x_vi_guard_work);
+ 	wsa884x->vi_guard = of_property_read_bool(dev->of_node, "qcom,vi-guard");
+ 
++	ret = wsa884x_parse_operating_point(wsa884x);
++	if (ret)
++		return ret;
++
+ 	wsa884x_reset_deassert(wsa884x);
+ 	ret = devm_add_action_or_reset(dev, wsa884x_reset_powerdown, wsa884x);
+ 	if (ret)
+From ae2c35dffe48d509616b5f94f58b63318170d47c Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 15:08:53 -0500
+Subject: [PATCH 4/5] ASoC: qcom: audioreach: check the SP VI full scale against
+ the amplifiers
+
+The SP VI thermal model takes the terminal voltage that 0 dBFS produces
+per speaker (v_full_sc in thermal record 0x08001535). If it is wrong
+the coil temperature is misjudged and the thermal limiter acts late or
+never; it depends on the gains the machine driver runs, which the
+topology cannot know.
+
+Add audioreach_sp_set_full_scale(). While a full scale is set, the SP VI
+blob must carry exactly one thermal record for that many speakers whose
+per-speaker full scale matches within 1 %, or the graph is refused
+before playback, and calibration runs are refused.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 139 +++++++++++++++++++++++++++++-
+ sound/soc/qcom/qdsp6/audioreach.h |   1 +
+ 2 files changed, 138 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index b5bda1270e8d..0b8f00eb4787 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -2059,6 +2059,39 @@ void audioreach_sp_set_hpf_speakers(u32 speakers)
+ }
+ EXPORT_SYMBOL_GPL(audioreach_sp_set_hpf_speakers);
+ 
++/*
++ * Delivered full scale per SP speaker (peak uV at the terminals for 0 dBFS)
++ * at the machine driver's operating point. The SP VI thermal model must
++ * assume the same, or it misjudges coil temperature; calibration runs at
++ * other levels, so it is refused while this is set.
++ */
++static struct {
++	u32 uv[MAX_SP_VI_SPEAKERS];
++	unsigned int num;
++} sp_full_scale;
++static DEFINE_MUTEX(sp_full_scale_lock);
++
++/**
++ * audioreach_sp_set_full_scale() - set the speakers' delivered full scale
++ * @uv: full scale per SP speaker, in microvolts, speaker order
++ * @num: number of speakers, 0 to clear
++ */
++void audioreach_sp_set_full_scale(const u32 *uv, unsigned int num)
++{
++	guard(mutex)(&sp_full_scale_lock);
++
++	sp_full_scale.num = min_t(unsigned int, num, MAX_SP_VI_SPEAKERS);
++	memcpy(sp_full_scale.uv, uv, sp_full_scale.num * sizeof(*uv));
++}
++EXPORT_SYMBOL_GPL(audioreach_sp_set_full_scale);
++
++static bool audioreach_sp_full_scale_set(void)
++{
++	guard(mutex)(&sp_full_scale_lock);
++
++	return sp_full_scale.num;
++}
++
+ /* Raw cfg blobs may only address their own module */
+ static bool audioreach_sp_isolated(void)
+ {
+@@ -2338,6 +2371,10 @@ static int __audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals,
+ 
+ int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int count)
+ {
++	/* The operating point runs on the factory calibration only */
++	if (audioreach_sp_full_scale_set())
++		return -EPERM;
++
+ 	return __audioreach_set_sp_vi_r0t0(dev, vals, count, false);
+ }
+ 
+@@ -2617,8 +2654,14 @@ EXPORT_SYMBOL_GPL(audioreach_vi_calibration_abort);
+ static int audioreach_speaker_protection(struct q6apm_graph *graph,
+ 					 const struct audioreach_module *module)
+ {
+-	return audioreach_send_u32_param(graph, module, PARAM_ID_SP_OP_MODE,
+-					 audioreach_sp_session_mode());
++	u32 mode = audioreach_sp_session_mode();
++
++	if (audioreach_sp_full_scale_set() && mode != PARAM_ID_SP_VI_OP_MODE_NORMAL) {
++		dev_err(graph->dev, "SP RX: only Normal mode at the speaker operating point; refusing\n");
++		return -EPERM;
++	}
++
++	return audioreach_send_u32_param(graph, module, PARAM_ID_SP_OP_MODE, mode);
+ }
+ 
+ static int audioreach_register_events(struct q6apm_graph *graph,
+@@ -2761,6 +2804,11 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 		return -EINVAL;
+ 	}
+ 
++	if (audioreach_sp_full_scale_set() && mode != PARAM_ID_SP_VI_OP_MODE_NORMAL) {
++		dev_err(graph->dev, "SP VI: only Normal mode at the speaker operating point; refusing\n");
++		return -EPERM;
++	}
++
+ 	if (mode == PARAM_ID_SP_VI_OP_MODE_CALIBRATION) {
+ 		audioreach_arm_vi_calibration(graph->dev, num_speakers);
+ 
+@@ -3143,9 +3191,96 @@ static int audioreach_speaker_protection_static_cfg(struct q6apm_graph *graph,
+ 	return audioreach_speaker_protection_send_static_cfg(graph, module, "SP");
+ }
+ 
++#define PARAM_ID_SP_TH_VI_DYNAMIC_CFG_V5	0x08001535
++/* 0x08001535: per speaker, after the count: 32 bytes, v_full_sc_q10 at 16 */
++#define AR_SP_VI_TH_SPK_SIZE			32
++#define AR_SP_VI_TH_VFS_OFFSET			16
++
++/*
++ * At the speaker operating point the SP VI blob, as sent, must carry one
++ * thermal model record for the operating point's speakers, each full scale
++ * (Q10 volts) within 1 % of the delivered one, so the model expects the
++ * pilot tone at the level the amplifiers produce.
++ */
++static int audioreach_sp_vi_check_full_scale(struct q6apm_graph *graph,
++					     const struct audioreach_module *module)
++{
++	u32 uv[MAX_SP_VI_SPEAKERS], num_words, pos = 0;
++	unsigned int num, k, records = 0;
++	u8 *packed __free(kfree) = NULL;
++	const u32 *word;
++	int total;
++
++	scoped_guard(mutex, &sp_full_scale_lock) {
++		num = sp_full_scale.num;
++		memcpy(uv, sp_full_scale.uv, sizeof(uv));
++	}
++	if (!num)
++		return 0;
++
++	if (!module->data || !module->data->size ||
++	    le32_to_cpu(module->data->size) % sizeof(u32))
++		goto bad;
++	word = (const u32 *)module->data->data;
++	num_words = le32_to_cpu(module->data->size) / sizeof(u32);
++	if (word[0] != module->instance_id)
++		goto bad;
++	total = audioreach_sp_cfg_walk(word, num_words, module->instance_id, 0,
++				       NULL, NULL, U32_MAX);
++	if (total <= 0)
++		goto bad;
++
++	packed = kmalloc(total, GFP_KERNEL);
++	if (!packed)
++		return -ENOMEM;
++	if (audioreach_sp_cfg_walk(word, num_words, module->instance_id, 0,
++				   NULL, packed, U32_MAX) != total)
++		goto bad;
++
++	while (pos < total) {
++		const struct apm_module_param_data *pd = (void *)(packed + pos);
++		const u8 *p = packed + pos + APM_MODULE_PARAM_DATA_SIZE;
++
++		if (pd->param_id == PARAM_ID_SP_TH_VI_DYNAMIC_CFG_V5) {
++			if (records++ ||
++			    pd->param_size < sizeof(u32) + num * AR_SP_VI_TH_SPK_SIZE ||
++			    get_unaligned_le32(p) != num)
++				goto bad;
++			for (k = 0; k < num; k++) {
++				u64 q10 = get_unaligned_le16(p + sizeof(u32) +
++							     k * AR_SP_VI_TH_SPK_SIZE +
++							     AR_SP_VI_TH_VFS_OFFSET);
++				u64 got = DIV_ROUND_CLOSEST_ULL(q10 * 1000000, 1024);
++				u64 tol = uv[k] / 100;
++
++				if (got + tol < uv[k] || got > uv[k] + tol) {
++					dev_err(graph->dev,
++						"SP VI: speaker %u full scale %llu uV in the topology, amplifier delivers %u uV; refusing\n",
++						k, got, uv[k]);
++					return -EINVAL;
++				}
++			}
++		}
++		pos += APM_MODULE_PARAM_DATA_SIZE + ALIGN(pd->param_size, 8);
++	}
++
++	if (records != 1)
++		goto bad;
++
++	dev_info(graph->dev, "SP VI: full scale matches the speaker operating point\n");
++	return 0;
++bad:
++	dev_err(graph->dev, "SP VI: no usable full scale record for the speaker operating point; refusing\n");
++	return -EINVAL;
++}
++
+ static int audioreach_speaker_protection_vi_static_cfg(struct q6apm_graph *graph,
+ 						       const struct audioreach_module *module)
+ {
++	int rc = audioreach_sp_vi_check_full_scale(graph, module);
++
++	if (rc)
++		return rc;
+ 	return audioreach_speaker_protection_send_static_cfg(graph, module, "VI");
+ }
+ 
+diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
+index 72d2f2c2438f..5a3dd7f2c372 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.h
++++ b/sound/soc/qcom/qdsp6/audioreach.h
+@@ -1178,6 +1178,7 @@ void audioreach_sp_set_r0t0_from_uefi(bool enable, u32 r0_min_uohm, u32 r0_max_u
+ bool audioreach_sp_required(void);
+ unsigned int audioreach_sp_num_speakers(void);
+ void audioreach_sp_set_hpf_speakers(u32 speakers);
++void audioreach_sp_set_full_scale(const u32 *uv, unsigned int num);
+ bool audioreach_sp_vi_tap_enabled(void);
+ bool audioreach_sp_vi_tap_allowed(void);
+ void audioreach_sp_rx_closed(void);
+From d4d43841244db7bec62bdb13158f13b5ec01cbe7 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 15:10:06 -0500
+Subject: [PATCH 5/5] ASoC: qcom: x1e80100: run the speakers at their DT operating
+ point
+
+The card keeps the WSA speakers at -3 dB digital gain with the PA at its
+floor, about 0.7 V peak on the HP OmniBook Ultra 14, far below what the
+speakers take with protection running. The safe operating point is now
+in each amplifier's DT node, but it only holds on the gain path it was
+measured on, and SP VI must model the same full scale.
+
+When speaker protection is required and every amplifier has an
+operating point and the V/I guard, set up that path at late probe,
+before userspace can reach a control: each interpolator fed only from
+its own AIF1 input, compander and soft clip off, 0 dB digital gain, the
+amplifiers in speaker mode at their PA ceiling. These controls are read
+back, made read-only and checked at every WSA RX0 prepare, and the full
+scale is passed to audioreach. A read-only "Speaker Operating Point
+Switch" shows when this is active; otherwise the default limits stay.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/x1e80100.c | 310 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 310 insertions(+)
+
+diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
+index 7c087b0c93e8..50ceee1c2b61 100644
+--- a/sound/soc/qcom/x1e80100.c
++++ b/sound/soc/qcom/x1e80100.c
+@@ -19,12 +19,24 @@
+ #include "qdsp6/q6dsp-common.h"
+ #include "sdw.h"
+ 
++#define X1E80100_MAX_WSA_MACROS		2
++
++struct x1e80100_sp_link {
++	/* Amplifiers in speaker (lane) order */
++	struct snd_soc_component *amp[MAX_SP_VI_SPEAKERS];
++	unsigned int num_amps;
++	const char *macro[X1E80100_MAX_WSA_MACROS];
++	unsigned int num_macros;
++};
++
+ struct x1e80100_snd_data {
+ 	bool stream_prepared[AFE_PORT_MAX];
+ 	struct snd_soc_card *card;
+ 	struct snd_soc_jack jack;
+ 	struct snd_soc_jack dp_jack[8];
+ 	bool jack_setup;
++	struct x1e80100_sp_link sp;
++	bool op_active;
+ };
+ 
+ /*
+@@ -34,6 +46,8 @@ struct x1e80100_snd_data {
+  */
+ static int x1e80100_register_sp_speakers(struct snd_soc_pcm_runtime *rtd)
+ {
++	struct x1e80100_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
++	struct snd_soc_component *amps[MAX_SP_VI_SPEAKERS], *amp_sorted[MAX_SP_VI_SPEAKERS];
+ 	struct thermal_zone_device *tzs[MAX_SP_VI_SPEAKERS];
+ 	const char *names[MAX_SP_VI_SPEAKERS];
+ 	struct device_node *np = rtd->card->dev->of_node;
+@@ -55,6 +69,10 @@ static int x1e80100_register_sp_speakers(struct snd_soc_pcm_runtime *rtd)
+ 		struct sdw_slave *slave;
+ 		char tz_name[THERMAL_NAME_LENGTH];
+ 
++		if (!strcmp(codec_dai->driver->name, "wsa_macro_vifeedback") &&
++		    codec_dai->component->name_prefix &&
++		    data->sp.num_macros < X1E80100_MAX_WSA_MACROS)
++			data->sp.macro[data->sp.num_macros++] = codec_dai->component->name_prefix;
+ 		if (strcmp(codec_dai->name, "VI"))
+ 			continue;
+ 		if (!component || !component->dev)
+@@ -78,6 +96,7 @@ static int x1e80100_register_sp_speakers(struct snd_soc_pcm_runtime *rtd)
+ 		}
+ 		names[num] = component->name_prefix ?: dev_name(component->dev);
+ 		tweeter[num] = of_property_read_bool(component->dev->of_node, "qcom,tweeter");
++		amps[num] = component;
+ 		tzs[num++] = tz;
+ 	}
+ 
+@@ -115,11 +134,13 @@ static int x1e80100_register_sp_speakers(struct snd_soc_pcm_runtime *rtd)
+ 			tz_sorted[k] = tzs[found];
+ 			name_sorted[k] = names[found];
+ 			tweeter_sorted[k] = tweeter[found];
++			amp_sorted[k] = amps[found];
+ 			lane_sorted[k] = k;
+ 		}
+ 		memcpy(tzs, tz_sorted, num * sizeof(tzs[0]));
+ 		memcpy(names, name_sorted, num * sizeof(names[0]));
+ 		memcpy(tweeter, tweeter_sorted, num * sizeof(tweeter[0]));
++		memcpy(amps, amp_sorted, num * sizeof(amps[0]));
+ 		memcpy(lanes, lane_sorted, num);
+ 	}
+ 
+@@ -129,15 +150,23 @@ static int x1e80100_register_sp_speakers(struct snd_soc_pcm_runtime *rtd)
+ 			hpf |= BIT(k);
+ 	audioreach_sp_set_hpf_speakers(hpf);
+ 
++	memcpy(data->sp.amp, amps, num * sizeof(amps[0]));
++	data->sp.num_amps = num;
++
+ 	/* Also drops the speakers of a previous bind when none are found */
+ 	return audioreach_sp_register_speaker_map(tzs, names, have_lanes ? lanes : NULL, num);
+ }
+ 
+ static void x1e80100_snd_exit(struct snd_soc_pcm_runtime *rtd)
+ {
++	struct x1e80100_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
++
+ 	if (snd_soc_rtd_to_cpu(rtd, 0)->id == WSA_CODEC_DMA_RX_0) {
+ 		audioreach_sp_register_speaker_map(NULL, NULL, NULL, 0);
+ 		audioreach_sp_set_hpf_speakers(0);
++		audioreach_sp_set_full_scale(NULL, 0);
++		data->op_active = false;
++		memset(&data->sp, 0, sizeof(data->sp));
+ 	}
+ }
+ 
+@@ -185,6 +214,281 @@ static int x1e80100_limit_speaker_volumes(struct snd_soc_card *card)
+ 	return 0;
+ }
+ 
++/*
++ * Speaker operating point: with speaker protection required and every
++ * amplifier V/I guarded with a DT PA gain ceiling and full scale, the card
++ * pins the path the full scale was measured on (AIF1 on INP0 only, no mix,
++ * sidetone, compander or soft clip, 0 dB digital, speaker mode, COMP on, PA
++ * at its ceiling). The pins are set before the card registers, read-only
++ * from then on and rechecked at every WSA RX0 prepare.
++ */
++#define X1E80100_DIGITAL_0DB		84
++#define X1E80100_PIN_AMP_PA		-1
++
++struct x1e80100_pin_ctl {
++	const char *fmt;	/* %s: macro or amplifier prefix */
++	bool amp;
++	int value;
++};
++
++static const struct x1e80100_pin_ctl x1e80100_pin_ctls[] = {
++	{ "%s WSA_RX0 INP0", false, 1 }, { "%s WSA_RX0 INP1", false, 0 },
++	{ "%s WSA_RX0 INP2", false, 0 }, { "%s WSA_RX0 MIX INP", false, 0 },
++	{ "%s WSA_RX0 INT0 SIDETONE MIX", false, 0 },
++	{ "%s WSA_RX1 INP0", false, 2 }, { "%s WSA_RX1 INP1", false, 0 },
++	{ "%s WSA_RX1 INP2", false, 0 }, { "%s WSA_RX1 MIX INP", false, 0 },
++	{ "%s WSA RX0 MUX", false, 1 }, { "%s WSA RX1 MUX", false, 1 },	/* AIF1_PB */
++	{ "%s WSA_COMP1 Switch", false, 0 }, { "%s WSA_COMP2 Switch", false, 0 },
++	{ "%s WSA_Softclip0 Enable", false, 0 }, { "%s WSA_Softclip1 Enable", false, 0 },
++	{ "%s WSA_RX0 Digital Volume", false, X1E80100_DIGITAL_0DB },
++	{ "%s WSA_RX1 Digital Volume", false, X1E80100_DIGITAL_0DB },
++	{ "%s PA Volume", true, X1E80100_PIN_AMP_PA },
++	{ "%s WSA MODE", true, 0 }, { "%s COMP Switch", true, 1 },
++};
++
++#define X1E80100_MAX_PINS \
++	(ARRAY_SIZE(x1e80100_pin_ctls) * MAX(MAX_SP_VI_SPEAKERS, X1E80100_MAX_WSA_MACROS))
++
++struct x1e80100_pin {
++	struct snd_kcontrol *kctl;
++	unsigned int access;
++	int want;
++	char name[SNDRV_CTL_ELEM_ID_NAME_MAXLEN];
++};
++
++/* Why the operating point cannot be used, or NULL; @fs gets the full scales */
++static const char *x1e80100_op_check(struct snd_soc_card *card, u32 *fs, bool *any)
++{
++	struct x1e80100_snd_data *data = snd_soc_card_get_drvdata(card);
++	const char *why = NULL;
++	unsigned int k;
++
++	*any = false;
++	for (k = 0; k < data->sp.num_amps; k++) {
++		struct device_node *np = data->sp.amp[k]->dev->of_node;
++
++		if (of_property_present(np, "qcom,pa-gain-max-millidecibel") ||
++		    of_property_present(np, "qcom,speaker-full-scale-microvolt"))
++			*any = true;
++		if (why)
++			continue;
++		if (!data->sp.amp[k]->name_prefix)
++			why = "an amplifier has no name prefix";
++		else if (!of_property_present(np, "qcom,pa-gain-max-millidecibel") ||
++			 of_property_read_u32(np, "qcom,speaker-full-scale-microvolt", &fs[k]))
++			why = "an amplifier has no operating point";
++		else if (!fs[k] || fs[k] >= 64000000)
++			why = "a full scale is out of range";
++		else if (!of_property_read_bool(np, "qcom,vi-guard"))
++			why = "an amplifier has no V/I guard";
++	}
++
++	if (!*any || why)
++		return why;
++	if (!audioreach_sp_required())
++		return "speaker protection is not required";
++	if (!data->sp.num_macros)
++		return "no WSA macro on the speaker link";
++
++	return NULL;
++}
++
++static int x1e80100_pin_resolve(struct snd_soc_card *card, struct x1e80100_pin *pins,
++				unsigned int *num)
++{
++	struct x1e80100_snd_data *data = snd_soc_card_get_drvdata(card);
++	struct snd_ctl_elem_info *info __free(kfree) = kzalloc(sizeof(*info), GFP_KERNEL);
++	unsigned int i, j, n, k = 0;
++
++	if (!info)
++		return -ENOMEM;
++
++	for (i = 0; i < ARRAY_SIZE(x1e80100_pin_ctls); i++) {
++		const struct x1e80100_pin_ctl *c = &x1e80100_pin_ctls[i];
++
++		n = c->amp ? data->sp.num_amps : data->sp.num_macros;
++		for (j = 0; j < n; j++) {
++			struct x1e80100_pin *p = &pins[k];
++
++			if (k == X1E80100_MAX_PINS)
++				return -E2BIG;
++			snprintf(p->name, sizeof(p->name), c->fmt,
++				 c->amp ? data->sp.amp[j]->name_prefix : data->sp.macro[j]);
++			p->kctl = snd_soc_card_get_kcontrol(card, p->name);
++			if (!p->kctl) {
++				dev_err(card->dev, "operating point: no control '%s'\n", p->name);
++				return -ENOENT;
++			}
++			p->access = p->kctl->vd[0].access;
++			p->want = c->value;
++			if (c->value == X1E80100_PIN_AMP_PA) {
++				/* The amplifier caps PA Volume at its operating point */
++				memset(info, 0, sizeof(*info));
++				if (p->kctl->info(p->kctl, info))
++					return -EIO;
++				p->want = info->value.integer.max;
++			}
++			k++;
++		}
++	}
++	*num = k;
++
++	return 0;
++}
++
++static int x1e80100_pin_value(struct device *dev, struct x1e80100_pin *p, bool set)
++{
++	struct snd_ctl_elem_info *info __free(kfree) = kzalloc(sizeof(*info), GFP_KERNEL);
++	struct snd_ctl_elem_value *val __free(kfree) = kzalloc(sizeof(*val), GFP_KERNEL);
++	bool en;
++	long got;
++
++	if (!info || !val)
++		return -ENOMEM;
++	if (p->kctl->info(p->kctl, info))
++		return -EIO;
++	en = info->type == SNDRV_CTL_ELEM_TYPE_ENUMERATED;
++	if (set) {
++		if (en)
++			val->value.enumerated.item[0] = p->want;
++		else
++			val->value.integer.value[0] = p->want;
++		if (p->kctl->put(p->kctl, val) < 0) {
++			dev_err(dev, "operating point: cannot set '%s'\n", p->name);
++			return -EPERM;
++		}
++		memset(val, 0, sizeof(*val));
++	}
++	if (p->kctl->get(p->kctl, val)) {
++		dev_err(dev, "operating point: cannot read '%s'\n", p->name);
++		return -EPERM;
++	}
++	got = en ? val->value.enumerated.item[0] : val->value.integer.value[0];
++	if (got != p->want) {
++		dev_err(dev, "operating point: '%s' is %ld, needs %d\n", p->name, got, p->want);
++		return -EPERM;
++	}
++
++	return 0;
++}
++
++static int x1e80100_check_operating_point(struct snd_soc_pcm_runtime *rtd)
++{
++	struct x1e80100_pin *pins __free(kfree) =
++		kcalloc(X1E80100_MAX_PINS, sizeof(*pins), GFP_KERNEL);
++	unsigned int i, num;
++	int ret;
++
++	if (!pins)
++		return -ENOMEM;
++	ret = x1e80100_pin_resolve(rtd->card, pins, &num);
++	for (i = 0; !ret && i < num; i++)
++		ret = x1e80100_pin_value(rtd->dev, &pins[i], false);
++	if (ret)
++		dev_err(rtd->dev, "speaker operating point changed; refusing\n");
++
++	return ret ? -EPERM : 0;
++}
++
++/* The default limits sit below the pinned gains */
++static int x1e80100_raise_limits(struct snd_soc_card *card)
++{
++	struct x1e80100_snd_data *data = snd_soc_card_get_drvdata(card);
++	char name[SNDRV_CTL_ELEM_ID_NAME_MAXLEN];
++	unsigned int i;
++	int ret;
++
++	for (i = 0; i < data->sp.num_macros * 2; i++) {
++		snprintf(name, sizeof(name), "%s WSA_RX%u Digital Volume",
++			 data->sp.macro[i / 2], i % 2);
++		ret = snd_soc_limit_volume(card, name, X1E80100_DIGITAL_0DB);
++		if (ret)
++			return ret;
++	}
++	for (i = 0; i < data->sp.num_amps; i++) {
++		struct snd_kcontrol *kctl;
++		struct soc_mixer_control *mc;
++
++		snprintf(name, sizeof(name), "%s PA Volume", data->sp.amp[i]->name_prefix);
++		kctl = snd_soc_card_get_kcontrol(card, name);
++		if (!kctl)
++			return -ENOENT;
++		mc = (struct soc_mixer_control *)kctl->private_value;
++		ret = snd_soc_limit_volume(card, name, mc->max - mc->min);
++		if (ret)
++			return ret;
++	}
++
++	return 0;
++}
++
++static int x1e80100_op_get(struct snd_kcontrol *kctl, struct snd_ctl_elem_value *uval)
++{
++	uval->value.integer.value[0] = 1;
++	return 0;
++}
++
++/* Present only at the operating point: tells UCM the pinned gains are fixed */
++static const struct snd_kcontrol_new x1e80100_op_ctl = {
++	.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
++	.name = "Speaker Operating Point Switch",
++	.access = SNDRV_CTL_ELEM_ACCESS_READ,
++	.info = snd_ctl_boolean_mono_info,
++	.get = x1e80100_op_get,
++};
++
++static int x1e80100_snd_late_probe(struct snd_soc_card *card)
++{
++	struct x1e80100_snd_data *data = snd_soc_card_get_drvdata(card);
++	struct x1e80100_pin *pins __free(kfree) = NULL;
++	u32 fs[MAX_SP_VI_SPEAKERS] = {};
++	unsigned int i, num = 0;
++	const char *why;
++	bool any;
++	int ret;
++
++	data->op_active = false;
++	audioreach_sp_set_full_scale(NULL, 0);
++
++	why = x1e80100_op_check(card, fs, &any);
++	if (!any)
++		return 0;
++	if (why) {
++		dev_err(card->dev, "speaker operating point not used (%s); default limits\n", why);
++		return 0;
++	}
++
++	pins = kcalloc(X1E80100_MAX_PINS, sizeof(*pins), GFP_KERNEL);
++	if (!pins)
++		return -ENOMEM;
++
++	/* The DAPM mux controls only exist once the widgets do */
++	ret = snd_soc_dapm_new_widgets(card);
++	if (!ret)
++		ret = x1e80100_raise_limits(card);
++	if (!ret)
++		ret = x1e80100_pin_resolve(card, pins, &num);
++	for (i = 0; !ret && i < num; i++)
++		ret = x1e80100_pin_value(card->dev, &pins[i], true);
++	for (i = 0; !ret && i < num; i++)
++		pins[i].kctl->vd[0].access &= ~SNDRV_CTL_ELEM_ACCESS_WRITE;
++	if (!ret)
++		ret = snd_soc_add_card_controls(card, &x1e80100_op_ctl, 1);
++	if (!ret) {
++		audioreach_sp_set_full_scale(fs, data->sp.num_amps);
++		data->op_active = true;
++		dev_info(card->dev, "speakers at their operating point: gains and routing fixed\n");
++		return 0;
++	}
++
++	for (i = 0; i < num; i++)
++		pins[i].kctl->vd[0].access = pins[i].access;
++	dev_err(card->dev, "speaker operating point not used (cannot fix its controls: %d); default limits\n",
++		ret);
++
++	return x1e80100_limit_speaker_volumes(card);
++}
++
+ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
+ {
+ 	struct x1e80100_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
+@@ -381,6 +685,11 @@ static int x1e80100_snd_prepare(struct snd_pcm_substream *substream)
+ 			if (ret)
+ 				return ret;
+ 		}
++		if (data->op_active) {
++			ret = x1e80100_check_operating_point(rtd);
++			if (ret)
++				return ret;
++		}
+ 		ret = x1e80100_snd_hw_map_channels(rx_slot, channels);
+ 		if (ret)
+ 			return ret;
+@@ -519,6 +828,7 @@ static int x1e80100_platform_probe(struct platform_device *pdev)
+ 
+ 	card->driver_name = of_device_get_match_data(dev);
+ 	x1e80100_add_be_ops(card);
++	card->late_probe = x1e80100_snd_late_probe;
+ 	audioreach_sp_set_required(of_property_read_bool(dev->of_node,
+ 							 "qcom,speaker-protection-required"));
+ 	if (of_property_read_bool(dev->of_node, "qcom,uefi-speaker-calibration")) {

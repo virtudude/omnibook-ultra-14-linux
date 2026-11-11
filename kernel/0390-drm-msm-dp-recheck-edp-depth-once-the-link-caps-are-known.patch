@@ -1,0 +1,95 @@
+From 2049896886145f62269a381b2119b17fabf037e3 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 14:25:35 -0500
+Subject: [PATCH] drm/msm/dp: recheck an eDP mode's depth once the link caps
+ are known
+
+The boot-time eDP modeset calls msm_dp_panel_init_panel_info() from
+.atomic_pre_enable(), before .atomic_enable() has read the DPCD. With
+the lane count and rate still zero, msm_dp_panel_get_supported_bpp()
+falls back to its 18 bpp minimum and the panel runs at 6 bpc until the
+next modeset, which leaves a 10 bpc OLED visibly banded after boot.
+
+Once msm_dp_display_prepare_link() has read the link caps, compute the
+mode's depth again from the sink's depth, before the link is trained.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ drivers/gpu/drm/msm/dp/dp_display.c |  7 ++++++-
+ drivers/gpu/drm/msm/dp/dp_panel.c   | 24 ++++++++++++++++++++++++
+ drivers/gpu/drm/msm/dp/dp_panel.h   |  1 +
+ 3 files changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/msm/dp/dp_display.c b/drivers/gpu/drm/msm/dp/dp_display.c
+index 6387ef7e75d6..f7612df64a44 100644
+--- a/drivers/gpu/drm/msm/dp/dp_display.c
++++ b/drivers/gpu/drm/msm/dp/dp_display.c
+@@ -637,8 +637,13 @@ static int msm_dp_display_prepare_link(struct msm_dp_display_private *dp)
+ 
+ 	drm_dbg_dp(dp->drm_dev, "sink_count=%d\n", dp->link->sink_count);
+ 
+-	if (msm_dp_display->is_edp)
++	if (msm_dp_display->is_edp) {
++		u32 bpp = dp->panel->connector->display_info.bpc * 3;
++
+ 		msm_dp_hpd_plug_handle(dp);
++		if (!msm_dp_display_check_video_test(msm_dp_display))
++			msm_dp_panel_update_mode_bpp(dp->panel, bpp ? bpp : 24);
++	}
+ 
+ 	rc = pm_runtime_resume_and_get(&msm_dp_display->pdev->dev);
+ 	if (rc) {
+diff --git a/drivers/gpu/drm/msm/dp/dp_panel.c b/drivers/gpu/drm/msm/dp/dp_panel.c
+index 7f89532a331a..5b2039b23855 100644
+--- a/drivers/gpu/drm/msm/dp/dp_panel.c
++++ b/drivers/gpu/drm/msm/dp/dp_panel.c
+@@ -315,6 +315,7 @@ static u32 msm_dp_panel_get_supported_bpp(struct msm_dp_panel *msm_dp_panel,
+ 	bpp = min(mode_edid_bpp, max_supported_bpp);
+ 
+ 	link_info = &msm_dp_panel->link_info;
++
+ 	data_rate_khz = link_info->num_lanes * link_info->rate * 8;
+ 
+ 	do {
+@@ -741,6 +742,29 @@ int msm_dp_panel_timing_cfg(struct msm_dp_panel *msm_dp_panel, bool wide_bus_en)
+ 	return 0;
+ }
+ 
++/**
++ * msm_dp_panel_update_mode_bpp() - check the mode's depth against the link
++ * @msm_dp_panel: the panel, with its mode set
++ * @sink_bpp: the sink's depth for the mode, before any link limit
++ *
++ * An eDP panel's mode is set before its link capabilities are read. Call
++ * this once they are known, before the link is trained.
++ */
++void msm_dp_panel_update_mode_bpp(struct msm_dp_panel *msm_dp_panel, u32 sink_bpp)
++{
++	struct msm_dp_panel_private *panel;
++	u32 clock = msm_dp_panel->msm_dp_mode.drm_mode.clock;
++
++	if (!clock || !msm_dp_panel->link_info.num_lanes ||
++	    !msm_dp_panel->link_info.rate)
++		return;
++
++	panel = container_of(msm_dp_panel, struct msm_dp_panel_private, msm_dp_panel);
++	msm_dp_panel->msm_dp_mode.bpp = msm_dp_panel_get_mode_bpp(msm_dp_panel, sink_bpp, clock);
++	drm_dbg_dp(panel->drm_dev, "bpp with the link caps = %d\n",
++		   msm_dp_panel->msm_dp_mode.bpp);
++}
++
+ int msm_dp_panel_init_panel_info(struct msm_dp_panel *msm_dp_panel,
+ 				 const struct drm_display_mode *adjusted_mode,
+ 				 u32 bpp)
+diff --git a/drivers/gpu/drm/msm/dp/dp_panel.h b/drivers/gpu/drm/msm/dp/dp_panel.h
+index dc046fec24fc..ccb186a2b492 100644
+--- a/drivers/gpu/drm/msm/dp/dp_panel.h
++++ b/drivers/gpu/drm/msm/dp/dp_panel.h
+@@ -54,6 +54,7 @@ struct msm_dp_panel {
+ 	u32 max_bw_code;
+ };
+ 
++void msm_dp_panel_update_mode_bpp(struct msm_dp_panel *msm_dp_panel, u32 sink_bpp);
+ int msm_dp_panel_init_panel_info(struct msm_dp_panel *msm_dp_panel,
+ 				 const struct drm_display_mode *adjusted_mode,
+ 				 u32 bpp);

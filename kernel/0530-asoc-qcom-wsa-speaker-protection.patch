@@ -1,0 +1,4053 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/23] ASoC: qcom: WSA speaker protection with V/I feedback (RFC)
+
+The 23-patch speaker protection RFC from Srinivas Kandagatla, with
+patches by Ravi Hothi. Patches 22 and 23 are board DTS changes for
+glymur-crd and the ThinkPad T14s Gen 7; they stay here so the series
+remains one unit.
+
+ 1/23 ASoC: soc-core: allow default ch_maps on links with more than 8 DAIs
+     Author: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-2-srinivas.kandagatla@oss.qualcomm.com>
+ 2/23 ASoC: soc-pcm: add multi_direction_codecs link flag
+     Author: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-3-srinivas.kandagatla@oss.qualcomm.com>
+ 3/23 ASoC: qcom: sdw: add per-direction stream runtimes for multi_direction links
+     Author: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-4-srinivas.kandagatla@oss.qualcomm.com>
+ 4/23 ASoC: dt-bindings: qcom,wsa8840: allow one sound DAI cell
+     Author: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-5-srinivas.kandagatla@oss.qualcomm.com>
+ 5/23 ASoC: codecs: wsa884x: add VI sense capture DAI
+     Author: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-6-srinivas.kandagatla@oss.qualcomm.com>
+ 6/23 ASoC: codecs: wsa884x: register the die temperature as a thermal zone
+     Author: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-7-srinivas.kandagatla@oss.qualcomm.com>
+ 7/23 ASoC: qcom: audioreach: add control link support to graphs
+     Author: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-8-srinivas.kandagatla@oss.qualcomm.com>
+ 8/23 ASoC: qcom: audioreach: run VI module in calibration mode with per-speaker events
+     Author: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-9-srinivas.kandagatla@oss.qualcomm.com>
+ 9/23 ASoC: qcom: q6apm-dai: add S32_LE format support
+     Author: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-10-srinivas.kandagatla@oss.qualcomm.com>
+10/23 ASoC: qcom: audioreach: support up to four speakers in VI feedback
+     Author: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-11-srinivas.kandagatla@oss.qualcomm.com>
+11/23 ASoC: qcom: audioreach: cache VI calibration results per speaker
+     Author: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-12-srinivas.kandagatla@oss.qualcomm.com>
+12/23 ASoC: qcom: audioreach: make the speaker protection operation mode configurable
+     Author: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-13-srinivas.kandagatla@oss.qualcomm.com>
+13/23 ASoC: qcom: audioreach: send cached R0/T0 to the VI module in normal mode
+     Author: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-14-srinivas.kandagatla@oss.qualcomm.com>
+14/23 ASoC: qcom: audioreach: send static cfg blobs to speaker protection modules
+     Author: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-15-srinivas.kandagatla@oss.qualcomm.com>
+15/23 ASoC: qcom: audioreach: add speaker protection mixer controls
+     Author: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-16-srinivas.kandagatla@oss.qualcomm.com>
+16/23 ASoC: qcom: audioreach: pin SPEAKER_PROTECTION_VI media format
+     Author: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-17-srinivas.kandagatla@oss.qualcomm.com>
+17/23 ASoC: qcom: audioreach: add live speaker temperature (T0) readback
+     Author: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-18-srinivas.kandagatla@oss.qualcomm.com>
+18/23 ASoC: qcom: audioreach: add speaker protection calibration state control
+     Author: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-19-srinivas.kandagatla@oss.qualcomm.com>
+19/23 ASoC: qcom: audioreach: keep the last VI calibration result until the DSP reports
+     Author: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-20-srinivas.kandagatla@oss.qualcomm.com>
+20/23 ASoC: qcom: x1e80100: carry WSA VI feedback on the WSA Playback BE link
+     Author: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-21-srinivas.kandagatla@oss.qualcomm.com>
+21/23 ASoC: qcom: x1e80100: register WSA speaker thermal zones for speaker protection
+     Author: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-22-srinivas.kandagatla@oss.qualcomm.com>
+22/23 arm64: dts: qcom: glymur-crd: add WSA speaker protection VI feedback
+     Author: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-23-srinivas.kandagatla@oss.qualcomm.com>
+23/23 arm64: dts: qcom: mahua-t14s: add WSA speaker protection VI feedback
+     Author: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+     Message-ID: <20261023171433.820092-24-srinivas.kandagatla@oss.qualcomm.com>
+
+From af0750f8be2ae6c6f30519e43d68ab5839d9161a Mon Sep 17 00:00:00 2001
+From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:11 +0100
+Subject: [PATCH 1/23] ASoC: soc-core: allow default ch_maps on links with more than
+ 8 DAIs
+
+snd_soc_compensate_channel_connection_map() builds the default channel
+map from static 8-entry arrays and fails the card for links with more
+DAIs. A speaker protection link carrying both the amplifier and the V/I
+sense codec DAIs of four speakers has about sixteen.
+
+Keep the static arrays for links that fit, and allocate a per-link map
+with the same 1:1, 1:N or N:1 layout for those that do not.
+
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/soc-core.c | 46 +++++++++++++++++++++++++++++++-------------
+ 1 file changed, 33 insertions(+), 13 deletions(-)
+
+diff --git a/sound/soc/soc-core.c b/sound/soc/soc-core.c
+index 2492ecc1beeb..eb878528fd2c 100644
+--- a/sound/soc/soc-core.c
++++ b/sound/soc/soc-core.c
+@@ -912,20 +912,40 @@ static int snd_soc_compensate_channel_connection_map(struct snd_soc_card *card,
+ 	if (dai_link->ch_maps)
+ 		goto sanity_check;
+ 
+-	/* check default map size */
+-	if (dai_link->num_cpus   > MAX_DEFAULT_CH_MAP_SIZE ||
+-	    dai_link->num_codecs > MAX_DEFAULT_CH_MAP_SIZE) {
+-		dev_err(card->dev, "soc-core.c needs update default_connection_maps");
+-		return -EINVAL;
+-	}
++	/*
++	 * Links wider than the static defaults get their own map. The N:M
++	 * check above leaves a single DAI on the shorter side, at index 0.
++	 */
++	if (dai_link->num_cpus   <= MAX_DEFAULT_CH_MAP_SIZE &&
++	    dai_link->num_codecs <= MAX_DEFAULT_CH_MAP_SIZE) {
++		if (dai_link->num_cpus == dai_link->num_codecs)
++			dai_link->ch_maps = default_ch_map_sync;	/* for 1:1 or N:N */
++		else if (dai_link->num_cpus <  dai_link->num_codecs)
++			dai_link->ch_maps = default_ch_map_1cpu;	/* for 1:N */
++		else
++			dai_link->ch_maps = default_ch_map_1codec;	/* for N:1 */
++	} else {
++		int num_maps = max(dai_link->num_cpus, dai_link->num_codecs);
+ 
+-	/* Compensate missing map for ... */
+-	if (dai_link->num_cpus == dai_link->num_codecs)
+-		dai_link->ch_maps = default_ch_map_sync;	/* for 1:1 or N:N */
+-	else if (dai_link->num_cpus <  dai_link->num_codecs)
+-		dai_link->ch_maps = default_ch_map_1cpu;	/* for 1:N */
+-	else
+-		dai_link->ch_maps = default_ch_map_1codec;	/* for N:1 */
++		ch_maps = devm_kcalloc(card->dev, num_maps, sizeof(*ch_maps),
++				       GFP_KERNEL);
++		if (!ch_maps)
++			return -ENOMEM;
++
++		if (dai_link->num_cpus == dai_link->num_codecs) {
++			for (i = 0; i < num_maps; i++) {
++				ch_maps[i].cpu   = i;
++				ch_maps[i].codec = i;
++			}
++		} else if (dai_link->num_cpus <  dai_link->num_codecs) {
++			for (i = 0; i < num_maps; i++)
++				ch_maps[i].codec = i;	/* cpu stays 0 */
++		} else {
++			for (i = 0; i < num_maps; i++)
++				ch_maps[i].cpu = i;	/* codec stays 0 */
++		}
++		dai_link->ch_maps = ch_maps;
++	}
+ 
+ sanity_check:
+ 	dev_dbg(card->dev, "dai_link %s\n", dai_link->stream_name);
+From 04e36ffd72364b252242a1b848efae82d8b13eb9 Mon Sep 17 00:00:00 2001
+From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:12 +0100
+Subject: [PATCH 2/23] ASoC: soc-pcm: add multi_direction_codecs link flag
+
+Speaker protection needs the amplifiers' V/I sense capture running
+whenever the speakers play. Putting the capture codec DAIs on the
+playback BE link ties the two together, but the core skips codec DAIs
+whose direction does not match the substream.
+
+Add a multi_direction_codecs link flag. When set, the core also calls
+.hw_params and .hw_free on codec DAIs of the other direction, with the
+substream direction switched to theirs for the call under pcm_mutex,
+and sends the matching stream events so their widgets power up and
+down. An optional multi_direction_params_fixup callback lets the
+machine driver set the parameters for those DAIs. Links without the
+flag are unchanged.
+
+Document the flag in Documentation/sound/soc/multi-direction-codecs.rst.
+
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ Documentation/sound/soc/index.rst             |   1 +
+ .../sound/soc/multi-direction-codecs.rst      | 135 ++++++++++++++++++
+ include/sound/soc.h                           |   7 +
+ sound/soc/soc-pcm.c                           | 122 +++++++++++++---
+ 4 files changed, 244 insertions(+), 21 deletions(-)
+ create mode 100644 Documentation/sound/soc/multi-direction-codecs.rst
+
+diff --git a/Documentation/sound/soc/index.rst b/Documentation/sound/soc/index.rst
+index 22878d73f7a5..62d01a0a6e52 100644
+--- a/Documentation/sound/soc/index.rst
++++ b/Documentation/sound/soc/index.rst
+@@ -18,4 +18,5 @@ The documentation is split into the following sections:-
+    jack
+    dpcm
+    codec-to-codec
++   multi-direction-codecs
+    usb
+diff --git a/Documentation/sound/soc/multi-direction-codecs.rst b/Documentation/sound/soc/multi-direction-codecs.rst
+new file mode 100644
+index 000000000000..75befb7501b6
+--- /dev/null
++++ b/Documentation/sound/soc/multi-direction-codecs.rst
+@@ -0,0 +1,135 @@
++.. SPDX-License-Identifier: GPL-2.0
++
++===========================
++Multi-direction codec DAIs
++===========================
++
++Overview
++========
++
++An ASoC backend (BE) link that bundles **codec DAIs of both directions**
++on a **single-direction CPU DAI** can set
++``snd_soc_dai_link.multi_direction_codecs`` to tell the ASoC core to
++call ``.hw_params`` / ``.hw_free`` on opposite-direction codec DAIs with
++their own direction, instead of skipping them.
++
++Typical use case: a smart-amp speaker protection link where the CPU
++side is a playback-only DMA (e.g. ``WSA_CODEC_DMA_RX_0`` on Qualcomm
++AudioReach), but the codec side exposes both a playback SPKR DAI and a
++companion capture V/I-sense DAI on the same SoundWire bus.  Opening the
++playback FE should bring up both the amplifier output chain *and* its
++V/I feedback capture chain atomically, without userspace having to open
++a secondary PCM.
++
++Without the flag, the second codec DAI's ``.hw_params`` is skipped
++because its native direction does not match ``substream->stream``;
++``snd_soc_dai_stream_valid()`` filters it out.  With the flag set, the
++ASoC core:
++
++1. Still iterates every codec DAI on the link.
++2. For a codec DAI whose native direction is **opposite** the
++   substream's, calls its ``.hw_params`` / ``.hw_free`` with its own
++   direction (by briefly flipping the substream direction under
++   ``pcm_mutex``, encapsulated in ``soc_pcm_dai_hw_params_at_stream``).
++3. Optionally calls ``.multi_direction_params_fixup`` so the machine
++   driver can rewrite rate/format/channels on a per-codec copy of the
++   params (an 8 kHz / S32_LE V/I-sense codec DAI will not accept a
++   48 kHz / S16_LE playback stream's params verbatim).
++4. Sends start and stop stream events for the opposite direction in
++   prepare and hw_free, so the stream widgets of those codec DAIs power
++   up and down with the link.
++
++Links that do not set the flag retain the pre-existing behaviour
++exactly.
++
++When to use this
++================
++
++Prefer ``multi_direction_codecs`` when:
++
++* the two directions are physically **inseparable** on the codec side
++  (same chip, same wire); and
++* a single open semantically covers both (speaker protection, playback
++  with feedback for echo-reference, haptic/boost feedback); and
++* you do not want userspace to see or manage two PCMs.
++
++Prefer **DPCM FE/BE pairs** when:
++
++* the two directions can be exercised independently; or
++* userspace legitimately needs to control each direction (classic
++  playback + microphone capture).
++
++Prefer a **DAPM supply widget** when:
++
++* only the DAPM power graph (clock, LDO, bias) needs linking, and
++* no ``.hw_params`` plumbing is required on the secondary direction.
++
++Interaction with DAPM
++=====================
++
++DAPM edges are directional and the flag does not change the graph.  The
++opposite-direction codec DAIs' stream widgets are powered by the extra
++start and stop stream events the core sends for that direction in
++prepare and hw_free.
++
++Only ``.hw_params`` and ``.hw_free`` are called on the opposite-direction
++codec DAIs.  Their ``.startup``, ``.prepare``, ``.trigger``,
++``.shutdown`` and mute callbacks are not, so a codec DAI used this way
++must not depend on them.
++
++Machine-driver example
++======================
++
++A machine driver that bundles V/I-sense capture codec DAIs onto a
++speaker-playback BE link::
++
++    static int wsa_vi_params_fixup(struct snd_soc_pcm_runtime *rtd,
++                                   struct snd_pcm_hw_params *params,
++                                   int stream)
++    {
++        if (stream != SNDRV_PCM_STREAM_CAPTURE)
++            return 0;
++        /* VI capture chain runs at 8kHz / S32_LE / 4ch */
++        hw_param_interval(params, SNDRV_PCM_HW_PARAM_RATE)->min      = 8000;
++        hw_param_interval(params, SNDRV_PCM_HW_PARAM_RATE)->max      = 8000;
++        hw_param_interval(params, SNDRV_PCM_HW_PARAM_CHANNELS)->min  = 4;
++        hw_param_interval(params, SNDRV_PCM_HW_PARAM_CHANNELS)->max  = 4;
++        snd_mask_none(hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT));
++        snd_mask_set(hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT),
++                     SNDRV_PCM_FORMAT_S32_LE);
++        return 0;
++    }
++
++    SND_SOC_DAILINK_DEFS(wsa_sp, ...);
++    SND_SOC_DAILINK_REG(wsa_sp);
++
++    static struct snd_soc_dai_link board_dai_links[] = {
++        {
++            .name                           = "WSA Playback",
++            .multi_direction_codecs         = 1,
++            .multi_direction_params_fixup   = wsa_vi_params_fixup,
++            SND_SOC_DAILINK_REG(wsa_sp),
++            /*
++             * codec DAIs include both the playback SPKR DAIs and
++             * their companion capture V/I-sense DAIs on the same
++             * SoundWire bus.
++             */
++        },
++    };
++
++Notes
++=====
++
++* ``multi_direction_params_fixup`` is called with the **flipped**
++  direction so the fixup logic can key off ``stream`` to decide
++  whether the params need rewriting.
++* ``snd_soc_dai_symmetric_set_params()`` runs after the flipped
++  ``.hw_params``.  The symmetric-params tracking is per-DAI, so each
++  codec DAI records the format it was called with in its own
++  direction; nothing cross-contaminates.
++* The transient ``substream->stream`` flip is bounded to a single
++  codec DAI's ``.hw_params`` / ``.hw_free`` call and its DAPM update,
++  under ``pcm_mutex``.  The codec DAI callbacks see the flipped value,
++  which is the purpose of the flip.  ALSA core paths that do not take
++  ``pcm_mutex``, such as ``snd_pcm_info()``, can observe it during that
++  window.
+diff --git a/include/sound/soc.h b/include/sound/soc.h
+index f6b98324f346..f12fadb64268 100644
+--- a/include/sound/soc.h
++++ b/include/sound/soc.h
+@@ -749,6 +749,10 @@ struct snd_soc_dai_link {
+ 	int (*be_hw_params_fixup)(struct snd_soc_pcm_runtime *rtd,
+ 			struct snd_pcm_hw_params *params);
+ 
++	/* Adjust params for codec DAIs of the other direction */
++	int (*multi_direction_params_fixup)(struct snd_soc_pcm_runtime *rtd,
++			struct snd_pcm_hw_params *params, int stream);
++
+ 	/* machine stream operations */
+ 	const struct snd_soc_ops *ops;
+ 	const struct snd_soc_compr_ops *compr_ops;
+@@ -783,6 +787,9 @@ struct snd_soc_dai_link {
+ 	/* This DAI link can route to other DAI links at runtime (Frontend)*/
+ 	unsigned int dynamic:1;
+ 
++	/* Also run codec DAIs of the other direction on this BE link */
++	unsigned int multi_direction_codecs:1;
++
+ 	/* DPCM used FE & BE merged format */
+ 	unsigned int dpcm_merged_format:1;
+ 	/* DPCM used FE & BE merged channel */
+diff --git a/sound/soc/soc-pcm.c b/sound/soc/soc-pcm.c
+index ef8ccf52798e..5dbd0a78933a 100644
+--- a/sound/soc/soc-pcm.c
++++ b/sound/soc/soc-pcm.c
+@@ -986,6 +986,9 @@ static int __soc_pcm_prepare(struct snd_soc_pcm_runtime *rtd,
+ 
+ 	snd_soc_dapm_stream_event(rtd, substream->stream,
+ 			SND_SOC_DAPM_STREAM_START);
++	if (rtd->dai_link->multi_direction_codecs)
++		snd_soc_dapm_stream_event(rtd, substream->stream ^ 1,
++				SND_SOC_DAPM_STREAM_START);
+ 
+ 	for_each_rtd_dais(rtd, i, dai) {
+ 		if (!snd_soc_dai_mute_is_ctrled_at_trigger(dai))
+@@ -1032,6 +1035,56 @@ static void soc_pcm_codec_params_fixup(struct snd_pcm_hw_params *params,
+ 	interval->max = channels;
+ }
+ 
++/*
++ * Call .hw_params on a codec DAI of the other direction, with the substream
++ * direction switched to the DAI's under pcm_mutex.
++ */
++static int soc_pcm_dai_hw_params_at_stream(struct snd_soc_dai *dai,
++					   struct snd_pcm_substream *substream,
++					   struct snd_pcm_hw_params *params,
++					   int stream)
++{
++	int saved_stream = substream->stream;
++	int ret;
++
++	if (stream == saved_stream)
++		return snd_soc_dai_hw_params(dai, substream, params);
++
++	substream->stream = stream;
++	ret = snd_soc_dai_hw_params(dai, substream, params);
++	substream->stream = saved_stream;
++	return ret;
++}
++
++/* hw_free counterpart to soc_pcm_dai_hw_params_at_stream(). */
++static void soc_pcm_dai_hw_free_at_stream(struct snd_soc_dai *dai,
++					  struct snd_pcm_substream *substream,
++					  int rollback, int stream)
++{
++	int saved_stream = substream->stream;
++
++	if (stream == saved_stream) {
++		snd_soc_dai_hw_free(dai, substream, rollback);
++		return;
++	}
++
++	substream->stream = stream;
++	snd_soc_dai_hw_free(dai, substream, rollback);
++	substream->stream = saved_stream;
++}
++
++/* DAPM counterpart, so the DAI's own direction widget gets updated */
++static void soc_pcm_dapm_update_dai_at_stream(struct snd_pcm_substream *substream,
++					      struct snd_pcm_hw_params *params,
++					      struct snd_soc_dai *dai, int stream)
++{
++	int saved_stream = substream->stream;
++
++	substream->stream = stream;
++	snd_soc_dapm_update_dai(substream, params, dai);
++	substream->stream = saved_stream;
++}
++
+ static int soc_pcm_hw_clean(struct snd_soc_pcm_runtime *rtd,
+ 			    struct snd_pcm_substream *substream, int rollback)
+ {
+@@ -1053,6 +1106,9 @@ static int soc_pcm_hw_clean(struct snd_soc_pcm_runtime *rtd,
+ 
+ 	/* run the stream event */
+ 	snd_soc_dapm_stream_stop(rtd, substream->stream);
++	if (rtd->dai_link->multi_direction_codecs)
++		snd_soc_dapm_stream_event(rtd, substream->stream ^ 1,
++				SND_SOC_DAPM_STREAM_STOP);
+ 
+ 	/* free any machine hw params */
+ 	snd_soc_link_hw_free(substream, rollback);
+@@ -1061,9 +1117,20 @@ static int soc_pcm_hw_clean(struct snd_soc_pcm_runtime *rtd,
+ 	snd_soc_pcm_component_hw_free(substream, rollback);
+ 
+ 	/* now free hw params for the DAIs  */
+-	for_each_rtd_dais(rtd, i, dai)
+-		if (snd_soc_dai_stream_valid(dai, substream->stream))
+-			snd_soc_dai_hw_free(dai, substream, rollback);
++	for_each_rtd_dais(rtd, i, dai) {
++		int dai_stream = substream->stream;
++
++		if (!snd_soc_dai_stream_valid(dai, dai_stream)) {
++			if (!rtd->dai_link->multi_direction_codecs)
++				continue;
++			dai_stream ^= 1;
++			if (!snd_soc_dai_stream_valid(dai, dai_stream))
++				continue;
++		}
++
++		soc_pcm_dai_hw_free_at_stream(dai, substream, rollback,
++					      dai_stream);
++	}
+ 
+ 	return 0;
+ }
+@@ -1114,30 +1181,41 @@ static int __soc_pcm_hw_params(struct snd_pcm_substream *substream,
+ 		goto out;
+ 
+ 	for_each_rtd_codec_dais(rtd, i, codec_dai) {
+-		unsigned int ch_mask = snd_soc_dai_tdm_mask_get(codec_dai, substream->stream);
++		int codec_stream = substream->stream;
++		unsigned int ch_mask;
+ 		struct snd_soc_dai_link_ch_map *ch_maps;
+ 		int j;
+ 
+ 		/*
+ 		 * Skip CODECs which don't support the current stream type,
+-		 * the idea being that if a CODEC is not used for the currently
+-		 * set up transfer direction, it should not need to be
+-		 * configured, especially since the configuration used might
+-		 * not even be supported by that CODEC. There may be cases
+-		 * however where a CODEC needs to be set up although it is
+-		 * actually not being used for the transfer, e.g. if a
+-		 * capture-only CODEC is acting as an LRCLK and/or BCLK master
+-		 * for the DAI link including a playback-only CODEC.
+-		 * If this becomes necessary, we will have to augment the
+-		 * machine driver setup with information on how to act, so
+-		 * we can do the right thing here.
++		 * unless the link runs them in their own direction.
+ 		 */
+-		if (!snd_soc_dai_stream_valid(codec_dai, substream->stream))
+-			continue;
++		bool direction_flipped = false;
++
++		if (!snd_soc_dai_stream_valid(codec_dai, codec_stream)) {
++			if (!rtd->dai_link->multi_direction_codecs)
++				continue;
++			codec_stream ^= 1;
++			if (!snd_soc_dai_stream_valid(codec_dai, codec_stream))
++				continue;
++			direction_flipped = true;
++		}
++
++		ch_mask = snd_soc_dai_tdm_mask_get(codec_dai, codec_stream);
+ 
+ 		/* copy params for each codec */
+ 		tmp_params = *params;
+ 
++		/* The substream params describe the other direction */
++		if (direction_flipped && rtd->dai_link->multi_direction_params_fixup) {
++			int fret = rtd->dai_link->multi_direction_params_fixup(
++					rtd, &tmp_params, codec_stream);
++			if (fret < 0) {
++				ret = fret;
++				goto out;
++			}
++		}
++
+ 		/* fixup params based on TDM or ch_map masks */
+ 		if (!ch_mask) {
+ 			for_each_rtd_ch_maps(rtd, j, ch_maps)
+@@ -1148,13 +1226,15 @@ static int __soc_pcm_hw_params(struct snd_pcm_substream *substream,
+ 		if (ch_mask)
+ 			soc_pcm_codec_params_fixup(&tmp_params, ch_mask);
+ 
+-		ret = snd_soc_dai_hw_params(codec_dai, substream,
+-					    &tmp_params);
+-		if(ret < 0)
++		ret = soc_pcm_dai_hw_params_at_stream(codec_dai, substream,
++						      &tmp_params,
++						      codec_stream);
++		if (ret < 0)
+ 			goto out;
+ 
+ 		snd_soc_dai_symmetric_set_params(codec_dai, &tmp_params);
+-		snd_soc_dapm_update_dai(substream, &tmp_params, codec_dai);
++		soc_pcm_dapm_update_dai_at_stream(substream, &tmp_params,
++						  codec_dai, codec_stream);
+ 	}
+ 
+ 	for_each_rtd_cpu_dais(rtd, i, cpu_dai) {
+From 458cbbcc7e12a06b3d1e0129b25b42cf010f4f01 Mon Sep 17 00:00:00 2001
+From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:13 +0100
+Subject: [PATCH 3/23] ASoC: qcom: sdw: add per-direction stream runtimes for
+ multi_direction links
+
+A SoundWire BE link with multi_direction_codecs carries codec DAIs of
+both directions, and each direction needs its own sdw_stream_runtime.
+
+Split startup, prepare, hw_free and shutdown into per-direction helpers
+and run them for both directions on such links.
+
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/qcom/sdw.c | 236 +++++++++++++++++++++++++++++++++----------
+ 1 file changed, 183 insertions(+), 53 deletions(-)
+
+diff --git a/sound/soc/qcom/sdw.c b/sound/soc/qcom/sdw.c
+index 6576b47a4c8c..e72424ce5cb0 100644
+--- a/sound/soc/qcom/sdw.c
++++ b/sound/soc/qcom/sdw.c
+@@ -8,6 +8,15 @@
+ #include <sound/soc.h>
+ #include "sdw.h"
+ 
++/*
++ * Inline direction check that doesn't require snd_soc_dai_stream_valid
++ * to be exported for module use.
++ */
++static bool sdw_dai_has_dir(struct snd_soc_dai *dai, int dir)
++{
++	return snd_soc_dai_pcm_stream_get_i(dai, dir)->channels_min != 0;
++}
++
+ static bool qcom_snd_is_sdw_dai(int id)
+ {
+ 	switch (id) {
+@@ -49,43 +58,42 @@ static bool qcom_snd_is_sdw_dai(int id)
+ 	return false;
+ }
+ 
+-/**
+- * qcom_snd_sdw_startup() - Helper to start Soundwire stream for SoC audio card
+- * @substream: The PCM substream from audio, as passed to snd_soc_ops->startup()
+- *
+- * Helper for the SoC audio card (snd_soc_ops->startup()) to allocate and set
+- * Soundwire stream runtime to each codec DAI.
+- *
+- * The shutdown() callback should call sdw_release_stream() on the same
+- * sdw_stream_runtime.
+- *
+- * Return: 0 or errno
++/*
++ * Allocate a stream runtime for one direction and set it on the codec DAIs
++ * of that direction.
+  */
+-int qcom_snd_sdw_startup(struct snd_pcm_substream *substream)
++static int qcom_snd_sdw_setup_dir(struct snd_soc_pcm_runtime *rtd,
++				  int dir, const char *cpu_name)
+ {
+-	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+-	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
+-	u32 rx_ch[SDW_MAX_PORTS], tx_ch[SDW_MAX_PORTS];
+ 	struct sdw_stream_runtime *sruntime;
+ 	struct snd_soc_dai *codec_dai;
++	u32 rx_ch[SDW_MAX_PORTS], tx_ch[SDW_MAX_PORTS];
+ 	u32 rx_ch_cnt = 0, tx_ch_cnt = 0;
+ 	int ret, i, j;
++	bool used = false;
+ 
+-	if (!qcom_snd_is_sdw_dai(cpu_dai->id))
++	for_each_rtd_codec_dais(rtd, i, codec_dai) {
++		if (sdw_dai_has_dir(codec_dai, dir)) {
++			used = true;
++			break;
++		}
++	}
++	if (!used)
+ 		return 0;
+ 
+-	sruntime = sdw_alloc_stream(cpu_dai->name, SDW_STREAM_PCM);
++	sruntime = sdw_alloc_stream(cpu_name, SDW_STREAM_PCM);
+ 	if (!sruntime)
+ 		return -ENOMEM;
+ 
+ 	for_each_rtd_codec_dais(rtd, i, codec_dai) {
+-		ret = snd_soc_dai_set_stream(codec_dai, sruntime,
+-					     substream->stream);
++		if (!sdw_dai_has_dir(codec_dai, dir))
++			continue;
++
++		ret = snd_soc_dai_set_stream(codec_dai, sruntime, dir);
+ 		if (ret < 0 && ret != -ENOTSUPP) {
+ 			dev_err(rtd->dev, "Failed to set sdw stream on %s\n", codec_dai->name);
+-			goto err_set_stream;
++			goto err;
+ 		} else if (ret == -ENOTSUPP) {
+-			/* Ignore unsupported */
+ 			continue;
+ 		}
+ 
+@@ -93,59 +101,125 @@ int qcom_snd_sdw_startup(struct snd_pcm_substream *substream)
+ 						  &rx_ch_cnt, rx_ch);
+ 		if (ret != 0 && ret != -ENOTSUPP) {
+ 			dev_err(rtd->dev, "Failed to get codec chan map %s\n", codec_dai->name);
+-			goto err_set_stream;
+-		} else if (ret == -ENOTSUPP) {
+-			/* Ignore unsupported */
+-			continue;
++			goto err;
+ 		}
+ 	}
+ 
+-	switch (cpu_dai->id) {
++	switch (snd_soc_rtd_to_cpu(rtd, 0)->id) {
+ 	case RX_CODEC_DMA_RX_0:
+ 	case TX_CODEC_DMA_TX_3:
+ 		if (tx_ch_cnt || rx_ch_cnt) {
+ 			for_each_rtd_codec_dais(rtd, j, codec_dai) {
++				if (!sdw_dai_has_dir(codec_dai, dir))
++					continue;
+ 				ret = snd_soc_dai_set_channel_map(codec_dai,
+ 								  tx_ch_cnt, tx_ch,
+ 								  rx_ch_cnt, rx_ch);
+ 				if (ret != 0 && ret != -ENOTSUPP)
+-					goto err_set_stream;
++					goto err;
+ 			}
+ 		}
+ 	}
+ 
+ 	return 0;
+-
+-err_set_stream:
++err:
+ 	sdw_release_stream(sruntime);
+-
+ 	return ret;
+ }
+-EXPORT_SYMBOL_GPL(qcom_snd_sdw_startup);
+ 
+-int qcom_snd_sdw_prepare(struct snd_pcm_substream *substream,
+-			 bool *stream_prepared)
++/**
++ * qcom_snd_sdw_startup() - Helper to start Soundwire stream for SoC audio card
++ * @substream: The PCM substream from audio, as passed to snd_soc_ops->startup()
++ *
++ * Helper for the SoC audio card (snd_soc_ops->startup()) to allocate and set
++ * Soundwire stream runtime to each codec DAI.
++ *
++ * The shutdown() callback should call sdw_release_stream() on the same
++ * sdw_stream_runtime.
++ *
++ * Return: 0 or errno
++ */
++int qcom_snd_sdw_startup(struct snd_pcm_substream *substream)
+ {
+ 	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+ 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
+-	struct sdw_stream_runtime *sruntime;
+ 	int ret;
+ 
+-
+ 	if (!qcom_snd_is_sdw_dai(cpu_dai->id))
+ 		return 0;
+ 
+-	sruntime = qcom_snd_sdw_get_stream(substream);
+-	if (!sruntime)
+-		return 0;
++	ret = qcom_snd_sdw_setup_dir(rtd, substream->stream, cpu_dai->name);
++	if (ret)
++		return ret;
+ 
+-	if (*stream_prepared)
++	/* Also set up the stream of the other direction on such links */
++	if (rtd->dai_link->multi_direction_codecs) {
++		ret = qcom_snd_sdw_setup_dir(rtd, substream->stream ^ 1,
++					     cpu_dai->name);
++		if (ret) {
++			struct sdw_stream_runtime *sr;
++			struct snd_soc_dai *cd;
++			int i;
++
++			for_each_rtd_codec_dais(rtd, i, cd) {
++				if (!sdw_dai_has_dir(cd, substream->stream))
++					continue;
++				sr = snd_soc_dai_get_stream(cd, substream->stream);
++				if (!IS_ERR_OR_NULL(sr)) {
++					sdw_release_stream(sr);
++					break;
++				}
++			}
++			return ret;
++		}
++	}
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(qcom_snd_sdw_startup);
++
++/* Prepare+enable the SDW stream for one direction. */
++static int qcom_snd_sdw_prepare_dir(struct snd_soc_pcm_runtime *rtd, int dir)
++{
++	struct sdw_stream_runtime *sruntime = NULL;
++	struct snd_soc_dai *codec_dai;
++	int ret, i;
++
++	for_each_rtd_codec_dais(rtd, i, codec_dai) {
++		if (!sdw_dai_has_dir(codec_dai, dir))
++			continue;
++		sruntime = snd_soc_dai_get_stream(codec_dai, dir);
++		if (!IS_ERR(sruntime) && sruntime)
++			break;
++	}
++	if (!sruntime || IS_ERR(sruntime))
+ 		return 0;
+ 
+ 	ret = sdw_prepare_stream(sruntime);
+ 	if (ret)
+ 		return ret;
+ 
++	ret = sdw_enable_stream(sruntime);
++	if (ret) {
++		sdw_deprepare_stream(sruntime);
++		return ret;
++	}
++	return 0;
++}
++
++int qcom_snd_sdw_prepare(struct snd_pcm_substream *substream,
++			 bool *stream_prepared)
++{
++	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
++	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
++	int ret;
++
++	if (!qcom_snd_is_sdw_dai(cpu_dai->id))
++		return 0;
++
++	if (*stream_prepared)
++		return 0;
++
+ 	/**
+ 	 * NOTE: there is a strict hw requirement about the ordering of port
+ 	 * enables and actual WSA881x PA enable. PA enable should only happen
+@@ -153,15 +227,34 @@ int qcom_snd_sdw_prepare(struct snd_pcm_substream *substream,
+ 	 * accumulated resulting in Click/Pop Noise
+ 	 * PA enable/mute are handled as part of codec DAPM and digital mute.
+ 	 */
+-
+-	ret = sdw_enable_stream(sruntime);
+-	if (ret) {
+-		sdw_deprepare_stream(sruntime);
++	ret = qcom_snd_sdw_prepare_dir(rtd, substream->stream);
++	if (ret)
+ 		return ret;
++
++	if (rtd->dai_link->multi_direction_codecs) {
++		ret = qcom_snd_sdw_prepare_dir(rtd, substream->stream ^ 1);
++		if (ret) {
++			struct sdw_stream_runtime *sr = NULL;
++			struct snd_soc_dai *cd;
++			int i;
++
++			for_each_rtd_codec_dais(rtd, i, cd) {
++				if (!sdw_dai_has_dir(cd, substream->stream))
++					continue;
++				sr = snd_soc_dai_get_stream(cd, substream->stream);
++				if (!IS_ERR(sr) && sr)
++					break;
++			}
++			if (sr && !IS_ERR(sr)) {
++				sdw_disable_stream(sr);
++				sdw_deprepare_stream(sr);
++			}
++			return ret;
++		}
+ 	}
+-	*stream_prepared  = true;
+ 
+-	return ret;
++	*stream_prepared = true;
++	return 0;
+ }
+ EXPORT_SYMBOL_GPL(qcom_snd_sdw_prepare);
+ 
+@@ -185,11 +278,37 @@ struct sdw_stream_runtime *qcom_snd_sdw_get_stream(struct snd_pcm_substream *sub
+ }
+ EXPORT_SYMBOL_GPL(qcom_snd_sdw_get_stream);
+ 
++static struct sdw_stream_runtime *
++sdw_find_dir_stream(struct snd_soc_pcm_runtime *rtd, int dir)
++{
++	struct snd_soc_dai *codec_dai;
++	struct sdw_stream_runtime *sr;
++	int i;
++
++	for_each_rtd_codec_dais(rtd, i, codec_dai) {
++		if (!sdw_dai_has_dir(codec_dai, dir))
++			continue;
++		sr = snd_soc_dai_get_stream(codec_dai, dir);
++		if (!IS_ERR(sr) && sr)
++			return sr;
++	}
++	return NULL;
++}
++
+ void qcom_snd_sdw_shutdown(struct snd_pcm_substream *substream)
+ {
+-	struct sdw_stream_runtime *sruntime = qcom_snd_sdw_get_stream(substream);
++	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
++	struct sdw_stream_runtime *sr;
+ 
+-	sdw_release_stream(sruntime);
++	sr = sdw_find_dir_stream(rtd, substream->stream);
++	if (sr)
++		sdw_release_stream(sr);
++
++	if (rtd->dai_link->multi_direction_codecs) {
++		sr = sdw_find_dir_stream(rtd, substream->stream ^ 1);
++		if (sr)
++			sdw_release_stream(sr);
++	}
+ }
+ EXPORT_SYMBOL_GPL(qcom_snd_sdw_shutdown);
+ 
+@@ -197,18 +316,29 @@ int qcom_snd_sdw_hw_free(struct snd_pcm_substream *substream, bool *stream_prepa
+ {
+ 	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
+ 	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
+-	struct sdw_stream_runtime *sruntime;
++	struct sdw_stream_runtime *sr;
+ 
+ 	if (!qcom_snd_is_sdw_dai(cpu_dai->id))
+ 		return 0;
+ 
+-	sruntime = qcom_snd_sdw_get_stream(substream);
+-	if (sruntime && *stream_prepared) {
+-		sdw_disable_stream(sruntime);
+-		sdw_deprepare_stream(sruntime);
+-		*stream_prepared = false;
++	if (!*stream_prepared)
++		return 0;
++
++	sr = sdw_find_dir_stream(rtd, substream->stream);
++	if (sr) {
++		sdw_disable_stream(sr);
++		sdw_deprepare_stream(sr);
++	}
++
++	if (rtd->dai_link->multi_direction_codecs) {
++		sr = sdw_find_dir_stream(rtd, substream->stream ^ 1);
++		if (sr) {
++			sdw_disable_stream(sr);
++			sdw_deprepare_stream(sr);
++		}
+ 	}
+ 
++	*stream_prepared = false;
+ 	return 0;
+ }
+ EXPORT_SYMBOL_GPL(qcom_snd_sdw_hw_free);
+From 1c7539940dbfbdaca576353d1ac0a8b33ec8efd3 Mon Sep 17 00:00:00 2001
+From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:14 +0100
+Subject: [PATCH 4/23] ASoC: dt-bindings: qcom,wsa8840: allow one sound DAI cell
+
+The codec now has a VI sense capture DAI next to the playback DAI, so
+boards which wire up speaker protection need to address them separately.
+Allow '#sound-dai-cells' to be 1 for those, keeping 0 valid for the
+boards which only use playback.
+
+Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ Documentation/devicetree/bindings/sound/qcom,wsa8840.yaml | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/Documentation/devicetree/bindings/sound/qcom,wsa8840.yaml b/Documentation/devicetree/bindings/sound/qcom,wsa8840.yaml
+index 866c5e780fb0..42ae6d60a874 100644
+--- a/Documentation/devicetree/bindings/sound/qcom,wsa8840.yaml
++++ b/Documentation/devicetree/bindings/sound/qcom,wsa8840.yaml
+@@ -41,7 +41,10 @@ properties:
+     maxItems: 6
+ 
+   '#sound-dai-cells':
+-    const: 0
++    enum: [0, 1]
++    description:
++      Must be 1 on boards which use the VI sense capture DAI, so that the
++      playback and capture DAIs can be addressed separately.
+ 
+   vdd-1p8-supply: true
+   vdd-io-supply: true
+From ad3e4ded4c9bdee98ab4852f493ebbf37d954cdb Mon Sep 17 00:00:00 2001
+From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:15 +0100
+Subject: [PATCH 5/23] ASoC: codecs: wsa884x: add VI sense capture DAI
+
+The VI sense port carries the voltage and current sense data that DSP
+speaker protection needs, but it is described as a sink port next to
+the playback ports and has no DAI, so nothing can capture from it.
+
+Make it a source port with its own capture DAI, ops and stream runtime,
+and leave it out of the playback port list. sdw_get_slave_dpn_prop()
+searches the sink port properties by count, so pack that array densely
+now that VI sense is no longer in it.
+
+Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/codecs/wsa884x.c | 90 +++++++++++++++++++++++++++++++-------
+ 1 file changed, 74 insertions(+), 16 deletions(-)
+
+diff --git a/sound/soc/codecs/wsa884x.c b/sound/soc/codecs/wsa884x.c
+index f58ce92c46d4..534e8c4231b0 100644
+--- a/sound/soc/codecs/wsa884x.c
++++ b/sound/soc/codecs/wsa884x.c
+@@ -732,8 +732,11 @@ struct wsa884x_priv {
+ 	struct regulator_bulk_data supplies[WSA884X_SUPPLIES_NUM];
+ 	struct sdw_slave *slave;
+ 	struct sdw_stream_config sconfig;
++	struct sdw_stream_config vi_sconfig;
+ 	struct sdw_stream_runtime *sruntime;
++	struct sdw_stream_runtime *vi_sruntime;
+ 	struct sdw_port_config port_config[WSA884X_MAX_SWR_PORTS];
++	struct sdw_port_config vi_port_config;
+ 	struct gpio_desc *sd_n;
+ 	struct reset_control *sd_reset;
+ 	bool port_prepared[WSA884X_MAX_SWR_PORTS];
+@@ -822,8 +825,8 @@ enum wsa884x_mode {
+ static const struct soc_enum wsa884x_dev_mode_enum =
+ 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(wsa884x_dev_mode_text), wsa884x_dev_mode_text);
+ 
+-static struct sdw_dpn_prop wsa884x_sink_dpn_prop[WSA884X_MAX_SWR_PORTS] = {
+-	[WSA884X_PORT_DAC] = {
++static struct sdw_dpn_prop wsa884x_sink_dpn_prop[WSA884X_MAX_SWR_PORTS - 1] = {
++	{
+ 		.num = WSA884X_PORT_DAC + 1,
+ 		.type = SDW_DPN_SIMPLE,
+ 		.min_ch = 1,
+@@ -831,7 +834,7 @@ static struct sdw_dpn_prop wsa884x_sink_dpn_prop[WSA884X_MAX_SWR_PORTS] = {
+ 		.simple_ch_prep_sm = true,
+ 		.read_only_wordlength = true,
+ 	},
+-	[WSA884X_PORT_COMP] = {
++	{
+ 		.num = WSA884X_PORT_COMP + 1,
+ 		.type = SDW_DPN_SIMPLE,
+ 		.min_ch = 1,
+@@ -839,7 +842,7 @@ static struct sdw_dpn_prop wsa884x_sink_dpn_prop[WSA884X_MAX_SWR_PORTS] = {
+ 		.simple_ch_prep_sm = true,
+ 		.read_only_wordlength = true,
+ 	},
+-	[WSA884X_PORT_BOOST] = {
++	{
+ 		.num = WSA884X_PORT_BOOST + 1,
+ 		.type = SDW_DPN_SIMPLE,
+ 		.min_ch = 1,
+@@ -847,7 +850,7 @@ static struct sdw_dpn_prop wsa884x_sink_dpn_prop[WSA884X_MAX_SWR_PORTS] = {
+ 		.simple_ch_prep_sm = true,
+ 		.read_only_wordlength = true,
+ 	},
+-	[WSA884X_PORT_PBR] = {
++	{
+ 		.num = WSA884X_PORT_PBR + 1,
+ 		.type = SDW_DPN_SIMPLE,
+ 		.min_ch = 1,
+@@ -855,22 +858,25 @@ static struct sdw_dpn_prop wsa884x_sink_dpn_prop[WSA884X_MAX_SWR_PORTS] = {
+ 		.simple_ch_prep_sm = true,
+ 		.read_only_wordlength = true,
+ 	},
+-	[WSA884X_PORT_VISENSE] = {
+-		.num = WSA884X_PORT_VISENSE + 1,
++	{
++		.num = WSA884X_PORT_CPS + 1,
+ 		.type = SDW_DPN_SIMPLE,
+ 		.min_ch = 1,
+-		.max_ch = 2,
++		.max_ch = 1,
+ 		.simple_ch_prep_sm = true,
+ 		.read_only_wordlength = true,
+-	},
+-	[WSA884X_PORT_CPS] = {
+-		.num = WSA884X_PORT_CPS + 1,
++	}
++};
++
++static struct sdw_dpn_prop wsa884x_src_dpn_prop[] = {
++	{
++		.num = WSA884X_PORT_VISENSE + 1,
+ 		.type = SDW_DPN_SIMPLE,
+ 		.min_ch = 1,
+-		.max_ch = 1,
++		.max_ch = 2,
+ 		.simple_ch_prep_sm = true,
+ 		.read_only_wordlength = true,
+-	}
++	},
+ };
+ 
+ static const struct sdw_port_config wsa884x_pconfig[WSA884X_MAX_SWR_PORTS] = {
+@@ -892,6 +898,7 @@ static const struct sdw_port_config wsa884x_pconfig[WSA884X_MAX_SWR_PORTS] = {
+ 	},
+ 	[WSA884X_PORT_VISENSE] = {
+ 		.num = WSA884X_PORT_VISENSE + 1,
++		/* V and I sense pair */
+ 		.ch_mask = 0x3,
+ 	},
+ 	[WSA884X_PORT_CPS] = {
+@@ -1767,6 +1774,27 @@ static const struct snd_soc_component_driver wsa884x_component_drv = {
+ 	.num_dapm_routes = ARRAY_SIZE(wsa884x_audio_map),
+ };
+ 
++static int wsa884x_vi_hw_params(struct snd_pcm_substream *substream,
++				struct snd_pcm_hw_params *params,
++				struct snd_soc_dai *dai)
++{
++	struct wsa884x_priv *wsa884x = dev_get_drvdata(dai->dev);
++
++	if (!wsa884x->port_enable[WSA884X_PORT_VISENSE])
++		return 0;
++
++	wsa884x->vi_port_config = wsa884x_pconfig[WSA884X_PORT_VISENSE];
++	wsa884x->vi_sconfig.frame_rate = params_rate(params);
++	wsa884x->vi_sconfig.ch_count = 2;
++	wsa884x->vi_sconfig.bps = 1;
++	wsa884x->vi_sconfig.type = SDW_STREAM_PDM;
++	wsa884x->vi_sconfig.direction = SDW_DATA_DIR_TX;
++
++	return sdw_stream_add_slave(wsa884x->slave, &wsa884x->vi_sconfig,
++				    &wsa884x->vi_port_config, 1,
++				    wsa884x->vi_sruntime);
++}
++
+ static int wsa884x_hw_params(struct snd_pcm_substream *substream,
+ 			     struct snd_pcm_hw_params *params,
+ 			     struct snd_soc_dai *dai)
+@@ -1776,6 +1804,9 @@ static int wsa884x_hw_params(struct snd_pcm_substream *substream,
+ 
+ 	wsa884x->active_ports = 0;
+ 	for (i = 0; i < WSA884X_MAX_SWR_PORTS; i++) {
++		/* VISENSE is driven by the separate VI capture DAI */
++		if (i == WSA884X_PORT_VISENSE)
++			continue;
+ 		if (!wsa884x->port_enable[i])
+ 			continue;
+ 
+@@ -1795,7 +1826,10 @@ static int wsa884x_hw_free(struct snd_pcm_substream *substream,
+ {
+ 	struct wsa884x_priv *wsa884x = dev_get_drvdata(dai->dev);
+ 
+-	sdw_stream_remove_slave(wsa884x->slave, wsa884x->sruntime);
++	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
++		sdw_stream_remove_slave(wsa884x->slave, wsa884x->vi_sruntime);
++	else
++		sdw_stream_remove_slave(wsa884x->slave, wsa884x->sruntime);
+ 
+ 	return 0;
+ }
+@@ -1829,11 +1863,20 @@ static int wsa884x_set_stream(struct snd_soc_dai *dai,
+ {
+ 	struct wsa884x_priv *wsa884x = dev_get_drvdata(dai->dev);
+ 
+-	wsa884x->sruntime = stream;
++	if (direction == SNDRV_PCM_STREAM_CAPTURE)
++		wsa884x->vi_sruntime = stream;
++	else
++		wsa884x->sruntime = stream;
+ 
+ 	return 0;
+ }
+ 
++static const struct snd_soc_dai_ops wsa884x_vi_dai_ops = {
++	.hw_params = wsa884x_vi_hw_params,
++	.hw_free = wsa884x_hw_free,
++	.set_stream = wsa884x_set_stream,
++};
++
+ static const struct snd_soc_dai_ops wsa884x_dai_ops = {
+ 	.hw_params = wsa884x_hw_params,
+ 	.hw_free = wsa884x_hw_free,
+@@ -1856,6 +1899,19 @@ static struct snd_soc_dai_driver wsa884x_dais[] = {
+ 		},
+ 		.ops = &wsa884x_dai_ops,
+ 	},
++	{
++		.name = "VI",
++		.capture = {
++			.stream_name = "VI Capture",
++			.rates = WSA884X_RATES | WSA884X_FRAC_RATES,
++			.formats = WSA884X_FORMATS,
++			.rate_min = 8000,
++			.rate_max = 384000,
++			.channels_min = 1,
++			.channels_max = 2,
++		},
++		.ops = &wsa884x_vi_dai_ops,
++	},
+ };
+ 
+ static int wsa884x_get_temp(struct wsa884x_priv *wsa884x, long *temp)
+@@ -2091,9 +2147,11 @@ static int wsa884x_probe(struct sdw_slave *pdev,
+ 					WSA884X_MAX_SWR_PORTS))
+ 		dev_dbg(dev, "Static Port mapping not specified\n");
+ 
+-	pdev->prop.sink_ports = GENMASK(WSA884X_MAX_SWR_PORTS - 1, 0);
++	pdev->prop.sink_ports = GENMASK(WSA884X_MAX_SWR_PORTS - 1, 0) & ~BIT(WSA884X_PORT_VISENSE);
++	pdev->prop.source_ports = BIT(WSA884X_PORT_VISENSE);
+ 	pdev->prop.simple_clk_stop_capable = true;
+ 	pdev->prop.sink_dpn_prop = wsa884x_sink_dpn_prop;
++	pdev->prop.src_dpn_prop = wsa884x_src_dpn_prop;
+ 	pdev->prop.scp_int1_mask = SDW_SCP_INT1_BUS_CLASH | SDW_SCP_INT1_PARITY;
+ 
+ 	wsa884x_reset_deassert(wsa884x);
+From 186567f823a129b03c646175edfbd6bb4c26801b Mon Sep 17 00:00:00 2001
+From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:16 +0100
+Subject: [PATCH 6/23] ASoC: codecs: wsa884x: register the die temperature as a
+ thermal zone
+
+Speaker protection pairs each speaker's calibrated resistance with the
+amplifier die temperature (T0) at the time, but an in-kernel user has
+no way to read that temperature.
+
+Register a tripless thermal zone over the existing temperature read,
+named "wsa-<bus id>-<unique id>" so a user holding the codec's device
+can find it with thermal_zone_get_zone_by_name(). Until the codec is
+initialised, and while the PA is on with nothing cached yet, return
+-EAGAIN to hwmon and no valid temperature to the thermal zone, instead
+of a plausible looking zero. -EAGAIN would make the thermal core re-read
+the zone every 250 ms and keep the codec awake.
+
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/codecs/wsa884x.c | 70 +++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 69 insertions(+), 1 deletion(-)
+
+diff --git a/sound/soc/codecs/wsa884x.c b/sound/soc/codecs/wsa884x.c
+index 534e8c4231b0..c8d3c353ec34 100644
+--- a/sound/soc/codecs/wsa884x.c
++++ b/sound/soc/codecs/wsa884x.c
+@@ -23,6 +23,7 @@
+ #include <linux/soundwire/sdw_type.h>
+ #include <sound/pcm.h>
+ #include <sound/pcm_params.h>
++#include <linux/thermal.h>
+ #include <sound/soc-dapm.h>
+ #include <sound/soc.h>
+ #include <sound/tlv.h>
+@@ -1928,8 +1929,10 @@ static int wsa884x_get_temp(struct wsa884x_priv *wsa884x, long *temp)
+ 	if (wsa884x->pa_on) {
+ 		/*
+ 		 * Reading temperature is possible only when Power Amplifier is
+-		 * off. Report last cached data.
++		 * off. Report last cached data if we have one, -EAGAIN otherwise.
+ 		 */
++		if (!wsa884x->temperature)
++			return -EAGAIN;
+ 		*temp = wsa884x->temperature * 1000;
+ 		return 0;
+ 	}
+@@ -2051,6 +2054,42 @@ static const struct hwmon_chip_info wsa884x_hwmon_chip_info = {
+ 	.info	= wsa884x_hwmon_info,
+ };
+ 
++static int wsa884x_tz_get_temp(struct thermal_zone_device *tz, int *temp_mdeg)
++{
++	struct wsa884x_priv *wsa884x = thermal_zone_device_priv(tz);
++	long mdeg;
++	int ret;
++
++	/*
++	 * OTP trims read back as zero until the codec is initialised. Report
++	 * no reading rather than -EAGAIN, which makes the core poll the zone.
++	 */
++	if (!wsa884x->hw_init) {
++		*temp_mdeg = THERMAL_TEMP_INVALID;
++		return 0;
++	}
++
++	ret = wsa884x_get_temp(wsa884x, &mdeg);
++	if (ret == -EAGAIN) {
++		*temp_mdeg = THERMAL_TEMP_INVALID;
++		return 0;
++	}
++	if (ret)
++		return ret;
++
++	*temp_mdeg = (int)mdeg;
++	return 0;
++}
++
++static const struct thermal_zone_device_ops wsa884x_tz_ops = {
++	.get_temp = wsa884x_tz_get_temp,
++};
++
++static void wsa884x_tz_unregister(void *data)
++{
++	thermal_zone_device_unregister(data);
++}
++
+ static void wsa884x_reset_powerdown(void *data)
+ {
+ 	struct wsa884x_priv *wsa884x = data;
+@@ -2187,6 +2226,35 @@ static int wsa884x_probe(struct sdw_slave *pdev,
+ 	if (ret)
+ 		return ret;
+ 
++	if (IS_REACHABLE(CONFIG_THERMAL)) {
++		char tz_name[THERMAL_NAME_LENGTH];
++		struct thermal_zone_device *tz;
++
++		/*
++		 * Register after runtime PM is enabled, as the zone is read
++		 * right away. dev_name() is too long for a zone name.
++		 */
++		scnprintf(tz_name, sizeof(tz_name), "wsa-%d-%u",
++			  pdev->bus->id, pdev->id.unique_id);
++		tz = thermal_tripless_zone_device_register(tz_name,
++							   wsa884x,
++							   &wsa884x_tz_ops,
++							   NULL);
++		if (IS_ERR(tz)) {
++			dev_warn(dev,
++				 "thermal zone '%s' registration failed (%ld); SP T0 kcontrol will read 0 for this codec\n",
++				 tz_name, PTR_ERR(tz));
++		} else {
++			ret = devm_add_action_or_reset(dev,
++						       wsa884x_tz_unregister,
++						       tz);
++			if (ret)
++				return ret;
++
++			thermal_zone_device_enable(tz);
++		}
++	}
++
+ 	return devm_snd_soc_register_component(dev,
+ 					       &wsa884x_component_drv,
+ 					       wsa884x_dais,
+From 627b6ec7b31cb1383071e41d0f5ae9c4d8d52627 Mon Sep 17 00:00:00 2001
+From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:17 +0100
+Subject: [PATCH 7/23] ASoC: qcom: audioreach: add control link support to graphs
+
+The speaker protection modules exchange calibration state over a
+control link, which the topology describes but the driver never sends
+to the DSP.
+
+Parse the control link tokens into a per-subgraph list and add them to
+GRAPH_OPEN. Both subgraphs of a link usually declare it and the DSP
+rejects a duplicate, so send each pair once.
+
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ include/uapi/sound/snd_ar_tokens.h |  11 +++
+ sound/soc/qcom/qdsp6/audioreach.c  |  90 +++++++++++++++++--
+ sound/soc/qcom/qdsp6/audioreach.h  |  18 ++++
+ sound/soc/qcom/qdsp6/q6apm.c       |   1 +
+ sound/soc/qcom/qdsp6/q6apm.h       |   1 +
+ sound/soc/qcom/qdsp6/topology.c    | 134 +++++++++++++++++++++++++++++
+ 6 files changed, 250 insertions(+), 5 deletions(-)
+
+diff --git a/include/uapi/sound/snd_ar_tokens.h b/include/uapi/sound/snd_ar_tokens.h
+index cf8ab6b85e34..7ab8e11ca5c2 100644
+--- a/include/uapi/sound/snd_ar_tokens.h
++++ b/include/uapi/sound/snd_ar_tokens.h
+@@ -234,6 +234,17 @@ enum ar_event_types {
+ #define AR_TKN_U32_SUB_GRAPH_DIRECTION		4
+ #define AR_TKN_U32_SUB_GRAPH_SCENARIO_ID	5
+ 
++/* Control Link Tokens */
++#define AR_TKN_U32_CONTROL_LINK_IID		50
++#define AR_TKN_U32_CONTROL_LINK_PEER1_MOD_IID	51
++#define AR_TKN_U32_CONTROL_LINK_PEER1_MOD_PORT_ID	52
++#define AR_TKN_U32_CONTROL_LINK_PEER2_MOD_IID	53
++#define AR_TKN_U32_CONTROL_LINK_PEER2_MOD_PORT_ID	54
++#define AR_TKN_U32_CONTROL_LINK_INTENT0		55
++#define AR_TKN_U32_CONTROL_LINK_INTENT1		56
++#define AR_TKN_U32_CONTROL_LINK_INTENT2		57
++#define AR_TKN_U32_CONTROL_LINK_INTENT3		58
++
+ /* Container Tokens */
+ #define AR_TKN_U32_CONTAINER_INSTANCE_ID	100
+ #define AR_TKN_U32_CONTAINER_CAPABILITY_ID	101
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index d2dc5d37bccf..9e45634cafbc 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -109,6 +109,26 @@ struct apm_mod_conn_list_params {
+ 
+ #define APM_MOD_CONN_PSIZE(p, n) ALIGN(struct_size(p, conn_obj, n), 8)
+ 
++/* Control Links */
++struct apm_control_link_obj {
++	u32 peer1_mod_inst_id;
++	u32 peer1_mod_port_id;
++	u32 peer2_mod_inst_id;
++	u32 peer2_mod_port_id;
++	u32 num_props;
++	struct apm_prop_data intent_data;
++	u32 num_intents;
++	u32 intent_id_list[MAX_INTENTS];
++} __packed;
++
++struct apm_mod_control_links_params {
++	struct apm_module_param_data param_data;
++	u32 num_ctrl_link_cfg;
++	struct apm_control_link_obj link_obj[];
++} __packed;
++
++#define APM_MOD_CTRL_LINK_PSIZE(p, n) ALIGN(struct_size(p, link_obj, n), 8)
++
+ struct apm_graph_open_params {
+ 	struct apm_cmd_header *cmd_header;
+ 	struct apm_sub_graph_params *sg_data;
+@@ -116,6 +136,7 @@ struct apm_graph_open_params {
+ 	struct apm_module_list_params *mod_list_data;
+ 	struct apm_prop_list_params *mod_prop_data;
+ 	struct apm_mod_conn_list_params *mod_conn_list_data;
++	struct apm_mod_control_links_params *mod_control_links_data;
+ } __packed;
+ 
+ struct apm_pcm_module_media_fmt_cmd {
+@@ -410,24 +431,26 @@ static void audioreach_populate_graph(struct q6apm *apm,
+ 				      const struct list_head *sg_list,
+ 				      int num_sub_graphs)
+ {
++	struct apm_mod_control_links_params *cl_data = open->mod_control_links_data;
+ 	struct apm_mod_conn_list_params *mc_data = open->mod_conn_list_data;
+ 	struct apm_module_list_params *ml_data = open->mod_list_data;
+ 	struct apm_prop_list_params *mp_data = open->mod_prop_data;
+ 	struct apm_container_params *c_data = open->cont_data;
+ 	struct apm_sub_graph_params *sg_data = open->sg_data;
+-	int ncontainer = 0, nmodule = 0, nconn = 0;
++	int ncontainer = 0, nmodule = 0, nconn = 0, nlink = 0;
+ 	struct apm_mod_prop_obj *module_prop_obj;
+ 	struct audioreach_container *container;
++	struct audioreach_control_link *clink;
++	struct apm_control_link_obj *clink_obj;
+ 	struct apm_module_conn_obj *conn_obj;
+ 	struct audioreach_module *module;
+ 	struct audioreach_sub_graph *sg;
+ 	struct apm_container_obj *cobj;
+ 	struct apm_mod_list_obj *mlobj;
+-	int i = 0;
++	int i = 0, j;
+ 
+ 	mlobj = &ml_data->mod_list_obj[0];
+ 
+-
+ 	if (info->dst_mod_inst_id && info->src_mod_inst_id) {
+ 		conn_obj = &mc_data->conn_obj[nconn];
+ 		conn_obj->src_mod_inst_id = info->src_mod_inst_id;
+@@ -442,6 +465,47 @@ static void audioreach_populate_graph(struct q6apm *apm,
+ 
+ 		apm_populate_sub_graph_config(sg_cfg, sg);
+ 
++		list_for_each_entry(clink, &sg->control_link_list, node) {
++			bool dup = false;
++			int k;
++
++			/* Both subgraphs usually declare the link, send it once */
++			for (k = 0; k < nlink; k++) {
++				struct apm_control_link_obj *o = &cl_data->link_obj[k];
++
++				if ((o->peer1_mod_inst_id == clink->peer1_mod_inst_id &&
++				     o->peer2_mod_inst_id == clink->peer2_mod_inst_id) ||
++				    (o->peer1_mod_inst_id == clink->peer2_mod_inst_id &&
++				     o->peer2_mod_inst_id == clink->peer1_mod_inst_id)) {
++					dup = true;
++					break;
++				}
++			}
++			if (dup)
++				continue;
++
++			clink_obj = &cl_data->link_obj[nlink++];
++			clink_obj->peer1_mod_inst_id = clink->peer1_mod_inst_id;
++			clink_obj->peer1_mod_port_id = clink->peer1_mod_port_id;
++			clink_obj->peer2_mod_inst_id = clink->peer2_mod_inst_id;
++			clink_obj->peer2_mod_port_id = clink->peer2_mod_port_id;
++			clink_obj->intent_data.prop_id = APM_MODULE_PROP_ID_CTRL_LINK_INTENT_LIST;
++			clink_obj->num_props = 1;
++			clink_obj->num_intents = 0;
++
++			/* Pack the intents that are set into a dense list */
++			for (j = 0; j < MAX_INTENTS; j++) {
++				if (clink->intent[j])
++					clink_obj->intent_id_list[clink_obj->num_intents++] =
++						clink->intent[j];
++			}
++
++			/* The list length itself is part of the property payload */
++			clink_obj->intent_data.prop_size =
++				sizeof(clink_obj->num_intents) +
++				clink_obj->num_intents * sizeof(clink_obj->intent_id_list[0]);
++		}
++
+ 		list_for_each_entry(container, &sg->container_list, node) {
+ 			cobj = &c_data->cont_obj[ncontainer];
+ 
+@@ -477,12 +541,16 @@ static void audioreach_populate_graph(struct q6apm *apm,
+ 			ncontainer++;
+ 		}
+ 	}
++
++	/* The dedupe above may have packed fewer links */
++	cl_data->num_ctrl_link_cfg = nlink;
+ }
+ 
+ void *audioreach_alloc_graph_pkt(struct q6apm *apm,
+ 				 const struct audioreach_graph_info *info)
+ {
+-	int payload_size, sg_sz, cont_sz, ml_sz, mp_sz, mc_sz;
++	int payload_size, sg_sz, cl_sz, cont_sz, ml_sz, mp_sz, mc_sz;
++	struct apm_mod_control_links_params *clink_params;
+ 	struct apm_module_param_data  *param_data;
+ 	struct apm_container_params *cont_params;
+ 	struct audioreach_container *container;
+@@ -494,6 +562,7 @@ void *audioreach_alloc_graph_pkt(struct q6apm *apm,
+ 	struct audioreach_sub_graph *sgs;
+ 	struct apm_mod_list_obj *mlobj;
+ 	const struct list_head *sg_list;
++	int num_control_links = 0;
+ 	int num_connections = 0;
+ 	int num_containers = 0;
+ 	int num_sub_graphs = 0;
+@@ -511,6 +580,7 @@ void *audioreach_alloc_graph_pkt(struct q6apm *apm,
+ 
+ 	list_for_each_entry(sgs, sg_list, node) {
+ 		num_sub_graphs++;
++		num_control_links += sgs->num_control_links;
+ 		list_for_each_entry(container, &sgs->container_list, node) {
+ 			num_containers++;
+ 			num_modules += container->num_modules;
+@@ -526,13 +596,14 @@ void *audioreach_alloc_graph_pkt(struct q6apm *apm,
+ 	num_modules_list = num_containers;
+ 	sg_sz = APM_SUB_GRAPH_PSIZE(sg_params, num_sub_graphs);
+ 	cont_sz = APM_CONTAINER_PSIZE(cont_params, num_containers);
++	cl_sz = APM_MOD_CTRL_LINK_PSIZE(clink_params, num_control_links);
+ 
+ 	ml_sz = ALIGN(ml_sz, 8);
+ 
+ 	mp_sz = APM_MOD_PROP_PSIZE(mprop, num_modules);
+ 	mc_sz =	APM_MOD_CONN_PSIZE(mcon, num_connections);
+ 
+-	payload_size = sg_sz + cont_sz + ml_sz + mp_sz + mc_sz;
++	payload_size = sg_sz + cl_sz + cont_sz + ml_sz + mp_sz + mc_sz;
+ 	pkt = audioreach_alloc_apm_cmd_pkt(payload_size, APM_CMD_GRAPH_OPEN, 0);
+ 	if (IS_ERR(pkt))
+ 		return pkt;
+@@ -584,6 +655,15 @@ void *audioreach_alloc_graph_pkt(struct q6apm *apm,
+ 	params.mod_conn_list_data->num_connections = num_connections;
+ 	p += mc_sz;
+ 
++	/* Control Links */
++	params.mod_control_links_data = p;
++	param_data = &params.mod_control_links_data->param_data;
++	param_data->module_instance_id = APM_MODULE_INSTANCE_ID;
++	param_data->param_id = APM_PARAM_ID_MODULE_CTRL_LINK_CFG;
++	param_data->param_size = cl_sz - APM_MODULE_PARAM_DATA_SIZE;
++	params.mod_control_links_data->num_ctrl_link_cfg = num_control_links;
++	p += cl_sz;
++
+ 	audioreach_populate_graph(apm, info, &params, sg_list, num_sub_graphs);
+ 
+ 	return pkt;
+diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
+index 587f14ce71d2..38b71aefd845 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.h
++++ b/sound/soc/qcom/qdsp6/audioreach.h
+@@ -171,6 +171,9 @@ struct apm_module_conn_obj {
+ 	uint32_t dst_mod_ip_port_id;
+ } __packed;
+ 
++#define APM_PARAM_ID_MODULE_CTRL_LINK_CFG	0x08001061
++#define APM_MODULE_PROP_ID_CTRL_LINK_INTENT_LIST	0x08001062
++
+ #define APM_PARAM_ID_GAIN			0x08001006
+ 
+ struct param_id_gain_cfg {
+@@ -893,6 +896,19 @@ struct audioreach_graph_info {
+ 	uint32_t dst_mod_ip_port_id;
+ };
+ 
++#define MAX_INTENTS 4
++
++struct audioreach_control_link {
++	uint32_t id;
++	uint32_t peer1_mod_inst_id;
++	uint32_t peer1_mod_port_id;
++	uint32_t peer2_mod_inst_id;
++	uint32_t peer2_mod_port_id;
++	uint32_t intent[MAX_INTENTS];
++	struct list_head node;
++	struct audioreach_sub_graph *sub_graph;
++};
++
+ struct audioreach_sub_graph {
+ 	uint32_t sub_graph_id;
+ 	uint32_t perf_mode;
+@@ -903,6 +919,8 @@ struct audioreach_sub_graph {
+ 	struct audioreach_graph_info *info;
+ 	uint32_t num_containers;
+ 	struct list_head container_list;
++	uint32_t num_control_links;
++	struct list_head control_link_list;
+ };
+ 
+ struct audioreach_container {
+diff --git a/sound/soc/qcom/qdsp6/q6apm.c b/sound/soc/qcom/qdsp6/q6apm.c
+index 4cb597d737b1..968fb7898aa4 100644
+--- a/sound/soc/qcom/qdsp6/q6apm.c
++++ b/sound/soc/qcom/qdsp6/q6apm.c
+@@ -900,6 +900,7 @@ static int apm_probe(gpr_device_t *gdev)
+ 	idr_init(&apm->graph_info_idr);
+ 	idr_init(&apm->sub_graphs_idr);
+ 	idr_init(&apm->containers_idr);
++	idr_init(&apm->control_links_idr);
+ 
+ 	idr_init(&apm->modules_idr);
+ 
+diff --git a/sound/soc/qcom/qdsp6/q6apm.h b/sound/soc/qcom/qdsp6/q6apm.h
+index 9092359ccf90..96409075b294 100644
+--- a/sound/soc/qcom/qdsp6/q6apm.h
++++ b/sound/soc/qcom/qdsp6/q6apm.h
+@@ -67,6 +67,7 @@ struct q6apm {
+ 	struct idr graph_info_idr;
+ 	struct idr sub_graphs_idr;
+ 	struct idr containers_idr;
++	struct idr control_links_idr;
+ 	struct idr modules_idr;
+ };
+ 
+diff --git a/sound/soc/qcom/qdsp6/topology.c b/sound/soc/qcom/qdsp6/topology.c
+index 612d8f03e6e9..5de7e821e5f4 100644
+--- a/sound/soc/qcom/qdsp6/topology.c
++++ b/sound/soc/qcom/qdsp6/topology.c
+@@ -97,6 +97,7 @@ static struct audioreach_sub_graph *audioreach_tplg_alloc_sub_graph(struct q6apm
+ 		return ERR_PTR(-ENOMEM);
+ 
+ 	INIT_LIST_HEAD(&sg->container_list);
++	INIT_LIST_HEAD(&sg->control_link_list);
+ 
+ 	mutex_lock(&apm->lock);
+ 	ret = idr_alloc_u32(&apm->sub_graphs_idr, sg, &sub_graph_id, sub_graph_id, GFP_KERNEL);
+@@ -113,6 +114,51 @@ static struct audioreach_sub_graph *audioreach_tplg_alloc_sub_graph(struct q6apm
+ 	return sg;
+ }
+ 
++static struct audioreach_control_link *audioreach_tplg_alloc_control_link(struct q6apm *apm,
++							    struct audioreach_sub_graph *sg,
++							    uint32_t control_link_id,
++							    bool *found)
++{
++	struct audioreach_control_link *link;
++	int ret;
++
++	if (!control_link_id)
++		return ERR_PTR(-EINVAL);
++
++	mutex_lock(&apm->lock);
++	link = idr_find(&apm->control_links_idr, control_link_id);
++	mutex_unlock(&apm->lock);
++
++	if (link) {
++		*found = true;
++		return link;
++	}
++	*found = false;
++
++	link = kzalloc_obj(*link);
++	if (!link)
++		return ERR_PTR(-ENOMEM);
++
++	mutex_lock(&apm->lock);
++	ret = idr_alloc_u32(&apm->control_links_idr, link, &control_link_id, control_link_id,
++			    GFP_KERNEL);
++	mutex_unlock(&apm->lock);
++
++	if (ret < 0) {
++		dev_err(apm->dev, "Failed to allocate Control Link ID (%x)\n", control_link_id);
++		kfree(link);
++		return ERR_PTR(ret);
++	}
++
++	link->id = control_link_id;
++	link->sub_graph = sg;
++	/* add to control link list */
++	list_add_tail(&link->node, &sg->control_link_list);
++	sg->num_control_links++;
++
++	return link;
++}
++
+ static struct audioreach_container *audioreach_tplg_alloc_container(struct q6apm *apm,
+ 							    struct audioreach_sub_graph *sg,
+ 							    uint32_t container_id,
+@@ -348,6 +394,85 @@ audioreach_get_module_priv_data(const struct snd_soc_tplg_private *private)
+ 	return NULL;
+ }
+ 
++static void audioreach_parse_control_link_tokens(struct q6apm *apm,
++						 struct audioreach_control_link *link,
++						 const struct snd_soc_tplg_vendor_array *cl_array)
++{
++	const struct snd_soc_tplg_vendor_value_elem *cl_elem = cl_array->value;
++	int tkn_count = 0;
++
++	while (tkn_count <= (le32_to_cpu(cl_array->num_elems) - 1)) {
++		switch (le32_to_cpu(cl_elem->token)) {
++		case AR_TKN_U32_CONTROL_LINK_IID:
++			link->id = le32_to_cpu(cl_elem->value);
++			break;
++		case AR_TKN_U32_CONTROL_LINK_PEER1_MOD_IID:
++			link->peer1_mod_inst_id = le32_to_cpu(cl_elem->value);
++			break;
++		case AR_TKN_U32_CONTROL_LINK_PEER1_MOD_PORT_ID:
++			link->peer1_mod_port_id = le32_to_cpu(cl_elem->value);
++			break;
++		case AR_TKN_U32_CONTROL_LINK_PEER2_MOD_IID:
++			link->peer2_mod_inst_id = le32_to_cpu(cl_elem->value);
++			break;
++		case AR_TKN_U32_CONTROL_LINK_PEER2_MOD_PORT_ID:
++			link->peer2_mod_port_id = le32_to_cpu(cl_elem->value);
++			break;
++		case AR_TKN_U32_CONTROL_LINK_INTENT0:
++			link->intent[0] = le32_to_cpu(cl_elem->value);
++			break;
++		case AR_TKN_U32_CONTROL_LINK_INTENT1:
++			link->intent[1] = le32_to_cpu(cl_elem->value);
++			break;
++		case AR_TKN_U32_CONTROL_LINK_INTENT2:
++			link->intent[2] = le32_to_cpu(cl_elem->value);
++			break;
++		case AR_TKN_U32_CONTROL_LINK_INTENT3:
++			link->intent[3] = le32_to_cpu(cl_elem->value);
++			break;
++		default:
++			dev_err(apm->dev, "Not a valid token %d for control link graph\n",
++				le32_to_cpu(cl_elem->token));
++			break;
++		}
++		tkn_count++;
++		cl_elem++;
++	}
++}
++
++static void audioreach_parse_cl_tokens(struct q6apm *apm, struct audioreach_sub_graph *sg,
++				       const struct snd_soc_tplg_private *private)
++{
++	const struct snd_soc_tplg_vendor_value_elem *cl_elem;
++	const struct snd_soc_tplg_vendor_array *cl_array;
++	struct audioreach_control_link *link;
++	int link_id, tkn_count, sz;
++	bool found = false;
++
++	for (sz = 0; sz < le32_to_cpu(private->size);) {
++		cl_array = (struct snd_soc_tplg_vendor_array *)((u8 *)private->array + sz);
++		cl_elem = cl_array->value;
++		sz = sz + le32_to_cpu(cl_array->size);
++		tkn_count = 0;
++
++		/* Module config blobs are not token tuples, stop here */
++		if (le32_to_cpu(cl_array->type) == SND_SOC_AR_TPLG_MODULE_CFG_TYPE)
++			break;
++
++		while (tkn_count <= (le32_to_cpu(cl_array->num_elems) - 1)) {
++			if (le32_to_cpu(cl_elem->token) == AR_TKN_U32_CONTROL_LINK_IID) {
++				link_id = le32_to_cpu(cl_elem->value);
++				link = audioreach_tplg_alloc_control_link(apm, sg, link_id, &found);
++				/* Skip on error or already parsed control link data */
++				if (!IS_ERR(link) && !found)
++					audioreach_parse_control_link_tokens(apm, link, cl_array);
++			}
++			tkn_count++;
++			cl_elem++;
++		}
++	}
++}
++
+ static struct audioreach_sub_graph *audioreach_parse_sg_tokens(struct q6apm *apm,
+ 							       const struct snd_soc_tplg_private *private)
+ {
+@@ -617,6 +742,8 @@ static int audioreach_widget_load_module_common(struct snd_soc_component *compon
+ 	if (IS_ERR(sg))
+ 		return PTR_ERR(sg);
+ 
++	audioreach_parse_cl_tokens(apm, sg, &tplg_w->priv);
++
+ 	cont = audioreach_parse_cont_tokens(apm, sg, &tplg_w->priv);
+ 	if (IS_ERR(cont))
+ 		return PTR_ERR(cont);
+@@ -1108,6 +1235,13 @@ static int audioreach_widget_unload(struct snd_soc_component *scomp,
+ 		/* check if there are no more containers in the sub graph and remove it */
+ 		if (list_empty(&sg->container_list)) {
+ 			struct audioreach_graph_info *info = sg->info;
++			struct audioreach_control_link *link, *tmp;
++
++			list_for_each_entry_safe(link, tmp, &sg->control_link_list, node) {
++				idr_remove(&apm->control_links_idr, link->id);
++				list_del(&link->node);
++				kfree(link);
++			}
+ 
+ 			idr_remove(&apm->sub_graphs_idr, sg->sub_graph_id);
+ 			list_del(&sg->node);
+From 1a8a1392c6bc7d29eb69a48bed5bb04038d410bd Mon Sep 17 00:00:00 2001
+From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:18 +0100
+Subject: [PATCH 8/23] ASoC: qcom: audioreach: run VI module in calibration mode
+ with per-speaker events
+
+Put the speaker protection and VI modules in calibration mode and
+register for EVENT_ID_VI_PER_SPKR_CALIBRATION, so each speaker's state
+and measured resistance are reported on their own.
+
+Number the V/I channel pairs consecutively, as the VI capture packs one
+pair per speaker without gaps.
+
+Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 72 +++++++++++++++++++++++--------
+ sound/soc/qcom/qdsp6/audioreach.h | 36 ++++++++++++++++
+ sound/soc/qcom/qdsp6/q6apm.c      | 55 +++++++++++++++++++++++
+ 3 files changed, 146 insertions(+), 17 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index 9e45634cafbc..75995426b9f6 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -1464,6 +1464,35 @@ static int audioreach_speaker_protection(struct q6apm_graph *graph,
+ 					 operation_mode);
+ }
+ 
++static int audioreach_register_events(struct q6apm_graph *graph,
++				      const struct audioreach_module *module)
++{
++	struct apm_module_register_events *payload;
++	struct gpr_pkt *pkt;
++	int rc, payload_size;
++	void *p;
++
++	/* No event config payload, the packet is zeroed on allocation */
++	payload_size = ALIGN(sizeof(struct apm_module_register_events), 8);
++	pkt = audioreach_alloc_cmd_pkt(payload_size, APM_CMD_REGISTER_MODULE_EVENTS,
++				       0, graph->port->id, module->instance_id);
++	if (IS_ERR(pkt))
++		return PTR_ERR(pkt);
++
++	p = (void *)pkt + GPR_HDR_SIZE + APM_CMD_HDR_SIZE;
++
++	payload = p;
++	payload->module_instance_id = module->instance_id;
++	payload->event_id = EVENT_ID_VI_PER_SPKR_CALIBRATION;
++	payload->is_register = 1;
++
++	rc = audioreach_graph_send_cmd_sync(graph, pkt, 0);
++
++	kfree(pkt);
++
++	return rc;
++}
++
+ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 					    const struct audioreach_module *module,
+ 					    const struct audioreach_module_config *mcfg)
+@@ -1474,8 +1503,9 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 	struct apm_module_sp_vi_ex_mode_cfg *ex_cfg;
+ 	int op_sz, cm_sz, ex_sz;
+ 	struct apm_module_param_data *param_data;
+-	int rc, i, payload_size, j;
++	int rc, i, j, payload_size;
+ 	struct gpr_pkt *pkt;
++	u32 num_speakers;
+ 	void *p;
+ 
+ 	if (num_channels > 2) {
+@@ -1483,9 +1513,20 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 		return -EINVAL;
+ 	}
+ 
+-	op_sz = APM_SP_VI_OP_MODE_CFG_PSIZE(num_channels);
++	/* One 32-bit V/I word per speaker, so channels == speakers */
++	num_speakers = num_channels;
++	if (!num_speakers) {
++		dev_err(graph->dev, "Error: VI needs at least one channel\n");
++		return -EINVAL;
++	}
++
++	rc = audioreach_register_events(graph, module);
++	if (rc)
++		return rc;
++
++	op_sz = APM_SP_VI_OP_MODE_CFG_PSIZE(num_speakers);
+ 	/* Channel mapping for Isense and Vsense, thus twice number of speakers. */
+-	cm_sz = APM_SP_VI_CH_MAP_CFG_PSIZE(num_channels * 2);
++	cm_sz = APM_SP_VI_CH_MAP_CFG_PSIZE(num_speakers * 2);
+ 	ex_sz = APM_SP_VI_EX_MODE_CFG_PSIZE;
+ 
+ 	payload_size = op_sz + cm_sz + ex_sz;
+@@ -1503,8 +1544,9 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 	param_data->param_id = PARAM_ID_SP_VI_OP_MODE_CFG;
+ 	param_data->param_size = op_sz - APM_MODULE_PARAM_DATA_SIZE;
+ 
+-	op_cfg->cfg.num_channels = num_channels;
+-	op_cfg->cfg.operation_mode = PARAM_ID_SP_VI_OP_MODE_NORMAL;
++	/* The DSP calls this field num_speakers for the VI module */
++	op_cfg->cfg.num_channels = num_speakers;
++	op_cfg->cfg.operation_mode = PARAM_ID_SP_VI_OP_MODE_CALIBRATION;
+ 	p += op_sz;
+ 
+ 	cm_cfg = p;
+@@ -1514,20 +1556,15 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 	param_data->param_id = PARAM_ID_SP_VI_CHANNEL_MAP_CFG;
+ 	param_data->param_size = cm_sz - APM_MODULE_PARAM_DATA_SIZE;
+ 
+-	cm_cfg->cfg.num_channels = num_channels * 2;
+-	/* Convert the physical mapping to a logical mapping of the channels */
+-	for (i = 0, j = 0; i < AR_PCM_MAX_NUM_CHANNEL && j < num_channels; i++) {
++	cm_cfg->cfg.num_channels = num_speakers * 2;
++	/* Number the V/I pairs consecutively, the capture has no gaps */
++	for (i = 0, j = 0; i < AR_PCM_MAX_NUM_CHANNEL && j < num_speakers; i++) {
+ 		if (!mcfg->channel_map[i])
+ 			continue;
+-		/*
+-		 * Map speakers into Vsense and then Isense of each channel.
+-		 * E.g. for PCM_CHANNEL_FL and PCM_CHANNEL_FR to:
+-		 * [1, 2, 3, 4]
+-		 */
+-		cm_cfg->cfg.channel_mapping[2 * j] = (mcfg->channel_map[i] - 1) * 2 + 1;
+-		cm_cfg->cfg.channel_mapping[2 * j + 1] = (mcfg->channel_map[i] - 1) * 2 + 2;
+ 
+-		++j;
++		cm_cfg->cfg.channel_mapping[2 * j] = 2 * j + 1;
++		cm_cfg->cfg.channel_mapping[2 * j + 1] = 2 * j + 2;
++		j++;
+ 	}
+ 
+ 	p += cm_sz;
+@@ -1601,7 +1638,7 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 		break;
+ 	case MODULE_ID_SPEAKER_PROTECTION:
+ 		rc = audioreach_speaker_protection(graph, module,
+-						   PARAM_ID_SP_OP_MODE_NORMAL);
++						   PARAM_ID_SP_OP_MODE_CALIBRATION);
+ 		if (!rc)
+ 			rc = audioreach_module_enable(graph, module, true);
+ 
+@@ -1610,6 +1647,7 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 		rc = audioreach_speaker_protection_vi(graph, module, cfg);
+ 		if (!rc)
+ 			rc = audioreach_module_enable(graph, module, true);
++
+ 		break;
+ 	case MODULE_ID_AUDIO_IF_SOURCE:
+ 	case MODULE_ID_AUDIO_IF_SINK:
+diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
+index 38b71aefd845..4744d3117010 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.h
++++ b/sound/soc/qcom/qdsp6/audioreach.h
+@@ -720,6 +720,42 @@ struct param_id_sp_vi_channel_map_cfg {
+ 	uint32_t channel_mapping[];
+ } __packed;
+ 
++/* VI per-speaker calibration event, raised every frame in calibration mode */
++#define EVENT_ID_VI_PER_SPKR_CALIBRATION	0x08001511
++
++/* Calibration state, as reported by struct vi_per_spkr_calib_param.state */
++#define VI_CALIBRATION_STATE_NORMAL_MODE	0 /* Not in calibration mode */
++#define VI_CALIBRATION_STATE_INACTIVE		1 /* Port not started */
++#define VI_CALIBRATION_STATE_WARM_UP		2 /* Warming up */
++#define VI_CALIBRATION_STATE_IN_PROGRESS	3 /* Calibration running */
++#define VI_CALIBRATION_STATE_SUCCESS		4 /* R0/T0 within range */
++#define VI_CALIBRATION_STATE_FAILED		5 /* R0/T0 out of range */
++#define VI_CALIBRATION_STATE_WAIT_FOR_VI	6 /* Waiting for V/I data */
++#define VI_CALIBRATION_STATE_VI_WAIT_TIMEOUT	7 /* Timed out waiting for V/I */
++#define VI_CALIBRATION_STATE_LOW_VI		8 /* V/I signal level too low */
++
++/**
++ * struct vi_per_spkr_calib_param - Per-speaker calibration result
++ * @state: Calibration state of this speaker.
++ * @r0_cali_q24: Measured DC resistance in ohms, Q24. Filled in regardless of
++ *		 @state, so it is meaningful for both VI_CALIBRATION_STATE_SUCCESS
++ *		 and VI_CALIBRATION_STATE_FAILED.
++ */
++struct vi_per_spkr_calib_param {
++	uint32_t state;
++	int32_t r0_cali_q24;
++} __packed;
++
++/**
++ * struct event_id_vi_per_spkr_calibration - Per-speaker VI calibration result
++ * @num_ch: Number of speakers the result covers.
++ * @cali_param: Per-speaker calibration state and measured resistance.
++ */
++struct event_id_vi_per_spkr_calibration {
++	uint32_t num_ch;
++	struct vi_per_spkr_calib_param cali_param[];
++} __packed;
++
+ #define PARAM_ID_SAL_OUTPUT_CFG			0x08001016
+ struct param_id_sal_output_config {
+ 	uint32_t bits_per_sample;
+diff --git a/sound/soc/qcom/qdsp6/q6apm.c b/sound/soc/qcom/qdsp6/q6apm.c
+index 968fb7898aa4..66efb6a10bf9 100644
+--- a/sound/soc/qcom/qdsp6/q6apm.c
++++ b/sound/soc/qcom/qdsp6/q6apm.c
+@@ -562,6 +562,58 @@ int q6apm_get_hw_pointer(struct q6apm_graph *graph, int dir)
+ }
+ EXPORT_SYMBOL_GPL(q6apm_get_hw_pointer);
+ 
++/*
++ * Convert a Q24 fixed-point value to its integer part, and to the first three
++ * decimal places of its fractional part.
++ */
++static int q6apm_q24_to_int_frac(int32_t val, int *frac)
++{
++	*frac = (int)(((s64)(val & 0xffffff) * 1000) >> 24);
++
++	return val >> 24;
++}
++
++static void q6apm_vi_calibration_event(struct device *dev,
++				       const struct apm_module_event *event,
++				       int payload_size)
++{
++	const struct event_id_vi_per_spkr_calibration *cali;
++	unsigned int num_ch, i;
++	int r0_int, r0_frac;
++
++	if (payload_size < 0 || payload_size < (int)(sizeof(*event) + sizeof(*cali))) {
++		dev_err(dev, "VI calibration event truncated (%d bytes)\n",
++			payload_size);
++		return;
++	}
++
++	cali = (const struct event_id_vi_per_spkr_calibration *)(event + 1);
++
++	/* Bound the array by the received payload, not by num_ch alone */
++	num_ch = (payload_size - sizeof(*event) - sizeof(*cali)) / sizeof(cali->cali_param[0]);
++	num_ch = min_t(unsigned int, cali->num_ch, num_ch);
++
++	for (i = 0; i < num_ch; i++) {
++		/* Only SUCCESS and FAILED carry a measured R0; both are worth reporting */
++		switch (cali->cali_param[i].state) {
++		case VI_CALIBRATION_STATE_SUCCESS:
++			break;
++		case VI_CALIBRATION_STATE_FAILED:
++			dev_dbg(dev, "VI calibration channel %u failed, R0/T0 out of range\n", i);
++			break;
++		default:
++			dev_dbg(dev, "VI calibration channel %u in state %u\n",
++				i, cali->cali_param[i].state);
++			continue;
++		}
++
++		r0_int = q6apm_q24_to_int_frac(cali->cali_param[i].r0_cali_q24, &r0_frac);
++		/* Raised every frame, so keep it at debug level */
++		dev_dbg(dev, "VI calibration channel %u: R0 %d.%03d ohms\n",
++			i, r0_int, r0_frac);
++	}
++}
++
+ static int graph_callback(const struct gpr_resp_pkt *data, void *priv, int op)
+ {
+ 	struct data_cmd_rsp_rd_sh_mem_ep_data_buffer_done_v2 *rd_done;
+@@ -585,6 +637,9 @@ static int graph_callback(const struct gpr_resp_pkt *data, void *priv, int op)
+ 			client_event = APM_CLIENT_EVENT_WATERMARK_EVENT;
+ 			graph->cb(client_event, hdr->token, data->payload, graph->priv);
+ 			break;
++		case EVENT_ID_VI_PER_SPKR_CALIBRATION:
++			q6apm_vi_calibration_event(dev, event, data->payload_size);
++			break;
+ 		}
+ 
+ 		break;
+From f1d555835c8e00b10a1d40623043d0e12667428e Mon Sep 17 00:00:00 2001
+From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:19 +0100
+Subject: [PATCH 9/23] ASoC: qcom: q6apm-dai: add S32_LE format support
+
+The speaker protection VI capture carries one 32-bit V/I word per
+speaker. Add S32_LE to the q6apm-dai formats so it is not converted.
+
+Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/qcom/qdsp6/q6apm-dai.c | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/q6apm-dai.c b/sound/soc/qcom/qdsp6/q6apm-dai.c
+index dc092ec8a274..46f2cde33413 100644
+--- a/sound/soc/qcom/qdsp6/q6apm-dai.c
++++ b/sound/soc/qcom/qdsp6/q6apm-dai.c
+@@ -202,7 +202,8 @@ static const struct snd_pcm_hardware q6apm_dai_hardware_capture = {
+ 				 SNDRV_PCM_INFO_PAUSE | SNDRV_PCM_INFO_RESUME |
+ 				 SNDRV_PCM_INFO_NO_REWINDS | SNDRV_PCM_INFO_SYNC_APPLPTR |
+ 				 SNDRV_PCM_INFO_BATCH),
+-	.formats =              (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE),
++	.formats =              (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE |
++				 SNDRV_PCM_FMTBIT_S32_LE),
+ 	.rates =                SNDRV_PCM_RATE_8000_48000,
+ 	.rate_min =             8000,
+ 	.rate_max =             48000,
+@@ -222,7 +223,8 @@ static const struct snd_pcm_hardware q6apm_dai_hardware_playback = {
+ 				 SNDRV_PCM_INFO_PAUSE | SNDRV_PCM_INFO_RESUME |
+ 				 SNDRV_PCM_INFO_NO_REWINDS | SNDRV_PCM_INFO_SYNC_APPLPTR |
+ 				 SNDRV_PCM_INFO_BATCH),
+-	.formats =              (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE),
++	.formats =              (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE |
++				 SNDRV_PCM_FMTBIT_S32_LE),
+ 	.rates =                SNDRV_PCM_RATE_8000_192000,
+ 	.rate_min =             8000,
+ 	.rate_max =             192000,
+@@ -641,6 +643,9 @@ static int q6apm_dai_hw_params(struct snd_soc_component *component,
+ 	case SNDRV_PCM_FORMAT_S24_LE:
+ 		prtd->bits_per_sample = 24;
+ 		break;
++	case SNDRV_PCM_FORMAT_S32_LE:
++		prtd->bits_per_sample = 32;
++		break;
+ 	default:
+ 		return -EINVAL;
+ 	}
+From 439048d33f80a7a139a154d31bd2dc6840df3fe5 Mon Sep 17 00:00:00 2001
+From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:20 +0100
+Subject: [PATCH 10/23] ASoC: qcom: audioreach: support up to four speakers in VI
+ feedback
+
+audioreach_speaker_protection_vi() rejects more than two channels,
+although the rest of the function scales with the channel count.
+Laptops with four speakers need four.
+
+Raise the limit to MAX_SP_VI_SPEAKERS (4).
+
+Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 2 +-
+ sound/soc/qcom/qdsp6/audioreach.h | 2 ++
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index 75995426b9f6..24198cde8158 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -1508,7 +1508,7 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 	u32 num_speakers;
+ 	void *p;
+ 
+-	if (num_channels > 2) {
++	if (num_channels > MAX_SP_VI_SPEAKERS) {
+ 		dev_err(graph->dev, "Error: Invalid channels (%d)!\n", num_channels);
+ 		return -EINVAL;
+ 	}
+diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
+index 4744d3117010..c8c7fa4f6f70 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.h
++++ b/sound/soc/qcom/qdsp6/audioreach.h
+@@ -696,6 +696,8 @@ struct param_id_sp_op_mode {
+ 
+ /* Speaker Protection VI */
+ 
++#define MAX_SP_VI_SPEAKERS			4
++
+ #define PARAM_ID_SP_VI_OP_MODE_CFG		0x080011f4
+ #define PARAM_ID_SP_VI_OP_MODE_NORMAL		0
+ #define PARAM_ID_SP_VI_OP_MODE_CALIBRATION	1
+From 040bd60c6a755067fd4075a41d5a5ac4a3480060 Mon Sep 17 00:00:00 2001
+From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:21 +0100
+Subject: [PATCH 11/23] ASoC: qcom: audioreach: cache VI calibration results per
+ speaker
+
+The VI module reports EVENT_ID_VI_PER_SPKR_CALIBRATION every frame for
+the whole run. The handler logged each event and kept nothing, flooding
+the log and dropping the measured resistance.
+
+Log each state once per speaker and keep the result once every speaker
+has reached a final state, with R0 for those that succeeded. Log the
+R0 of a failed speaker as out of range. Move the handler to audioreach.c
+next to the state it keeps, and turn the calibration states into a
+documented enum.
+
+Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 129 ++++++++++++++++++++++++++++++
+ sound/soc/qcom/qdsp6/audioreach.h |  39 ++++++---
+ sound/soc/qcom/qdsp6/q6apm.c      |  37 +--------
+ 3 files changed, 162 insertions(+), 43 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index 24198cde8158..eb317b704b54 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -2,6 +2,7 @@
+ // Copyright (c) 2020, Linaro Limited
+ 
+ #include <linux/kernel.h>
++#include <linux/mutex.h>
+ #include <linux/slab.h>
+ #include <linux/soc/qcom/apr.h>
+ #include <sound/soc.h>
+@@ -12,6 +13,23 @@
+ #include "q6apm.h"
+ #include "audioreach.h"
+ 
++enum sp_vi_cali_state {
++	SP_VI_CALI_IDLE,	/* Not calibrating */
++	SP_VI_CALI_RUNNING,	/* Events arriving, none decisive yet */
++	SP_VI_CALI_FAILED,	/* Run finished, no usable R0 */
++	SP_VI_CALI_SUCCESS,	/* Run finished, @r0_cali_q24 valid */
++};
++
++struct sp_vi_r0_result {
++	enum sp_vi_cali_state state;
++	u32 num_ch;
++	s32 r0_cali_q24[MAX_SP_VI_SPEAKERS];
++	u32 seen_states[MAX_SP_VI_SPEAKERS];
++};
++
++static struct sp_vi_r0_result sp_vi_r0;
++static DEFINE_MUTEX(sp_vi_r0_lock);
++
+ /* SubGraph Config */
+ struct apm_sub_graph_data {
+ 	struct apm_sub_graph_cfg sub_graph_cfg;
+@@ -1456,6 +1474,106 @@ static int audioreach_gain_set(struct q6apm_graph *graph,
+ 	return q6apm_send_cmd_sync(graph->apm, pkt, 0);
+ }
+ 
++static bool sp_vi_cali_state_is_failure(u32 state)
++{
++	return state == VI_CALIBRATION_STATE_FAILED ||
++	       state == VI_CALIBRATION_STATE_VI_WAIT_TIMED_OUT;
++}
++
++static bool sp_vi_cali_state_is_terminal(u32 state)
++{
++	return state == VI_CALIBRATION_STATE_SUCCESS ||
++	       sp_vi_cali_state_is_failure(state);
++}
++
++#define SP_VI_CALI_UNKNOWN_STATE_BIT	(VI_CALIBRATION_STATE_LOW_VI + 1)
++
++static const char *sp_vi_cali_state_name(u32 state)
++{
++	static const char * const names[] = {
++		[VI_CALIBRATION_STATE_INCORRECT_OP_MODE] = "not in calibration mode",
++		[VI_CALIBRATION_STATE_INACTIVE]		= "inactive",
++		[VI_CALIBRATION_STATE_WARMUP]		= "warming up",
++		[VI_CALIBRATION_STATE_INPROGRESS]	= "in progress",
++		[VI_CALIBRATION_STATE_SUCCESS]		= "success",
++		[VI_CALIBRATION_STATE_FAILED]		= "failed, R0/T0 out of range",
++		[VI_CALIBRATION_STATE_WAIT_FOR_VI]	= "waiting for V/I",
++		[VI_CALIBRATION_STATE_VI_WAIT_TIMED_OUT] = "failed, timed out waiting for V/I",
++		[VI_CALIBRATION_STATE_LOW_VI]		= "V/I level too low",
++	};
++
++	if (state >= ARRAY_SIZE(names) || !names[state])
++		return "unknown";
++
++	return names[state];
++}
++
++static int sp_vi_q24_to_int_frac(s32 val, int *frac)
++{
++	*frac = (int)(((s64)(val & 0xffffff) * 1000) >> 24);
++
++	return val >> 24;
++}
++
++void audioreach_vi_calibration_event(struct device *dev,
++				     const struct event_id_vi_per_spkr_calibration *cali,
++				     u32 num_ch)
++{
++	bool decisive = true;
++	bool success = true;
++	unsigned int i;
++	u32 bit;
++
++	guard(mutex)(&sp_vi_r0_lock);
++
++	if (sp_vi_r0.state != SP_VI_CALI_RUNNING)
++		return;
++
++	for (i = 0; i < num_ch; i++) {
++		u32 state = cali->cali_param[i].state;
++
++		if (sp_vi_cali_state_is_failure(state))
++			success = false;
++		else if (!sp_vi_cali_state_is_terminal(state))
++			decisive = false;
++
++		bit = BIT(min_t(u32, state, SP_VI_CALI_UNKNOWN_STATE_BIT));
++		if (!(sp_vi_r0.seen_states[i] & bit)) {
++			sp_vi_r0.seen_states[i] |= bit;
++			dev_info(dev, "VI calibration channel %u: %s\n",
++				 i, sp_vi_cali_state_name(state));
++		}
++	}
++
++	if (!decisive)
++		return;
++
++	sp_vi_r0.state = success ? SP_VI_CALI_SUCCESS : SP_VI_CALI_FAILED;
++	sp_vi_r0.num_ch = num_ch;
++
++	for (i = 0; i < num_ch; i++) {
++		int r0_int, r0_frac;
++
++		if (cali->cali_param[i].state == VI_CALIBRATION_STATE_FAILED) {
++			r0_int = sp_vi_q24_to_int_frac(cali->cali_param[i].r0_cali_q24,
++						       &r0_frac);
++			dev_warn(dev, "VI calibration channel %u: R0 %d.%03d ohms out of range\n",
++				 i, r0_int, r0_frac);
++			continue;
++		}
++		if (sp_vi_cali_state_is_failure(cali->cali_param[i].state))
++			continue;
++
++		sp_vi_r0.r0_cali_q24[i] = cali->cali_param[i].r0_cali_q24;
++
++		r0_int = sp_vi_q24_to_int_frac(sp_vi_r0.r0_cali_q24[i], &r0_frac);
++		dev_info(dev, "VI calibration channel %u: R0 %d.%03d ohms (Q24 %d)\n",
++			 i, r0_int, r0_frac, sp_vi_r0.r0_cali_q24[i]);
++	}
++
++	dev_info(dev, "VI calibration complete: %s\n", success ? "success" : "failed");
++}
++
+ static int audioreach_speaker_protection(struct q6apm_graph *graph,
+ 					 const struct audioreach_module *module,
+ 					 uint32_t operation_mode)
+@@ -1493,6 +1611,15 @@ static int audioreach_register_events(struct q6apm_graph *graph,
+ 	return rc;
+ }
+ 
++static void audioreach_arm_vi_calibration(void)
++{
++	guard(mutex)(&sp_vi_r0_lock);
++
++	sp_vi_r0 = (struct sp_vi_r0_result){
++		.state = SP_VI_CALI_RUNNING,
++	};
++}
++
+ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 					    const struct audioreach_module *module,
+ 					    const struct audioreach_module_config *mcfg)
+@@ -1520,6 +1647,8 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 		return -EINVAL;
+ 	}
+ 
++	audioreach_arm_vi_calibration();
++
+ 	rc = audioreach_register_events(graph, module);
+ 	if (rc)
+ 		return rc;
+diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
+index c8c7fa4f6f70..232faba6d83f 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.h
++++ b/sound/soc/qcom/qdsp6/audioreach.h
+@@ -725,16 +725,32 @@ struct param_id_sp_vi_channel_map_cfg {
+ /* VI per-speaker calibration event, raised every frame in calibration mode */
+ #define EVENT_ID_VI_PER_SPKR_CALIBRATION	0x08001511
+ 
+-/* Calibration state, as reported by struct vi_per_spkr_calib_param.state */
+-#define VI_CALIBRATION_STATE_NORMAL_MODE	0 /* Not in calibration mode */
+-#define VI_CALIBRATION_STATE_INACTIVE		1 /* Port not started */
+-#define VI_CALIBRATION_STATE_WARM_UP		2 /* Warming up */
+-#define VI_CALIBRATION_STATE_IN_PROGRESS	3 /* Calibration running */
+-#define VI_CALIBRATION_STATE_SUCCESS		4 /* R0/T0 within range */
+-#define VI_CALIBRATION_STATE_FAILED		5 /* R0/T0 out of range */
+-#define VI_CALIBRATION_STATE_WAIT_FOR_VI	6 /* Waiting for V/I data */
+-#define VI_CALIBRATION_STATE_VI_WAIT_TIMEOUT	7 /* Timed out waiting for V/I */
+-#define VI_CALIBRATION_STATE_LOW_VI		8 /* V/I signal level too low */
++/**
++ * enum vi_calibration_state - Calibration state of one speaker
++ * @VI_CALIBRATION_STATE_INCORRECT_OP_MODE: Not in calibration operation mode
++ * @VI_CALIBRATION_STATE_INACTIVE: Port not started
++ * @VI_CALIBRATION_STATE_WARMUP: Warming up
++ * @VI_CALIBRATION_STATE_INPROGRESS: Calibration running
++ * @VI_CALIBRATION_STATE_SUCCESS: R0/T0 within range
++ * @VI_CALIBRATION_STATE_FAILED: R0/T0 out of range
++ * @VI_CALIBRATION_STATE_WAIT_FOR_VI: Waiting for the V/I level to rise
++ * @VI_CALIBRATION_STATE_VI_WAIT_TIMED_OUT: Gave up waiting for the V/I level
++ * @VI_CALIBRATION_STATE_LOW_VI: V/I level fell below the threshold mid-run
++ *
++ * Reported by struct vi_per_spkr_calib_param.state. The DSP chooses these
++ * values, so they are fixed and must not be renumbered.
++ */
++enum vi_calibration_state {
++	VI_CALIBRATION_STATE_INCORRECT_OP_MODE	= 0,
++	VI_CALIBRATION_STATE_INACTIVE		= 1,
++	VI_CALIBRATION_STATE_WARMUP		= 2,
++	VI_CALIBRATION_STATE_INPROGRESS		= 3,
++	VI_CALIBRATION_STATE_SUCCESS		= 4,
++	VI_CALIBRATION_STATE_FAILED		= 5,
++	VI_CALIBRATION_STATE_WAIT_FOR_VI	= 6,
++	VI_CALIBRATION_STATE_VI_WAIT_TIMED_OUT	= 7,
++	VI_CALIBRATION_STATE_LOW_VI		= 8,
++};
+ 
+ /**
+  * struct vi_per_spkr_calib_param - Per-speaker calibration result
+@@ -1098,6 +1114,9 @@ int audioreach_gain_set_vol_ctrl(struct q6apm *apm,
+ int audioreach_send_u32_param(struct q6apm_graph *graph,
+ 			      const struct audioreach_module *module,
+ 			      uint32_t param_id, uint32_t param_val);
++void audioreach_vi_calibration_event(struct device *dev,
++				     const struct event_id_vi_per_spkr_calibration *cali,
++				     u32 num_ch);
+ int audioreach_compr_set_param(struct q6apm_graph *graph,
+ 			       const struct audioreach_module_config *mcfg);
+ int audioreach_setup_push_pull(struct q6apm_graph *graph, phys_addr_t bphys,
+diff --git a/sound/soc/qcom/qdsp6/q6apm.c b/sound/soc/qcom/qdsp6/q6apm.c
+index 66efb6a10bf9..c410e2f6e6a3 100644
+--- a/sound/soc/qcom/qdsp6/q6apm.c
++++ b/sound/soc/qcom/qdsp6/q6apm.c
+@@ -562,24 +562,12 @@ int q6apm_get_hw_pointer(struct q6apm_graph *graph, int dir)
+ }
+ EXPORT_SYMBOL_GPL(q6apm_get_hw_pointer);
+ 
+-/*
+- * Convert a Q24 fixed-point value to its integer part, and to the first three
+- * decimal places of its fractional part.
+- */
+-static int q6apm_q24_to_int_frac(int32_t val, int *frac)
+-{
+-	*frac = (int)(((s64)(val & 0xffffff) * 1000) >> 24);
+-
+-	return val >> 24;
+-}
+-
+ static void q6apm_vi_calibration_event(struct device *dev,
+ 				       const struct apm_module_event *event,
+ 				       int payload_size)
+ {
+ 	const struct event_id_vi_per_spkr_calibration *cali;
+-	unsigned int num_ch, i;
+-	int r0_int, r0_frac;
++	u32 num_ch;
+ 
+ 	if (payload_size < 0 || payload_size < (int)(sizeof(*event) + sizeof(*cali))) {
+ 		dev_err(dev, "VI calibration event truncated (%d bytes)\n",
+@@ -591,27 +579,10 @@ static void q6apm_vi_calibration_event(struct device *dev,
+ 
+ 	/* Bound the array by the received payload, not by num_ch alone */
+ 	num_ch = (payload_size - sizeof(*event) - sizeof(*cali)) / sizeof(cali->cali_param[0]);
+-	num_ch = min_t(unsigned int, cali->num_ch, num_ch);
+-
+-	for (i = 0; i < num_ch; i++) {
+-		/* Only SUCCESS and FAILED carry a measured R0; both are worth reporting */
+-		switch (cali->cali_param[i].state) {
+-		case VI_CALIBRATION_STATE_SUCCESS:
+-			break;
+-		case VI_CALIBRATION_STATE_FAILED:
+-			dev_dbg(dev, "VI calibration channel %u failed, R0/T0 out of range\n", i);
+-			break;
+-		default:
+-			dev_dbg(dev, "VI calibration channel %u in state %u\n",
+-				i, cali->cali_param[i].state);
+-			continue;
+-		}
++	num_ch = min_t(u32, cali->num_ch, num_ch);
++	num_ch = min_t(u32, num_ch, MAX_SP_VI_SPEAKERS);
+ 
+-		r0_int = q6apm_q24_to_int_frac(cali->cali_param[i].r0_cali_q24, &r0_frac);
+-		/* Raised every frame, so keep it at debug level */
+-		dev_dbg(dev, "VI calibration channel %u: R0 %d.%03d ohms\n",
+-			i, r0_int, r0_frac);
+-	}
++	audioreach_vi_calibration_event(dev, cali, num_ch);
+ }
+ 
+ static int graph_callback(const struct gpr_resp_pkt *data, void *priv, int op)
+From d19fdc0e596c3d7bbb8678c9c33af4a0937df316 Mon Sep 17 00:00:00 2001
+From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:22 +0100
+Subject: [PATCH 12/23] ASoC: qcom: audioreach: make the speaker protection operation
+ mode configurable
+
+Add a speaker protection operation mode, Normal or Calibration, and use
+it for the VI configuration instead of always calibrating. The default
+is Normal.
+
+Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 33 +++++++++++++++++++++----------
+ sound/soc/qcom/qdsp6/audioreach.h |  2 ++
+ 2 files changed, 25 insertions(+), 10 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index eb317b704b54..7c15c91888b7 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -13,6 +13,8 @@
+ #include "q6apm.h"
+ #include "audioreach.h"
+ 
++static u32 sp_operation_mode;
++
+ enum sp_vi_cali_state {
+ 	SP_VI_CALI_IDLE,	/* Not calibrating */
+ 	SP_VI_CALI_RUNNING,	/* Events arriving, none decisive yet */
+@@ -1474,6 +1476,16 @@ static int audioreach_gain_set(struct q6apm_graph *graph,
+ 	return q6apm_send_cmd_sync(graph->apm, pkt, 0);
+ }
+ 
++u32 audioreach_get_sp_operation_mode(void)
++{
++	return READ_ONCE(sp_operation_mode);
++}
++
++void audioreach_set_sp_operation_mode(u32 mode)
++{
++	WRITE_ONCE(sp_operation_mode, mode);
++}
++
+ static bool sp_vi_cali_state_is_failure(u32 state)
+ {
+ 	return state == VI_CALIBRATION_STATE_FAILED ||
+@@ -1575,11 +1587,10 @@ void audioreach_vi_calibration_event(struct device *dev,
+ }
+ 
+ static int audioreach_speaker_protection(struct q6apm_graph *graph,
+-					 const struct audioreach_module *module,
+-					 uint32_t operation_mode)
++					 const struct audioreach_module *module)
+ {
+ 	return audioreach_send_u32_param(graph, module, PARAM_ID_SP_OP_MODE,
+-					 operation_mode);
++					 READ_ONCE(sp_operation_mode));
+ }
+ 
+ static int audioreach_register_events(struct q6apm_graph *graph,
+@@ -1624,6 +1635,7 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 					    const struct audioreach_module *module,
+ 					    const struct audioreach_module_config *mcfg)
+ {
++	u32 mode = READ_ONCE(sp_operation_mode);
+ 	u32 num_channels = mcfg->num_channels;
+ 	struct apm_module_sp_vi_op_mode_cfg *op_cfg;
+ 	struct apm_module_sp_vi_channel_map_cfg *cm_cfg;
+@@ -1647,11 +1659,13 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 		return -EINVAL;
+ 	}
+ 
+-	audioreach_arm_vi_calibration();
++	if (mode == PARAM_ID_SP_VI_OP_MODE_CALIBRATION) {
++		audioreach_arm_vi_calibration();
+ 
+-	rc = audioreach_register_events(graph, module);
+-	if (rc)
+-		return rc;
++		rc = audioreach_register_events(graph, module);
++		if (rc)
++			return rc;
++	}
+ 
+ 	op_sz = APM_SP_VI_OP_MODE_CFG_PSIZE(num_speakers);
+ 	/* Channel mapping for Isense and Vsense, thus twice number of speakers. */
+@@ -1675,7 +1689,7 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 
+ 	/* The DSP calls this field num_speakers for the VI module */
+ 	op_cfg->cfg.num_channels = num_speakers;
+-	op_cfg->cfg.operation_mode = PARAM_ID_SP_VI_OP_MODE_CALIBRATION;
++	op_cfg->cfg.operation_mode = mode;
+ 	p += op_sz;
+ 
+ 	cm_cfg = p;
+@@ -1766,8 +1780,7 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 		rc = audioreach_gapless_set_media_format(graph, module, cfg);
+ 		break;
+ 	case MODULE_ID_SPEAKER_PROTECTION:
+-		rc = audioreach_speaker_protection(graph, module,
+-						   PARAM_ID_SP_OP_MODE_CALIBRATION);
++		rc = audioreach_speaker_protection(graph, module);
+ 		if (!rc)
+ 			rc = audioreach_module_enable(graph, module, true);
+ 
+diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
+index 232faba6d83f..e30603674e37 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.h
++++ b/sound/soc/qcom/qdsp6/audioreach.h
+@@ -1114,6 +1114,8 @@ int audioreach_gain_set_vol_ctrl(struct q6apm *apm,
+ int audioreach_send_u32_param(struct q6apm_graph *graph,
+ 			      const struct audioreach_module *module,
+ 			      uint32_t param_id, uint32_t param_val);
++u32 audioreach_get_sp_operation_mode(void);
++void audioreach_set_sp_operation_mode(u32 mode);
+ void audioreach_vi_calibration_event(struct device *dev,
+ 				     const struct event_id_vi_per_spkr_calibration *cali,
+ 				     u32 num_ch);
+From 97c61089352b0d3581bce8e91382b874166dc947 Mon Sep 17 00:00:00 2001
+From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:23 +0100
+Subject: [PATCH 13/23] ASoC: qcom: audioreach: send cached R0/T0 to the VI module in
+ normal mode
+
+In normal mode the VI module needs each speaker's calibrated resistance
+and temperature, otherwise thermal protection has no reference.
+
+Send the stored values with PARAM_ID_SP_TH_VI_R0T0_CFG in normal mode
+and store the result of each successful calibration. Values written
+from userspace are range checked, and a graph whose speaker count does
+not match the stored set is refused instead of being partly configured.
+
+Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 170 ++++++++++++++++++++++++++++++
+ sound/soc/qcom/qdsp6/audioreach.h |  21 ++++
+ 2 files changed, 191 insertions(+)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index 7c15c91888b7..8706471e2a43 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -32,6 +32,15 @@ struct sp_vi_r0_result {
+ static struct sp_vi_r0_result sp_vi_r0;
+ static DEFINE_MUTEX(sp_vi_r0_lock);
+ 
++struct sp_vi_r0t0_cfg {
++	u32 num_ch;
++	s32 r0_cali_q24[MAX_SP_VI_SPEAKERS];
++	s16 t0_cali_q6[MAX_SP_VI_SPEAKERS];
++};
++
++static struct sp_vi_r0t0_cfg sp_vi_r0t0_cfg;
++static DEFINE_MUTEX(sp_vi_r0t0_cfg_lock);
++
+ /* SubGraph Config */
+ struct apm_sub_graph_data {
+ 	struct apm_sub_graph_cfg sub_graph_cfg;
+@@ -282,6 +291,15 @@ struct apm_module_sp_vi_channel_map_cfg {
+ 				sizeof(struct apm_module_sp_vi_channel_map_cfg) + \
+ 				(ch) * sizeof(uint32_t), 8)
+ 
++struct apm_module_sp_th_vi_r0t0_cfg {
++	struct apm_module_param_data param_data;
++	struct param_id_sp_th_vi_r0t0_cfg cfg;
++} __packed;
++
++#define APM_SP_TH_VI_R0T0_CFG_PSIZE(ch) ALIGN( \
++				sizeof(struct apm_module_sp_th_vi_r0t0_cfg) + \
++				(ch) * sizeof(struct vi_r0t0_cfg), 8)
++
+ static void *__audioreach_alloc_pkt(int payload_size, uint32_t opcode, uint32_t token,
+ 				    uint32_t src_port, uint32_t dest_port, bool has_cmd_hdr)
+ {
+@@ -1527,6 +1545,86 @@ static int sp_vi_q24_to_int_frac(s32 val, int *frac)
+ 	return val >> 24;
+ }
+ 
++#define SP_VI_R0_MIN_Q24	(1 << 22)		/* 0.25 ohm */
++#define SP_VI_R0_MAX_Q24	(64 << 24)		/* 64 ohms */
++
++#define SP_VI_T0_MIN_Q6		(-30 * 64)
++#define SP_VI_T0_MAX_Q6		(80 * 64)
++
++void audioreach_get_sp_vi_r0t0(long *vals, unsigned int count)
++{
++	unsigned int i;
++
++	memset(vals, 0, count * sizeof(*vals));
++
++	guard(mutex)(&sp_vi_r0t0_cfg_lock);
++	for (i = 0; i < sp_vi_r0t0_cfg.num_ch && 2 * i + 1 < count; i++) {
++		vals[2 * i] = sp_vi_r0t0_cfg.r0_cali_q24[i];
++		vals[2 * i + 1] = sp_vi_r0t0_cfg.t0_cali_q6[i];
++	}
++}
++
++int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int count)
++{
++	struct sp_vi_r0t0_cfg new = {};
++	unsigned int i, num_ch;
++
++	/* One R0 and one T0 per channel, so an odd count cannot be complete. */
++	if (!count || count % 2)
++		return -EINVAL;
++
++	num_ch = min(count / 2, (unsigned int)MAX_SP_VI_SPEAKERS);
++
++	/* A trailing all-zero pair is padding, as zero is not a plausible R0 */
++	while (num_ch && !vals[2 * (num_ch - 1)] && !vals[2 * (num_ch - 1) + 1])
++		num_ch--;
++
++	if (!num_ch) {
++		dev_err(dev, "SP R0T0 has no channels set\n");
++		return -EINVAL;
++	}
++
++	for (i = 0; i < num_ch; i++) {
++		long r0 = vals[2 * i];
++		long t0 = vals[2 * i + 1];
++		int r0_int, r0_frac;
++
++		if (r0 < SP_VI_R0_MIN_Q24 || r0 > SP_VI_R0_MAX_Q24) {
++			r0_int = sp_vi_q24_to_int_frac(r0, &r0_frac);
++			dev_err(dev, "Channel %u R0 %d.%03d ohms (Q24 %ld) out of range\n",
++				i, r0_int, r0_frac, r0);
++			return -ERANGE;
++		}
++
++		if (t0 < SP_VI_T0_MIN_Q6 || t0 > SP_VI_T0_MAX_Q6) {
++			dev_err(dev, "Channel %u T0 %ld.%03ld degC (Q6 %ld) out of range\n",
++				i, t0 / 64, abs((t0 % 64) * 1000 / 64), t0);
++			return -ERANGE;
++		}
++
++		new.r0_cali_q24[i] = r0;
++		new.t0_cali_q6[i] = t0;
++	}
++	new.num_ch = num_ch;
++
++	guard(mutex)(&sp_vi_r0t0_cfg_lock);
++
++	sp_vi_r0t0_cfg = new;
++
++	for (i = 0; i < num_ch; i++) {
++		int r0_int, r0_frac;
++
++		r0_int = sp_vi_q24_to_int_frac(new.r0_cali_q24[i], &r0_frac);
++		dev_info(dev, "SP channel %u: R0 %d.%03d ohms (Q24 %d), T0 %d.%03d degC (Q6 %d)\n",
++			 i, r0_int, r0_frac, new.r0_cali_q24[i],
++			 new.t0_cali_q6[i] / 64,
++			 abs((new.t0_cali_q6[i] % 64) * 1000 / 64),
++			 new.t0_cali_q6[i]);
++	}
++
++	return num_ch;
++}
++
+ void audioreach_vi_calibration_event(struct device *dev,
+ 				     const struct event_id_vi_per_spkr_calibration *cali,
+ 				     u32 num_ch)
+@@ -1583,6 +1681,14 @@ void audioreach_vi_calibration_event(struct device *dev,
+ 			 i, r0_int, r0_frac, sp_vi_r0.r0_cali_q24[i]);
+ 	}
+ 
++	/* Only a run where every speaker succeeded gives a usable R0/T0 set */
++	if (success) {
++		guard(mutex)(&sp_vi_r0t0_cfg_lock);
++		sp_vi_r0t0_cfg.num_ch = num_ch;
++		for (i = 0; i < num_ch; i++)
++			sp_vi_r0t0_cfg.r0_cali_q24[i] = cali->cali_param[i].r0_cali_q24;
++	}
++
+ 	dev_info(dev, "VI calibration complete: %s\n", success ? "success" : "failed");
+ }
+ 
+@@ -1725,6 +1831,70 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 
+ 	kfree(pkt);
+ 
++	if (rc)
++		return rc;
++
++	if (sp_operation_mode == PARAM_ID_SP_VI_OP_MODE_NORMAL) {
++		struct apm_module_sp_th_vi_r0t0_cfg *r0t0_cfg;
++		int r0t0_sz;
++
++		guard(mutex)(&sp_vi_r0t0_cfg_lock);
++
++		if (!sp_vi_r0t0_cfg.num_ch)
++			return 0;
++
++		if (sp_vi_r0t0_cfg.num_ch != num_speakers) {
++			dev_err(graph->dev,
++				"SP R0T0 is for %u speakers, graph has %u\n",
++				sp_vi_r0t0_cfg.num_ch, num_speakers);
++			return -EINVAL;
++		}
++
++		r0t0_sz = APM_SP_TH_VI_R0T0_CFG_PSIZE(sp_vi_r0t0_cfg.num_ch);
++		pkt = audioreach_alloc_apm_cmd_pkt(r0t0_sz, APM_CMD_SET_CFG, 0);
++		if (IS_ERR(pkt))
++			return PTR_ERR(pkt);
++
++		p = (void *)pkt + GPR_HDR_SIZE + APM_CMD_HDR_SIZE;
++
++		r0t0_cfg = p;
++		param_data = &r0t0_cfg->param_data;
++		param_data->module_instance_id = module->instance_id;
++		param_data->error_code = 0;
++		param_data->param_id = PARAM_ID_SP_TH_VI_R0T0_CFG;
++		param_data->param_size = r0t0_sz - APM_MODULE_PARAM_DATA_SIZE;
++
++		r0t0_cfg->cfg.num_ch = sp_vi_r0t0_cfg.num_ch;
++		for (i = 0; i < sp_vi_r0t0_cfg.num_ch; i++) {
++			r0t0_cfg->cfg.r0t0_cfg[i].r0_cali_q24 = sp_vi_r0t0_cfg.r0_cali_q24[i];
++			r0t0_cfg->cfg.r0t0_cfg[i].t0_cali_q6 = sp_vi_r0t0_cfg.t0_cali_q6[i];
++			r0t0_cfg->cfg.r0t0_cfg[i].reserved = 0;
++		}
++
++		rc = q6apm_send_cmd_sync(graph->apm, pkt, 0);
++
++		kfree(pkt);
++
++		if (rc) {
++			dev_err(graph->dev, "SP activation failed: %d\n", rc);
++			return rc;
++		}
++
++		/* Protection is now active on the DSP */
++		dev_info(graph->dev, "SP active in Normal mode (%u channels)\n",
++			 sp_vi_r0t0_cfg.num_ch);
++		for (i = 0; i < sp_vi_r0t0_cfg.num_ch; i++) {
++			int r0_int, r0_frac;
++
++			r0_int = sp_vi_q24_to_int_frac(sp_vi_r0t0_cfg.r0_cali_q24[i], &r0_frac);
++			dev_info(graph->dev,
++				 "  SP ch%u: R0 %d.%03d ohms, T0 %d.%03d degC\n",
++				 i, r0_int, r0_frac,
++				 sp_vi_r0t0_cfg.t0_cali_q6[i] / 64,
++				 abs((sp_vi_r0t0_cfg.t0_cali_q6[i] % 64) * 1000 / 64));
++		}
++	}
++
+ 	return rc;
+ }
+ 
+diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
+index e30603674e37..67a9d3c66fd4 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.h
++++ b/sound/soc/qcom/qdsp6/audioreach.h
+@@ -722,6 +722,25 @@ struct param_id_sp_vi_channel_map_cfg {
+ 	uint32_t channel_mapping[];
+ } __packed;
+ 
++#define PARAM_ID_SP_TH_VI_R0T0_CFG		0x080011f5
++
++/**
++ * struct vi_r0t0_cfg - Per-speaker calibrated R0/T0
++ * @r0_cali_q24: Calibrated DC resistance in ohms, Q24.
++ * @t0_cali_q6: Calibrated temperature in degrees C, Q6.
++ * @reserved: Padding, must be zero.
++ */
++struct vi_r0t0_cfg {
++	int32_t r0_cali_q24;
++	int16_t t0_cali_q6;
++	int16_t reserved;
++} __packed;
++
++struct param_id_sp_th_vi_r0t0_cfg {
++	uint32_t num_ch;
++	struct vi_r0t0_cfg r0t0_cfg[];
++} __packed;
++
+ /* VI per-speaker calibration event, raised every frame in calibration mode */
+ #define EVENT_ID_VI_PER_SPKR_CALIBRATION	0x08001511
+ 
+@@ -1116,6 +1135,8 @@ int audioreach_send_u32_param(struct q6apm_graph *graph,
+ 			      uint32_t param_id, uint32_t param_val);
+ u32 audioreach_get_sp_operation_mode(void);
+ void audioreach_set_sp_operation_mode(u32 mode);
++void audioreach_get_sp_vi_r0t0(long *vals, unsigned int count);
++int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int count);
+ void audioreach_vi_calibration_event(struct device *dev,
+ 				     const struct event_id_vi_per_spkr_calibration *cali,
+ 				     u32 num_ch);
+From 0221fd8d7b22bc63e31a3b9680b2039092ec8c38 Mon Sep 17 00:00:00 2001
+From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:24 +0100
+Subject: [PATCH 14/23] ASoC: qcom: audioreach: send static cfg blobs to speaker
+ protection modules
+
+The speaker protection modules need tuning parameters from the topology
+cfg blob, which is never sent to the DSP.
+
+Send it once the module is configured, in small SET_CFG commands split
+on parameter boundaries, with each payload padded to 8 bytes as the DSP
+expects. Every record is checked against the end of the blob, and a
+malformed blob is rejected. A blob not laid out as parameter records is
+sent whole.
+
+Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 139 ++++++++++++++++++++++++++++++
+ 1 file changed, 139 insertions(+)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index 8706471e2a43..089cc9dd76fc 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -1898,6 +1898,141 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 	return rc;
+ }
+ 
++/* Keep each SET_CFG small; a larger single parameter is sent on its own */
++#define AR_SP_CFG_MAX_CHUNK_BYTES	512
++
++static int audioreach_speaker_protection_send_chunk(struct q6apm_graph *graph,
++						    const char *tag,
++						    const void *data, int size,
++						    int chunk_idx)
++{
++	int rc;
++
++	struct gpr_pkt *pkt __free(kfree) = audioreach_alloc_apm_cmd_pkt(size, APM_CMD_SET_CFG, 0);
++	if (IS_ERR(pkt))
++		return PTR_ERR(pkt);
++
++	memcpy((void *)pkt + GPR_HDR_SIZE + APM_CMD_HDR_SIZE, data, size);
++
++	rc = q6apm_send_cmd_sync(graph->apm, pkt, 0);
++	if (rc)
++		dev_err(graph->dev, "%s cfg blob: chunk %d (%d bytes) failed: %d\n",
++			tag, chunk_idx, size, rc);
++	else
++		dev_dbg(graph->dev, "%s cfg blob: chunk %d (%d bytes) sent\n",
++			tag, chunk_idx, size);
++
++	return rc;
++}
++
++/*
++ * Walk the parameter records of a cfg blob. Each starts with the module's
++ * instance id and a param_size, followed by its payload and optional zero
++ * padding; a parameter smaller than a word may come without a payload word.
++ * Each record is checked against the end of the blob. With @dst, the records
++ * are copied there with their payload padded to 8 bytes, as the DSP expects.
++ * Returns the packed size, or -EINVAL if the blob is malformed.
++ */
++static int audioreach_sp_cfg_walk(const u32 *word, u32 num_words, u32 iid,
++				  u32 first, u32 *next, u8 *dst, u32 max_bytes)
++{
++	u32 pos = first, bytes = 0;
++
++	while (pos < num_words) {
++		u32 param_size, payload_words, avail, rec_bytes;
++
++		if (word[pos] != iid || num_words - pos < 4)
++			return -EINVAL;
++
++		param_size = word[pos + 2];
++		avail = (num_words - pos - 4) * sizeof(u32);
++		if (param_size < sizeof(u32) && avail && word[pos + 4] == iid) {
++			payload_words = 0;
++		} else {
++			if (param_size > avail)
++				return -EINVAL;
++			payload_words = DIV_ROUND_UP(param_size, sizeof(u32));
++		}
++
++		rec_bytes = APM_MODULE_PARAM_DATA_SIZE + ALIGN(param_size, 8);
++		if (bytes && bytes + rec_bytes > max_bytes)
++			break;
++
++		if (dst) {
++			memcpy(dst + bytes, &word[pos], APM_MODULE_PARAM_DATA_SIZE);
++			memset(dst + bytes + APM_MODULE_PARAM_DATA_SIZE, 0,
++			       rec_bytes - APM_MODULE_PARAM_DATA_SIZE);
++			memcpy(dst + bytes + APM_MODULE_PARAM_DATA_SIZE, &word[pos + 4],
++			       min(param_size, payload_words * (u32)sizeof(u32)));
++		}
++		bytes += rec_bytes;
++
++		pos += 4 + payload_words;
++		while (pos < num_words && !word[pos])
++			pos++;
++	}
++
++	if (next)
++		*next = pos;
++	return bytes;
++}
++
++static int audioreach_speaker_protection_send_static_cfg(struct q6apm_graph *graph,
++							 const struct audioreach_module *module,
++							 const char *tag)
++{
++	u32 size, num_words, pos = 0;
++	const u32 *word;
++	int total, rc = 0, chunk = 0;
++
++	if (!module->data || !module->data->size)
++		return 0;
++
++	size = le32_to_cpu(module->data->size);
++	word = (const u32 *)module->data->data;
++	num_words = size / sizeof(u32);
++
++	/* Not laid out as parameter records, so send it as the topology built it */
++	if (size % sizeof(u32) || !num_words || word[0] != module->instance_id)
++		return audioreach_speaker_protection_send_chunk(graph, tag, word, size, 0);
++
++	total = audioreach_sp_cfg_walk(word, num_words, module->instance_id, 0,
++				       NULL, NULL, U32_MAX);
++	if (total < 0) {
++		dev_err(graph->dev, "%s cfg blob is malformed\n", tag);
++		return total;
++	}
++
++	u8 *packed __free(kfree) = kmalloc(total, GFP_KERNEL);
++	if (!packed)
++		return -ENOMEM;
++
++	while (pos < num_words && !rc) {
++		int bytes = audioreach_sp_cfg_walk(word, num_words, module->instance_id,
++						   pos, &pos, packed,
++						   AR_SP_CFG_MAX_CHUNK_BYTES);
++		if (bytes <= 0)
++			return bytes ? bytes : -EINVAL;
++
++		rc = audioreach_speaker_protection_send_chunk(graph, tag, packed, bytes,
++							      chunk++);
++	}
++
++	return rc;
++}
++
++static int audioreach_speaker_protection_static_cfg(struct q6apm_graph *graph,
++						    const struct audioreach_module *module)
++{
++	return audioreach_speaker_protection_send_static_cfg(graph, module, "SP");
++}
++
++static int audioreach_speaker_protection_vi_static_cfg(struct q6apm_graph *graph,
++						       const struct audioreach_module *module)
++{
++	return audioreach_speaker_protection_send_static_cfg(graph, module, "VI");
++}
++
+ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 				const struct audioreach_module *module,
+ 				const struct audioreach_module_config *cfg)
+@@ -1951,12 +2086,16 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 		break;
+ 	case MODULE_ID_SPEAKER_PROTECTION:
+ 		rc = audioreach_speaker_protection(graph, module);
++		if (!rc)
++			rc = audioreach_speaker_protection_static_cfg(graph, module);
+ 		if (!rc)
+ 			rc = audioreach_module_enable(graph, module, true);
+ 
+ 		break;
+ 	case MODULE_ID_SPEAKER_PROTECTION_VI:
+ 		rc = audioreach_speaker_protection_vi(graph, module, cfg);
++		if (!rc)
++			rc = audioreach_speaker_protection_vi_static_cfg(graph, module);
+ 		if (!rc)
+ 			rc = audioreach_module_enable(graph, module, true);
+ 
+From 1f3279997b2e5282ccc50ec57ad87aa57a86950b Mon Sep 17 00:00:00 2001
+From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:25 +0100
+Subject: [PATCH 15/23] ASoC: qcom: audioreach: add speaker protection mixer controls
+
+Add topology mixer controls for the operation mode and the per-speaker
+R0/T0 pairs, so userspace can run a calibration and restore its result.
+
+Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ include/uapi/sound/snd_ar_tokens.h |  2 +
+ sound/soc/qcom/qdsp6/topology.c    | 80 ++++++++++++++++++++++++++++++
+ 2 files changed, 82 insertions(+)
+
+diff --git a/include/uapi/sound/snd_ar_tokens.h b/include/uapi/sound/snd_ar_tokens.h
+index 7ab8e11ca5c2..db62dc7f9c8a 100644
+--- a/include/uapi/sound/snd_ar_tokens.h
++++ b/include/uapi/sound/snd_ar_tokens.h
+@@ -57,6 +57,8 @@ enum ar_event_types {
+  */
+ #define SND_SOC_AR_TPLG_FE_BE_GRAPH_CTL_MIX	256
+ #define SND_SOC_AR_TPLG_VOL_CTL			257
++#define SND_SOC_AR_TPLG_SP_OP_MODE_CTL		258
++#define SND_SOC_AR_TPLG_SP_R0T0_CTL		259
+ 
+ /*
+  * %AR_TKN_U32_SUB_GRAPH_INSTANCE_ID:		Sub Graph Instance Id
+diff --git a/sound/soc/qcom/qdsp6/topology.c b/sound/soc/qcom/qdsp6/topology.c
+index 5de7e821e5f4..6316d1ab0675 100644
+--- a/sound/soc/qcom/qdsp6/topology.c
++++ b/sound/soc/qcom/qdsp6/topology.c
+@@ -1463,6 +1463,73 @@ static int audioreach_put_vol_ctrl_audio_mixer(struct snd_kcontrol *kcontrol,
+ 	return 1;
+ }
+ 
++static int audioreach_get_sp_op_mode(struct snd_kcontrol *kcontrol,
++				     struct snd_ctl_elem_value *ucontrol)
++{
++	ucontrol->value.enumerated.item[0] = audioreach_get_sp_operation_mode();
++
++	return 0;
++}
++
++static int audioreach_put_sp_op_mode(struct snd_kcontrol *kcontrol,
++				     struct snd_ctl_elem_value *ucontrol)
++{
++	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
++	unsigned int mode = ucontrol->value.enumerated.item[0];
++
++	if (mode >= e->items)
++		return -EINVAL;
++
++	if (mode == audioreach_get_sp_operation_mode())
++		return 0;
++
++	audioreach_set_sp_operation_mode(mode);
++
++	return 1;
++}
++
++/* One R0/T0 pair per speaker, written as a whole set */
++#define AR_SP_R0T0_CTL_COUNT	(MAX_SP_VI_SPEAKERS * 2)
++
++static int audioreach_info_sp_r0t0(struct snd_kcontrol *kcontrol,
++				   struct snd_ctl_elem_info *uinfo)
++{
++	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
++	uinfo->count = AR_SP_R0T0_CTL_COUNT;
++	uinfo->value.integer.min = S32_MIN;
++	uinfo->value.integer.max = S32_MAX;
++
++	return 0;
++}
++
++static int audioreach_get_sp_r0t0(struct snd_kcontrol *kcontrol,
++				  struct snd_ctl_elem_value *ucontrol)
++{
++	audioreach_get_sp_vi_r0t0(ucontrol->value.integer.value,
++				  AR_SP_R0T0_CTL_COUNT);
++
++	return 0;
++}
++
++static int audioreach_put_sp_r0t0(struct snd_kcontrol *kcontrol,
++				  struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *scomp = snd_kcontrol_chip(kcontrol);
++	long cur[AR_SP_R0T0_CTL_COUNT];
++	int ret;
++
++	audioreach_get_sp_vi_r0t0(cur, AR_SP_R0T0_CTL_COUNT);
++	if (!memcmp(cur, ucontrol->value.integer.value, sizeof(cur)))
++		return 0;
++
++	ret = audioreach_set_sp_vi_r0t0(scomp->dev, ucontrol->value.integer.value,
++					AR_SP_R0T0_CTL_COUNT);
++	if (ret < 0)
++		return ret;
++
++	return 1;
++}
++
+ static int audioreach_control_load_mix(struct snd_soc_component *scomp,
+ 				       struct snd_ar_control *scontrol,
+ 				       struct snd_kcontrol_new *kc,
+@@ -1503,6 +1570,7 @@ static int audioreach_control_load(struct snd_soc_component *scomp, int index,
+ {
+ 	struct snd_ar_control *scontrol;
+ 	struct soc_mixer_control *sm;
++	struct soc_enum *se;
+ 	struct snd_soc_dobj *dobj;
+ 	int ret = 0;
+ 
+@@ -1522,6 +1590,14 @@ static int audioreach_control_load(struct snd_soc_component *scomp, int index,
+ 		sm = (struct soc_mixer_control *)kc->private_value;
+ 		dobj = &sm->dobj;
+ 		break;
++	case SND_SOC_AR_TPLG_SP_R0T0_CTL:
++		sm = (struct soc_mixer_control *)kc->private_value;
++		dobj = &sm->dobj;
++		break;
++	case SND_SOC_AR_TPLG_SP_OP_MODE_CTL:
++		se = (struct soc_enum *)kc->private_value;
++		dobj = &se->dobj;
++		break;
+ 	default:
+ 		dev_warn(scomp->dev, "control type not supported %d:%d:%d\n",
+ 			 hdr->ops.get, hdr->ops.put, hdr->ops.info);
+@@ -1548,6 +1624,10 @@ static const struct snd_soc_tplg_kcontrol_ops audioreach_io_ops[] = {
+ 		audioreach_put_audio_mixer, snd_soc_info_volsw},
+ 	{SND_SOC_AR_TPLG_VOL_CTL, audioreach_get_vol_ctrl_audio_mixer,
+ 		audioreach_put_vol_ctrl_audio_mixer, snd_soc_info_volsw},
++	{SND_SOC_AR_TPLG_SP_OP_MODE_CTL, audioreach_get_sp_op_mode,
++		audioreach_put_sp_op_mode, snd_soc_info_enum_double},
++	{SND_SOC_AR_TPLG_SP_R0T0_CTL, audioreach_get_sp_r0t0,
++		audioreach_put_sp_r0t0, audioreach_info_sp_r0t0},
+ };
+ 
+ static const struct snd_soc_tplg_ops audioreach_tplg_ops = {
+From 8a958d11fbb5d556df96a597dc06b3f60a21c82d Mon Sep 17 00:00:00 2001
+From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:26 +0100
+Subject: [PATCH 16/23] ASoC: qcom: audioreach: pin SPEAKER_PROTECTION_VI media
+ format
+
+With multi_direction_codecs the speaker protection VI subgraph is
+opened with the playback stream's parameters, but the VI module and its
+codec DMA source always run at 8 kHz and 32 bits.
+
+Use those for the VI module and the codec DMA source in its subgraph,
+and keep the channel count, which follows the number of speakers.
+
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 29 +++++++++++++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index 089cc9dd76fc..d027c763eb25 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -2033,12 +2033,41 @@ static int audioreach_speaker_protection_vi_static_cfg(struct q6apm_graph *graph
+ 	return audioreach_speaker_protection_send_static_cfg(graph, module, "VI");
+ }
+ 
++static bool audioreach_sg_contains_sp_vi(const struct audioreach_sub_graph *sg)
++{
++	const struct audioreach_container *c;
++	const struct audioreach_module *m;
++
++	if (!sg)
++		return false;
++
++	list_for_each_entry(c, &sg->container_list, node)
++		list_for_each_entry(m, &c->modules_list, node)
++			if (m->module_id == MODULE_ID_SPEAKER_PROTECTION_VI)
++				return true;
++
++	return false;
++}
++
+ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 				const struct audioreach_module *module,
+ 				const struct audioreach_module_config *cfg)
+ {
++	struct audioreach_module_config sp_vi_cfg;
+ 	int rc;
+ 
++	/* The VI module and its codec DMA source always run at 8 kHz, S32_LE */
++	if (module->module_id == MODULE_ID_SPEAKER_PROTECTION_VI ||
++	    (module->module_id == MODULE_ID_CODEC_DMA_SOURCE &&
++	     audioreach_sg_contains_sp_vi(module->container ?
++					  module->container->sub_graph : NULL))) {
++		sp_vi_cfg = *cfg;
++		sp_vi_cfg.sample_rate = 8000;
++		sp_vi_cfg.bit_width = 32;
++		sp_vi_cfg.bits_per_sample = 32;
++		cfg = &sp_vi_cfg;
++	}
++
+ 	switch (module->module_id) {
+ 	case MODULE_ID_DATA_LOGGING:
+ 		rc = audioreach_module_enable(graph, module, true);
+From 0a90147e8a7caa44465dfdffe58043995d0262ef Mon Sep 17 00:00:00 2001
+From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:27 +0100
+Subject: [PATCH 17/23] ASoC: qcom: audioreach: add live speaker temperature (T0)
+ readback
+
+A calibration needs each speaker's die temperature when R0 is measured,
+so that the R0/T0 pair given back to the DSP is consistent.
+
+Let the machine driver register the speakers' thermal zones in VI
+channel order with audioreach_sp_register_speaker_map(), and expose
+their temperatures in Q6 format as a read-only "Speaker Protection T0"
+control. Record T0 with R0 when a calibration completes. A slot that
+cannot be read reports 0.
+
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 65 ++++++++++++++++++++++++++++++-
+ sound/soc/qcom/qdsp6/audioreach.h |  5 +++
+ sound/soc/qcom/qdsp6/q6apm-dai.c  |  7 ++++
+ sound/soc/qcom/qdsp6/topology.c   | 41 +++++++++++++++++++
+ 4 files changed, 116 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index d027c763eb25..f05033cc3f7d 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -5,6 +5,7 @@
+ #include <linux/mutex.h>
+ #include <linux/slab.h>
+ #include <linux/soc/qcom/apr.h>
++#include <linux/thermal.h>
+ #include <sound/soc.h>
+ #include <sound/soc-dai.h>
+ #include <sound/pcm.h>
+@@ -41,6 +42,13 @@ struct sp_vi_r0t0_cfg {
+ static struct sp_vi_r0t0_cfg sp_vi_r0t0_cfg;
+ static DEFINE_MUTEX(sp_vi_r0t0_cfg_lock);
+ 
++/* Speakers' thermal zones in VI channel order, set by the machine driver */
++static struct {
++	struct thermal_zone_device	*tz[MAX_SP_VI_SPEAKERS];
++	unsigned int			 num;
++} sp_speaker_map;
++static DEFINE_MUTEX(sp_speaker_map_lock);
++
+ /* SubGraph Config */
+ struct apm_sub_graph_data {
+ 	struct apm_sub_graph_cfg sub_graph_cfg;
+@@ -1564,6 +1572,50 @@ void audioreach_get_sp_vi_r0t0(long *vals, unsigned int count)
+ 	}
+ }
+ 
++int audioreach_sp_register_speaker_map(struct thermal_zone_device * const *tzs,
++				       unsigned int num)
++{
++	unsigned int i;
++
++	if (num > MAX_SP_VI_SPEAKERS)
++		return -EINVAL;
++
++	guard(mutex)(&sp_speaker_map_lock);
++
++	for (i = 0; i < num; i++)
++		sp_speaker_map.tz[i] = tzs[i];
++	for (; i < MAX_SP_VI_SPEAKERS; i++)
++		sp_speaker_map.tz[i] = NULL;
++	sp_speaker_map.num = num;
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(audioreach_sp_register_speaker_map);
++
++/* Read each speaker's T0 in Q6 (degC * 64), 0 if its zone cannot be read */
++int audioreach_get_sp_vi_t0(long *vals, unsigned int count)
++{
++	unsigned int i, n;
++
++	guard(mutex)(&sp_speaker_map_lock);
++
++	n = min(count, sp_speaker_map.num);
++	for (i = 0; i < n; i++) {
++		int mdeg;
++
++		if (sp_speaker_map.tz[i] &&
++		    !thermal_zone_get_temp(sp_speaker_map.tz[i], &mdeg))
++			vals[i] = ((s64)mdeg * 64) / 1000;
++		else
++			vals[i] = 0;
++	}
++	for (; i < count; i++)
++		vals[i] = 0;
++
++	return n;
++}
++EXPORT_SYMBOL_GPL(audioreach_get_sp_vi_t0);
++
+ int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int count)
+ {
+ 	struct sp_vi_r0t0_cfg new = {};
+@@ -1629,6 +1681,7 @@ void audioreach_vi_calibration_event(struct device *dev,
+ 				     const struct event_id_vi_per_spkr_calibration *cali,
+ 				     u32 num_ch)
+ {
++	long t0_live[MAX_SP_VI_SPEAKERS];
+ 	bool decisive = true;
+ 	bool success = true;
+ 	unsigned int i;
+@@ -1681,12 +1734,20 @@ void audioreach_vi_calibration_event(struct device *dev,
+ 			 i, r0_int, r0_frac, sp_vi_r0.r0_cali_q24[i]);
+ 	}
+ 
+-	/* Only a run where every speaker succeeded gives a usable R0/T0 set */
++	/*
++	 * Only a run where every speaker succeeded gives a usable R0/T0 set.
++	 * The DSP reports only R0, so pair it with the speakers' last T0
++	 * reading; a zone that cannot be read gives T0 = 0.
++	 */
+ 	if (success) {
++		audioreach_get_sp_vi_t0(t0_live, num_ch);
++
+ 		guard(mutex)(&sp_vi_r0t0_cfg_lock);
+ 		sp_vi_r0t0_cfg.num_ch = num_ch;
+-		for (i = 0; i < num_ch; i++)
++		for (i = 0; i < num_ch; i++) {
+ 			sp_vi_r0t0_cfg.r0_cali_q24[i] = cali->cali_param[i].r0_cali_q24;
++			sp_vi_r0t0_cfg.t0_cali_q6[i] = (s16)t0_live[i];
++		}
+ 	}
+ 
+ 	dev_info(dev, "VI calibration complete: %s\n", success ? "success" : "failed");
+diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
+index 67a9d3c66fd4..7345b6d15f58 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.h
++++ b/sound/soc/qcom/qdsp6/audioreach.h
+@@ -8,6 +8,7 @@
+ #include <sound/soc.h>
+ struct q6apm;
+ struct q6apm_graph;
++struct thermal_zone_device;
+ 
+ /* Module IDs */
+ #define MODULE_ID_WR_SHARED_MEM_EP	0x07001000
+@@ -1137,6 +1138,10 @@ u32 audioreach_get_sp_operation_mode(void);
+ void audioreach_set_sp_operation_mode(u32 mode);
+ void audioreach_get_sp_vi_r0t0(long *vals, unsigned int count);
+ int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int count);
++int audioreach_sp_register_speaker_map(struct thermal_zone_device * const *tzs,
++				       unsigned int num);
++int audioreach_get_sp_vi_t0(long *vals, unsigned int count);
++int audioreach_add_sp_telemetry_controls(struct snd_soc_component *component);
+ void audioreach_vi_calibration_event(struct device *dev,
+ 				     const struct event_id_vi_per_spkr_calibration *cali,
+ 				     u32 num_ch);
+diff --git a/sound/soc/qcom/qdsp6/q6apm-dai.c b/sound/soc/qcom/qdsp6/q6apm-dai.c
+index 46f2cde33413..56c4c1009cf3 100644
+--- a/sound/soc/qcom/qdsp6/q6apm-dai.c
++++ b/sound/soc/qcom/qdsp6/q6apm-dai.c
+@@ -20,6 +20,7 @@
+ #include <sound/soc-dapm.h>
+ #include <asm/div64.h>
+ #include <asm/dma.h>
++#include "audioreach.h"
+ #include "q6apm.h"
+ 
+ #define DRV_NAME "q6apm-dai"
+@@ -1173,8 +1174,14 @@ static const struct snd_compress_ops q6apm_dai_compress_ops = {
+ 	.copy		= q6apm_compr_copy,
+ };
+ 
++static int q6apm_dai_component_probe(struct snd_soc_component *component)
++{
++	return audioreach_add_sp_telemetry_controls(component);
++}
++
+ static const struct snd_soc_component_driver q6apm_fe_dai_component = {
+ 	.name		= DRV_NAME,
++	.probe		= q6apm_dai_component_probe,
+ 	.open		= q6apm_dai_open,
+ 	.close		= q6apm_dai_close,
+ 	.prepare	= q6apm_dai_prepare,
+diff --git a/sound/soc/qcom/qdsp6/topology.c b/sound/soc/qcom/qdsp6/topology.c
+index 6316d1ab0675..8bc681a633d8 100644
+--- a/sound/soc/qcom/qdsp6/topology.c
++++ b/sound/soc/qcom/qdsp6/topology.c
+@@ -1530,6 +1530,47 @@ static int audioreach_put_sp_r0t0(struct snd_kcontrol *kcontrol,
+ 	return 1;
+ }
+ 
++/* Live T0 per speaker in Q6 (degC * 64), 0 if it cannot be read */
++static int audioreach_info_sp_t0(struct snd_kcontrol *kcontrol,
++				 struct snd_ctl_elem_info *uinfo)
++{
++	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
++	uinfo->count = MAX_SP_VI_SPEAKERS;
++	uinfo->value.integer.min = S32_MIN;
++	uinfo->value.integer.max = S32_MAX;
++
++	return 0;
++}
++
++static int audioreach_get_sp_t0(struct snd_kcontrol *kcontrol,
++				struct snd_ctl_elem_value *ucontrol)
++{
++	audioreach_get_sp_vi_t0(ucontrol->value.integer.value,
++				MAX_SP_VI_SPEAKERS);
++
++	return 0;
++}
++
++static const struct snd_kcontrol_new audioreach_sp_telemetry_controls[] = {
++	{
++		.iface	= SNDRV_CTL_ELEM_IFACE_MIXER,
++		.name	= "Speaker Protection T0",
++		.access	= SNDRV_CTL_ELEM_ACCESS_READ |
++			  SNDRV_CTL_ELEM_ACCESS_VOLATILE,
++		.info	= audioreach_info_sp_t0,
++		.get	= audioreach_get_sp_t0,
++	},
++};
++
++/* Kept apart from the topology SP controls, so FEs have them without it */
++int audioreach_add_sp_telemetry_controls(struct snd_soc_component *component)
++{
++	return snd_soc_add_component_controls(component,
++					      audioreach_sp_telemetry_controls,
++					      ARRAY_SIZE(audioreach_sp_telemetry_controls));
++}
++EXPORT_SYMBOL_GPL(audioreach_add_sp_telemetry_controls);
++
+ static int audioreach_control_load_mix(struct snd_soc_component *scomp,
+ 				       struct snd_ar_control *scontrol,
+ 				       struct snd_kcontrol_new *kc,
+From f06dddac930507f95bd6bcf0ff6c4af01f00acd4 Mon Sep 17 00:00:00 2001
+From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:28 +0100
+Subject: [PATCH 18/23] ASoC: qcom: audioreach: add speaker protection calibration
+ state control
+
+Add a read-only "Speaker Protection Calibration State" control with
+each speaker's last calibration state, so userspace can follow a run.
+
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 51 +++++++++++++++++++++++++++++++
+ sound/soc/qcom/qdsp6/audioreach.h |  2 ++
+ sound/soc/qcom/qdsp6/q6apm.c      | 15 ++++++++-
+ sound/soc/qcom/qdsp6/topology.c   | 18 +++++++++++
+ 4 files changed, 85 insertions(+), 1 deletion(-)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index f05033cc3f7d..3eba0a9a0372 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -21,6 +21,7 @@ enum sp_vi_cali_state {
+ 	SP_VI_CALI_RUNNING,	/* Events arriving, none decisive yet */
+ 	SP_VI_CALI_FAILED,	/* Run finished, no usable R0 */
+ 	SP_VI_CALI_SUCCESS,	/* Run finished, @r0_cali_q24 valid */
++	SP_VI_CALI_ABORTED,	/* Graph stopped before the run finished */
+ };
+ 
+ struct sp_vi_r0_result {
+@@ -28,6 +29,8 @@ struct sp_vi_r0_result {
+ 	u32 num_ch;
+ 	s32 r0_cali_q24[MAX_SP_VI_SPEAKERS];
+ 	u32 seen_states[MAX_SP_VI_SPEAKERS];
++	/* Last calibration state per speaker (enum vi_calibration_state) */
++	u32 last_state[MAX_SP_VI_SPEAKERS];
+ };
+ 
+ static struct sp_vi_r0_result sp_vi_r0;
+@@ -1616,6 +1619,21 @@ int audioreach_get_sp_vi_t0(long *vals, unsigned int count)
+ }
+ EXPORT_SYMBOL_GPL(audioreach_get_sp_vi_t0);
+ 
++/* Latest calibration state per speaker, 0 before any event */
++int audioreach_get_sp_vi_cal_state(long *vals, unsigned int count)
++{
++	unsigned int i;
++
++	guard(mutex)(&sp_vi_r0_lock);
++
++	count = min(count, MAX_SP_VI_SPEAKERS);
++	for (i = 0; i < count; i++)
++		vals[i] = sp_vi_r0.last_state[i];
++
++	return count;
++}
++EXPORT_SYMBOL_GPL(audioreach_get_sp_vi_cal_state);
++
+ int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int count)
+ {
+ 	struct sp_vi_r0t0_cfg new = {};
+@@ -1695,6 +1713,8 @@ void audioreach_vi_calibration_event(struct device *dev,
+ 	for (i = 0; i < num_ch; i++) {
+ 		u32 state = cali->cali_param[i].state;
+ 
++		sp_vi_r0.last_state[i] = state;
++
+ 		if (sp_vi_cali_state_is_failure(state))
+ 			success = false;
+ 		else if (!sp_vi_cali_state_is_terminal(state))
+@@ -1753,6 +1773,37 @@ void audioreach_vi_calibration_event(struct device *dev,
+ 	dev_info(dev, "VI calibration complete: %s\n", success ? "success" : "failed");
+ }
+ 
++/* A run cut short never reports a final state, close it out */
++void audioreach_vi_calibration_abort(struct device *dev)
++{
++	unsigned int i;
++
++	guard(mutex)(&sp_vi_r0_lock);
++
++	if (sp_vi_r0.state != SP_VI_CALI_RUNNING)
++		return;
++
++	sp_vi_r0.state = SP_VI_CALI_ABORTED;
++
++	for (i = 0; i < MAX_SP_VI_SPEAKERS; i++) {
++		u32 state = sp_vi_r0.last_state[i];
++
++		/* Slot never reported: not part of this run */
++		if (!sp_vi_r0.seen_states[i])
++			continue;
++
++		if (sp_vi_cali_state_is_terminal(state))
++			continue;
++
++		dev_info(dev, "VI calibration channel %u: aborted while %s\n",
++			 i, sp_vi_cali_state_name(state));
++		sp_vi_r0.last_state[i] = VI_CALIBRATION_STATE_INACTIVE;
++	}
++
++	dev_info(dev, "VI calibration aborted: graph stopped before the DSP finished\n");
++}
++EXPORT_SYMBOL_GPL(audioreach_vi_calibration_abort);
++
+ static int audioreach_speaker_protection(struct q6apm_graph *graph,
+ 					 const struct audioreach_module *module)
+ {
+diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
+index 7345b6d15f58..6a08f52b7786 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.h
++++ b/sound/soc/qcom/qdsp6/audioreach.h
+@@ -1141,10 +1141,12 @@ int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int
+ int audioreach_sp_register_speaker_map(struct thermal_zone_device * const *tzs,
+ 				       unsigned int num);
+ int audioreach_get_sp_vi_t0(long *vals, unsigned int count);
++int audioreach_get_sp_vi_cal_state(long *vals, unsigned int count);
+ int audioreach_add_sp_telemetry_controls(struct snd_soc_component *component);
+ void audioreach_vi_calibration_event(struct device *dev,
+ 				     const struct event_id_vi_per_spkr_calibration *cali,
+ 				     u32 num_ch);
++void audioreach_vi_calibration_abort(struct device *dev);
+ int audioreach_compr_set_param(struct q6apm_graph *graph,
+ 			       const struct audioreach_module_config *mcfg);
+ int audioreach_setup_push_pull(struct q6apm_graph *graph, phys_addr_t bphys,
+diff --git a/sound/soc/qcom/qdsp6/q6apm.c b/sound/soc/qcom/qdsp6/q6apm.c
+index c410e2f6e6a3..35daf763287c 100644
+--- a/sound/soc/qcom/qdsp6/q6apm.c
++++ b/sound/soc/qcom/qdsp6/q6apm.c
+@@ -815,10 +815,19 @@ struct q6apm_graph *q6apm_graph_open(struct device *dev, q6apm_cb cb,
+ }
+ EXPORT_SYMBOL_GPL(q6apm_graph_open);
+ 
++static void q6apm_graph_abort_vi_calibration(struct q6apm_graph *graph)
++{
++	if (q6apm_find_module_by_mid(graph, MODULE_ID_SPEAKER_PROTECTION_VI))
++		audioreach_vi_calibration_abort(graph->dev);
++}
++
+ int q6apm_graph_close(struct q6apm_graph *graph)
+ {
+ 	struct audioreach_graph *ar_graph = graph->ar_graph;
+ 
++	/* Covers a graph closed without ever being started, e.g. on prepare failure */
++	q6apm_graph_abort_vi_calibration(graph);
++
+ 	graph->ar_graph = NULL;
+ 	kref_put(&ar_graph->refcount, q6apm_put_audioreach_graph);
+ 	gpr_free_port(graph->port);
+@@ -854,6 +863,7 @@ EXPORT_SYMBOL_GPL(q6apm_graph_start);
+ int q6apm_graph_stop(struct q6apm_graph *graph)
+ {
+ 	struct audioreach_graph *ar_graph = graph->ar_graph;
++	int ret;
+ 
+ 	if (ar_graph->start_count == 0)
+ 		return 0;
+@@ -861,7 +871,10 @@ int q6apm_graph_stop(struct q6apm_graph *graph)
+ 	if (--ar_graph->start_count > 0)
+ 		return 0;
+ 
+-	return audioreach_graph_mgmt_cmd(ar_graph, APM_CMD_GRAPH_STOP);
++	ret = audioreach_graph_mgmt_cmd(ar_graph, APM_CMD_GRAPH_STOP);
++	q6apm_graph_abort_vi_calibration(graph);
++
++	return ret;
+ }
+ EXPORT_SYMBOL_GPL(q6apm_graph_stop);
+ 
+diff --git a/sound/soc/qcom/qdsp6/topology.c b/sound/soc/qcom/qdsp6/topology.c
+index 8bc681a633d8..75381d9a1435 100644
+--- a/sound/soc/qcom/qdsp6/topology.c
++++ b/sound/soc/qcom/qdsp6/topology.c
+@@ -1551,6 +1551,15 @@ static int audioreach_get_sp_t0(struct snd_kcontrol *kcontrol,
+ 	return 0;
+ }
+ 
++static int audioreach_get_sp_cal_state(struct snd_kcontrol *kcontrol,
++				       struct snd_ctl_elem_value *ucontrol)
++{
++	audioreach_get_sp_vi_cal_state(ucontrol->value.integer.value,
++				       MAX_SP_VI_SPEAKERS);
++
++	return 0;
++}
++
+ static const struct snd_kcontrol_new audioreach_sp_telemetry_controls[] = {
+ 	{
+ 		.iface	= SNDRV_CTL_ELEM_IFACE_MIXER,
+@@ -1560,6 +1569,15 @@ static const struct snd_kcontrol_new audioreach_sp_telemetry_controls[] = {
+ 		.info	= audioreach_info_sp_t0,
+ 		.get	= audioreach_get_sp_t0,
+ 	},
++	{
++		.iface	= SNDRV_CTL_ELEM_IFACE_MIXER,
++		.name	= "Speaker Protection Calibration State",
++		.access	= SNDRV_CTL_ELEM_ACCESS_READ |
++			  SNDRV_CTL_ELEM_ACCESS_VOLATILE,
++		/* Last calibration state per speaker (enum vi_calibration_state) */
++		.info	= audioreach_info_sp_t0,
++		.get	= audioreach_get_sp_cal_state,
++	},
+ };
+ 
+ /* Kept apart from the topology SP controls, so FEs have them without it */
+From ece41d0a609428e614294872fbc8eb4ea76f1290 Mon Sep 17 00:00:00 2001
+From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:29 +0100
+Subject: [PATCH 19/23] ASoC: qcom: audioreach: keep the last VI calibration result
+ until the DSP reports
+
+Preparing a VI graph in calibration mode cleared the previous result
+straight away. A graph prepared and stopped before the DSP reports, for
+example by a sound server probing the PCM after a calibration, wiped a
+successful result.
+
+Only mark the run pending when arming, and drop the previous result
+when the first event of the new run arrives.
+
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 25 ++++++++++++++++++++-----
+ 1 file changed, 20 insertions(+), 5 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index 3eba0a9a0372..e996be54c42e 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -25,6 +25,8 @@ enum sp_vi_cali_state {
+ };
+ 
+ struct sp_vi_r0_result {
++	/* Set when a calibration run is armed, cleared when it ends */
++	bool armed;
+ 	enum sp_vi_cali_state state;
+ 	u32 num_ch;
+ 	s32 r0_cali_q24[MAX_SP_VI_SPEAKERS];
+@@ -1707,9 +1709,16 @@ void audioreach_vi_calibration_event(struct device *dev,
+ 
+ 	guard(mutex)(&sp_vi_r0_lock);
+ 
+-	if (sp_vi_r0.state != SP_VI_CALI_RUNNING)
++	if (!sp_vi_r0.armed)
+ 		return;
+ 
++	/* First event of this run: drop the previous result */
++	if (!memchr_inv(sp_vi_r0.seen_states, 0, sizeof(sp_vi_r0.seen_states))) {
++		sp_vi_r0.state = SP_VI_CALI_RUNNING;
++		sp_vi_r0.num_ch = 0;
++		memset(sp_vi_r0.r0_cali_q24, 0, sizeof(sp_vi_r0.r0_cali_q24));
++	}
++
+ 	for (i = 0; i < num_ch; i++) {
+ 		u32 state = cali->cali_param[i].state;
+ 
+@@ -1731,6 +1740,7 @@ void audioreach_vi_calibration_event(struct device *dev,
+ 	if (!decisive)
+ 		return;
+ 
++	sp_vi_r0.armed = false;
+ 	sp_vi_r0.state = success ? SP_VI_CALI_SUCCESS : SP_VI_CALI_FAILED;
+ 	sp_vi_r0.num_ch = num_ch;
+ 
+@@ -1780,7 +1790,13 @@ void audioreach_vi_calibration_abort(struct device *dev)
+ 
+ 	guard(mutex)(&sp_vi_r0_lock);
+ 
+-	if (sp_vi_r0.state != SP_VI_CALI_RUNNING)
++	if (!sp_vi_r0.armed)
++		return;
++
++	sp_vi_r0.armed = false;
++
++	/* The DSP never reported on this run: keep the previous result */
++	if (!memchr_inv(sp_vi_r0.seen_states, 0, sizeof(sp_vi_r0.seen_states)))
+ 		return;
+ 
+ 	sp_vi_r0.state = SP_VI_CALI_ABORTED;
+@@ -1844,9 +1860,8 @@ static void audioreach_arm_vi_calibration(void)
+ {
+ 	guard(mutex)(&sp_vi_r0_lock);
+ 
+-	sp_vi_r0 = (struct sp_vi_r0_result){
+-		.state = SP_VI_CALI_RUNNING,
+-	};
++	sp_vi_r0.armed = true;
++	memset(sp_vi_r0.seen_states, 0, sizeof(sp_vi_r0.seen_states));
+ }
+ 
+ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+From b0aca3c55a4071a21429fe07db34e7b8aae53b07 Mon Sep 17 00:00:00 2001
+From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:30 +0100
+Subject: [PATCH 20/23] ASoC: qcom: x1e80100: carry WSA VI feedback on the WSA
+ Playback BE link
+
+Speaker protection needs the WSA V/I sense capture running whenever the
+speakers play.
+
+Set multi_direction_codecs on the WSA Playback link so it can carry the
+VI codec DAIs, with a params fixup for their 8 kHz, 32-bit format. The
+core's capture stream events for such links power the VI widgets.
+Nothing changes until the DT adds the VI DAIs to the link.
+
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/qcom/x1e80100.c | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
+index 7eeb32ada7fa..466245dd8644 100644
+--- a/sound/soc/qcom/x1e80100.c
++++ b/sound/soc/qcom/x1e80100.c
+@@ -6,6 +6,7 @@
+ #include <linux/platform_device.h>
+ #include <linux/soundwire/sdw.h>
+ #include <sound/pcm.h>
++#include <sound/pcm_params.h>
+ #include <sound/jack.h>
+ #include <sound/soc.h>
+ #include <sound/soc-dapm.h>
+@@ -68,6 +69,25 @@ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
+ 	return qcom_snd_wcd_jack_setup(rtd, &data->jack, &data->jack_setup);
+ }
+ 
++/* VI codec DAIs on the WSA playback link run at 8 kHz, S32_LE */
++static int x1e80100_wsa_vi_params_fixup(struct snd_soc_pcm_runtime *rtd,
++					struct snd_pcm_hw_params *params,
++					int stream)
++{
++	struct snd_interval *rate =
++		hw_param_interval(params, SNDRV_PCM_HW_PARAM_RATE);
++	struct snd_mask *fmt =
++		hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT);
++
++	if (stream != SNDRV_PCM_STREAM_CAPTURE)
++		return 0;
++
++	rate->min = rate->max = 8000;
++	snd_mask_none(fmt);
++	snd_mask_set_format(fmt, SNDRV_PCM_FORMAT_S32_LE);
++	return 0;
++}
++
+ static int x1e80100_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
+ 				     struct snd_pcm_hw_params *params)
+ {
+@@ -175,6 +195,13 @@ static void x1e80100_add_be_ops(struct snd_soc_card *card)
+ 			link->be_hw_params_fixup = x1e80100_be_hw_params_fixup;
+ 			link->ops = &x1e80100_be_ops;
+ 		}
++
++		/* The WSA playback link also carries the VI codec DAIs */
++		if (link->id == WSA_CODEC_DMA_RX_0) {
++			link->multi_direction_codecs = 1;
++			link->multi_direction_params_fixup =
++				x1e80100_wsa_vi_params_fixup;
++		}
+ 	}
+ }
+ 
+From 0d5f221ddcf7920dbc0ffcdde87b9f8a6e738851 Mon Sep 17 00:00:00 2001
+From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:31 +0100
+Subject: [PATCH 21/23] ASoC: qcom: x1e80100: register WSA speaker thermal zones for
+ speaker protection
+
+Look up the thermal zone of each WSA884x VI DAI on the WSA Playback
+link, in DT order, and register them with
+audioreach_sp_register_speaker_map() for the "Speaker Protection T0"
+control. A missing zone is logged and leaves its slot reading 0. The
+map is cleared when the link is torn down.
+
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ sound/soc/qcom/x1e80100.c | 54 +++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 54 insertions(+)
+
+diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
+index 466245dd8644..014f803f6891 100644
+--- a/sound/soc/qcom/x1e80100.c
++++ b/sound/soc/qcom/x1e80100.c
+@@ -5,6 +5,7 @@
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ #include <linux/soundwire/sdw.h>
++#include <linux/thermal.h>
+ #include <sound/pcm.h>
+ #include <sound/pcm_params.h>
+ #include <sound/jack.h>
+@@ -12,6 +13,7 @@
+ #include <sound/soc-dapm.h>
+ 
+ #include "common.h"
++#include "qdsp6/audioreach.h"
+ #include "qdsp6/q6afe.h"
+ #include "qdsp6/q6dsp-common.h"
+ #include "sdw.h"
+@@ -24,6 +26,55 @@ struct x1e80100_snd_data {
+ 	bool jack_setup;
+ };
+ 
++/*
++ * Register the thermal zones of the link's wsa884x VI DAIs, in DT order,
++ * which is the VI channel order.
++ */
++static void x1e80100_register_sp_speakers(struct snd_soc_pcm_runtime *rtd)
++{
++	struct thermal_zone_device *tzs[MAX_SP_VI_SPEAKERS];
++	struct snd_soc_dai *codec_dai;
++	unsigned int num = 0;
++	int i;
++
++	for_each_rtd_codec_dais(rtd, i, codec_dai) {
++		struct snd_soc_component *component = codec_dai->component;
++		struct thermal_zone_device *tz;
++		struct sdw_slave *slave;
++		char tz_name[THERMAL_NAME_LENGTH];
++
++		if (strcmp(codec_dai->name, "VI"))
++			continue;
++		if (!component || !component->dev)
++			continue;
++		if (num >= ARRAY_SIZE(tzs))
++			break;
++
++		/* The name wsa884x registers its thermal zone under */
++		slave = dev_to_sdw_dev(component->dev);
++		scnprintf(tz_name, sizeof(tz_name), "wsa-%d-%u",
++			  slave->bus->id, slave->id.unique_id);
++		tz = thermal_zone_get_zone_by_name(tz_name);
++		if (IS_ERR(tz)) {
++			dev_warn(rtd->dev,
++				 "no thermal zone '%s' for %s (%ld); SP T0 kcontrol will read 0 for this slot\n",
++				 tz_name, dev_name(component->dev),
++				 PTR_ERR(tz));
++			tz = NULL;
++		}
++		tzs[num++] = tz;
++	}
++
++	/* Also drops the zones of a previous bind when none are found */
++	audioreach_sp_register_speaker_map(tzs, num);
++}
++
++static void x1e80100_snd_exit(struct snd_soc_pcm_runtime *rtd)
++{
++	if (snd_soc_rtd_to_cpu(rtd, 0)->id == WSA_CODEC_DMA_RX_0)
++		audioreach_sp_register_speaker_map(NULL, 0);
++}
++
+ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
+ {
+ 	struct x1e80100_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
+@@ -34,6 +85,8 @@ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
+ 
+ 	switch (cpu_dai->id) {
+ 	case WSA_CODEC_DMA_RX_0:
++		x1e80100_register_sp_speakers(rtd);
++		fallthrough;
+ 	case WSA_CODEC_DMA_RX_1:
+ 		/*
+ 		 * Set limit of -3 dB on Digital Volume and 0 dB on PA Volume
+@@ -192,6 +245,7 @@ static void x1e80100_add_be_ops(struct snd_soc_card *card)
+ 	for_each_card_prelinks(card, i, link) {
+ 		if (link->no_pcm == 1) {
+ 			link->init = x1e80100_snd_init;
++			link->exit = x1e80100_snd_exit;
+ 			link->be_hw_params_fixup = x1e80100_be_hw_params_fixup;
+ 			link->ops = &x1e80100_be_ops;
+ 		}
+From bcee19ffc7e4561c00d40898eddc7733678e099f Mon Sep 17 00:00:00 2001
+From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:32 +0100
+Subject: [PATCH 22/23] arm64: dts: qcom: glymur-crd: add WSA speaker protection VI
+ feedback
+
+Add the V/I sense DAIs of the four WSA8845 speakers, the SoundWire VI
+ports and the WSA macro VI capture DAIs to the WSA Playback link, for
+speaker protection. The speakers now expose two DAIs, so give them a
+'#sound-dai-cells' of 1 and address the playback DAI explicitly.
+
+Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ arch/arm64/boot/dts/qcom/glymur-crd.dtsi | 29 ++++++++++++++++++------
+ 1 file changed, 22 insertions(+), 7 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/glymur-crd.dtsi b/arch/arm64/boot/dts/qcom/glymur-crd.dtsi
+index 58158b51fe29..fddc76f59557 100644
+--- a/arch/arm64/boot/dts/qcom/glymur-crd.dtsi
++++ b/arch/arm64/boot/dts/qcom/glymur-crd.dtsi
+@@ -256,11 +256,26 @@ cpu {
+ 				sound-dai = <&q6apmbedai WSA_CODEC_DMA_RX_0>;
+ 			};
+ 
++			/*
++			 * WSA SPKR playback-side codec DAIs plus the WSA
++			 * speaker-protection VI capture-side DAIs on both
++			 * WSA (left) and WSA2 (right) buses. One MM1
++			 * playback open brings up both chains via the
++			 * machine driver's multi_direction_codecs flag;
++			 * the SP<->SP_VI control link in the tplg handles
++			 * the DSP-side pairing.
++			 */
+ 			codec {
+-				sound-dai = <&left_woofer>, <&left_tweeter>,
++				sound-dai = <&left_woofer 0>, <&left_tweeter 0>,
+ 					    <&swr0 0>, <&lpass_wsamacro 0>,
+-					    <&right_woofer>, <&right_tweeter>,
+-					    <&swr3 0>, <&lpass_wsa2macro 0>;
++					    <&left_woofer 1>, <&left_tweeter 1>,
++					    <&swr0 12>, <&swr0 13>,
++					    <&lpass_wsamacro 2>,
++					    <&right_woofer 0>, <&right_tweeter 0>,
++					    <&swr3 0>, <&lpass_wsa2macro 0>,
++					    <&right_woofer 1>, <&right_tweeter 1>,
++					    <&swr3 12>, <&swr3 13>,
++					    <&lpass_wsa2macro 2>;
+ 			};
+ 
+ 			platform {
+@@ -923,7 +938,7 @@ left_woofer: speaker@0,0 {
+ 		compatible = "sdw20217020400";
+ 		reg = <0 0>;
+ 		reset-gpios = <&lpass_tlmm 12 GPIO_ACTIVE_LOW>;
+-		#sound-dai-cells = <0>;
++		#sound-dai-cells = <1>;
+ 		sound-name-prefix = "WooferLeft";
+ 		vdd-1p8-supply = <&vreg_l15b_e0_1p8>;
+ 		vdd-io-supply = <&vreg_l18b_e0_1p2>;
+@@ -935,7 +950,7 @@ left_tweeter: speaker@0,1 {
+ 		compatible = "sdw20217020400";
+ 		reg = <0 1>;
+ 		reset-gpios = <&lpass_tlmm 12 GPIO_ACTIVE_LOW>;
+-		#sound-dai-cells = <0>;
++		#sound-dai-cells = <1>;
+ 		sound-name-prefix = "TweeterLeft";
+ 		vdd-1p8-supply = <&vreg_l15b_e0_1p8>;
+ 		vdd-io-supply = <&vreg_l18b_e0_1p2>;
+@@ -951,7 +966,7 @@ right_woofer: speaker@0,0 {
+ 		compatible = "sdw20217020400";
+ 		reg = <0 0>;
+ 		reset-gpios = <&lpass_tlmm 13 GPIO_ACTIVE_LOW>;
+-		#sound-dai-cells = <0>;
++		#sound-dai-cells = <1>;
+ 		sound-name-prefix = "WooferRight";
+ 		vdd-1p8-supply = <&vreg_l15b_e0_1p8>;
+ 		vdd-io-supply = <&vreg_l18b_e0_1p2>;
+@@ -963,7 +978,7 @@ right_tweeter: speaker@0,1 {
+ 		compatible = "sdw20217020400";
+ 		reg = <0 1>;
+ 		reset-gpios = <&lpass_tlmm 13 GPIO_ACTIVE_LOW>;
+-		#sound-dai-cells = <0>;
++		#sound-dai-cells = <1>;
+ 		sound-name-prefix = "TweeterRight";
+ 		vdd-1p8-supply = <&vreg_l15b_e0_1p8>;
+ 		vdd-io-supply = <&vreg_l18b_e0_1p2>;
+From 89d86de8b7452bbaefe91d99cf33e4bead0706b0 Mon Sep 17 00:00:00 2001
+From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Date: Fri, 23 Oct 2026 18:14:33 +0100
+Subject: [PATCH 23/23] arm64: dts: qcom: mahua-t14s: add WSA speaker protection VI
+ feedback
+
+Add the V/I sense DAIs of the two WSA8845 speakers, the SoundWire VI
+ports and the WSA macro VI capture DAI to the WSA Playback link, for
+speaker protection. The speakers now expose two DAIs, so give them a
+'#sound-dai-cells' of 1 and address the playback DAI explicitly.
+
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ .../mahua-lenovo-thinkpad-t14s-gen7-lcd.dts   | 19 +++++++++++++++----
+ 1 file changed, 15 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/mahua-lenovo-thinkpad-t14s-gen7-lcd.dts b/arch/arm64/boot/dts/qcom/mahua-lenovo-thinkpad-t14s-gen7-lcd.dts
+index 26d6d8285e04..d6a921b3c713 100644
+--- a/arch/arm64/boot/dts/qcom/mahua-lenovo-thinkpad-t14s-gen7-lcd.dts
++++ b/arch/arm64/boot/dts/qcom/mahua-lenovo-thinkpad-t14s-gen7-lcd.dts
+@@ -268,9 +268,20 @@ cpu {
+ 				sound-dai = <&q6apmbedai WSA_CODEC_DMA_RX_0>;
+ 			};
+ 
++			/*
++			 * WSA SPKR playback-side codec DAIs plus the WSA
++			 * speaker-protection VI capture-side DAIs. One MM1
++			 * playback open brings up both chains via the
++			 * machine driver's multi_direction_codecs flag;
++			 * the SP<->SP_VI control link in the tplg handles
++			 * the DSP-side pairing.
++			 */
+ 			codec {
+-				sound-dai = <&left_spkr>, <&right_spkr>,
+-					    <&swr0 0>, <&lpass_wsamacro 0>;
++				sound-dai = <&left_spkr 0>, <&right_spkr 0>,
++					    <&swr0 0>, <&lpass_wsamacro 0>,
++					    <&left_spkr 1>, <&right_spkr 1>,
++					    <&swr0 12>, <&swr0 13>,
++					    <&lpass_wsamacro 2>;
+ 			};
+ 
+ 			platform {
+@@ -928,7 +939,7 @@ left_spkr: speaker@0,0 {
+ 		compatible = "sdw20217020400";
+ 		reg = <0 0>;
+ 		reset-gpios = <&lpass_tlmm 12 GPIO_ACTIVE_LOW>;
+-		#sound-dai-cells = <0>;
++		#sound-dai-cells = <1>;
+ 		sound-name-prefix = "SpkrLeft";
+ 		vdd-1p8-supply = <&vreg_l15b_e0_1p8>;
+ 		vdd-io-supply = <&vreg_l18b_e0_1p2>;
+@@ -940,7 +951,7 @@ right_spkr: speaker@0,1 {
+ 		compatible = "sdw20217020400";
+ 		reg = <0 1>;
+ 		reset-gpios = <&lpass_tlmm 12 GPIO_ACTIVE_LOW>;
+-		#sound-dai-cells = <0>;
++		#sound-dai-cells = <1>;
+ 		sound-name-prefix = "SpkrRight";
+ 		vdd-1p8-supply = <&vreg_l15b_e0_1p8>;
+ 		vdd-io-supply = <&vreg_l18b_e0_1p2>;

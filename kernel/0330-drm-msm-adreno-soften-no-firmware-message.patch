@@ -1,0 +1,59 @@
+From e7d903db24a03a7c2167a1228515ecb551d714d4 Mon Sep 17 00:00:00 2001
+From: Rob Clark <robin.clark@oss.qualcomm.com>
+Date: Wed, 28 Oct 2026 17:16:00 -0700
+Subject: [PATCH] drm/msm/adreno: Soften no-firmware message
+
+It isn't _necessarily_ an error, the driver will try again each time the
+device file is opened.  But if you don't have GPU fw in the initrd, you
+end up seeing this error message at least once.  Which seems to confuse
+users.  So try to re-word it slightly.
+
+Signed-off-by: Rob Clark <robin.clark@oss.qualcomm.com>
+Reviewed-by: Dmitry Baryshkov <dmitry.baryshkov@oss.qualcomm.com>
+Reviewed-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
+Reviewed-by: Hans de Goede <johannes.goede@oss.qualcomm.com>
+Patchwork: https://patchwork.freedesktop.org/patch/763881/
+Message-ID: <20261029001601.82269-1-robin.clark@oss.qualcomm.com>
+---
+ drivers/gpu/drm/msm/adreno/adreno_gpu.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/adreno/adreno_gpu.c b/drivers/gpu/drm/msm/adreno/adreno_gpu.c
+index f7882bb8028d..54f337475231 100644
+--- a/drivers/gpu/drm/msm/adreno/adreno_gpu.c
++++ b/drivers/gpu/drm/msm/adreno/adreno_gpu.c
+@@ -560,7 +560,7 @@ adreno_request_fw(struct adreno_gpu *adreno_gpu, const char *fwname)
+ 			adreno_gpu->fwloc = FW_LOCATION_NEW;
+ 			goto out;
+ 		} else if (adreno_gpu->fwloc != FW_LOCATION_UNKNOWN) {
+-			DRM_DEV_ERROR(drm->dev, "failed to load %s: %d\n",
++			DRM_DEV_INFO(drm->dev, "failed to load %s: %d (will try again later)\n",
+ 				newname, ret);
+ 			fw = ERR_PTR(ret);
+ 			goto out;
+@@ -580,7 +580,7 @@ adreno_request_fw(struct adreno_gpu *adreno_gpu, const char *fwname)
+ 			adreno_gpu->fwloc = FW_LOCATION_LEGACY;
+ 			goto out;
+ 		} else if (adreno_gpu->fwloc != FW_LOCATION_UNKNOWN) {
+-			DRM_DEV_ERROR(drm->dev, "failed to load %s: %d\n",
++			DRM_DEV_INFO(drm->dev, "failed to load %s: %d (will try again later)\n",
+ 				fwname, ret);
+ 			fw = ERR_PTR(ret);
+ 			goto out;
+@@ -601,14 +601,14 @@ adreno_request_fw(struct adreno_gpu *adreno_gpu, const char *fwname)
+ 			adreno_gpu->fwloc = FW_LOCATION_HELPER;
+ 			goto out;
+ 		} else if (adreno_gpu->fwloc != FW_LOCATION_UNKNOWN) {
+-			DRM_DEV_ERROR(drm->dev, "failed to load %s: %d\n",
++			DRM_DEV_INFO(drm->dev, "failed to load %s: %d (will try again later)\n",
+ 				newname, ret);
+ 			fw = ERR_PTR(ret);
+ 			goto out;
+ 		}
+ 	}
+ 
+-	DRM_DEV_ERROR(drm->dev, "failed to load %s\n", fwname);
++	DRM_DEV_INFO(drm->dev, "failed to load %s (will try again later)\n", fwname);
+ 	fw = ERR_PTR(-ENOENT);
+ out:
+ 	kfree(newname);

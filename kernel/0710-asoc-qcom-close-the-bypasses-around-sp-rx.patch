@@ -1,0 +1,874 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/3] ASoC: qcom: no path around speaker protection
+
+Requires a checked tweeter high-pass ahead of SP RX, limits the WSA mix
+path gain, and forbids remixing or gain after SP RX.
+
+ 1/3 ASoC: qcom: require a checked tweeter high-pass in front of SP RX
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 2/3 ASoC: qcom: x1e80100: also limit the WSA mix path digital volumes
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 3/3 ASoC: qcom: audioreach: nothing after SP RX may remix or amplify
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+
+From a9b7034298c70337b7184503370423895a245ac5 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Tue, 10 Nov 2026 23:14:37 -0500
+Subject: [PATCH 1/3] ASoC: qcom: require a checked tweeter high-pass in front of
+ SP RX
+
+SP RX's own high-pass is a single ~80 Hz filter on all channels, so a
+stream that bypasses a userspace crossover reaches the tweeters full
+band. As on Windows, high-pass the tweeters in the DSP with an MSIIR
+ahead of SP, and have the kernel check it.
+
+When the machine driver lists tweeters, SP RX only runs behind an MSIIR
+whose blob high-passes exactly the tweeter lanes, and nothing may join
+the chain downstream of the filter. Blobs that would change the SP
+modes, R0/T0 or test modes the kernel owns are refused.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 527 ++++++++++++++++++++++++++++--
+ sound/soc/qcom/qdsp6/audioreach.h |   2 +
+ sound/soc/qcom/x1e80100.c         |  15 +-
+ 3 files changed, 513 insertions(+), 31 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index ef1e57c2fdf2..5168d803ca83 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -7,6 +7,7 @@
+ #include <linux/slab.h>
+ #include <linux/soc/qcom/apr.h>
+ #include <linux/thermal.h>
++#include <linux/unaligned.h>
+ #include <sound/soc.h>
+ #include <sound/soc-dai.h>
+ #include <sound/pcm.h>
+@@ -77,9 +78,13 @@ static struct {
+ 	bool	lanes_set;
+ 	bool	rx_ok;
+ 	bool	vi_ok;
++	u32	hpf_expected;
++	u32	hpf_checked;
+ } sp_session;
+ static DEFINE_MUTEX(sp_session_lock);
+ static bool sp_required;
++/* Speakers (speaker map order) whose SP RX input must be high-passed */
++static u32 sp_hpf_speakers;
+ 
+ /* SubGraph Config */
+ struct apm_sub_graph_data {
+@@ -993,6 +998,34 @@ static int audioreach_gapless_set_media_format(struct q6apm_graph *graph,
+ 					 EARLY_EOS_DELAY_MS);
+ }
+ 
++static bool audioreach_sp_isolated(void);
++
++/*
++ * Does the blob, parsed as the DSP parses an in-band SET_CFG payload (16-byte
++ * headers, payloads padded to 8 bytes), address only @iid?
++ */
++static bool audioreach_cfg_blob_own_iid(const u8 *p, u32 size, u32 iid)
++{
++	u32 pos = 0;
++
++	while (pos < size) {
++		u32 step;
++
++		if (size - pos < APM_MODULE_PARAM_DATA_SIZE ||
++		    get_unaligned_le32(p + pos) != iid)
++			return false;
++		step = get_unaligned_le32(p + pos + 8);
++		if (step > size - pos - APM_MODULE_PARAM_DATA_SIZE)
++			return false;
++		step = APM_MODULE_PARAM_DATA_SIZE + ALIGN(step, 8);
++		if (step > size - pos)
++			return false;
++		pos += step;
++	}
++
++	return pos == size;
++}
++
+ static int audioreach_set_module_config(struct q6apm_graph *graph,
+ 					const struct audioreach_module *module,
+ 					const struct audioreach_module_config *cfg)
+@@ -1000,6 +1033,14 @@ static int audioreach_set_module_config(struct q6apm_graph *graph,
+ 	int size = le32_to_cpu(module->data->size);
+ 	void *p;
+ 
++	if (audioreach_sp_isolated() &&
++	    (size <= 0 || !audioreach_cfg_blob_own_iid((const u8 *)module->data->data, size,
++							module->instance_id))) {
++		dev_err(graph->dev, "module 0x%x cfg blob addresses other modules; refusing\n",
++			module->instance_id);
++		return -EINVAL;
++	}
++
+ 	struct gpr_pkt *pkt __free(kfree) = audioreach_alloc_apm_cmd_pkt(size, APM_CMD_SET_CFG, 0);
+ 	if (IS_ERR(pkt))
+ 		return PTR_ERR(pkt);
+@@ -1699,6 +1740,20 @@ bool audioreach_sp_required(void)
+ }
+ EXPORT_SYMBOL_GPL(audioreach_sp_required);
+ 
++void audioreach_sp_set_hpf_speakers(u32 speakers)
++{
++	WRITE_ONCE(sp_hpf_speakers, speakers);
++	if (speakers)
++		pr_info("SP: high-pass required in front of SP RX for speakers 0x%x\n", speakers);
++}
++EXPORT_SYMBOL_GPL(audioreach_sp_set_hpf_speakers);
++
++/* Raw cfg blobs may only address their own module */
++static bool audioreach_sp_isolated(void)
++{
++	return READ_ONCE(sp_required) || READ_ONCE(sp_hpf_speakers);
++}
++
+ /* Start a configuration pass: snapshot the mode and the speaker map */
+ void audioreach_sp_session_begin(void)
+ {
+@@ -1712,6 +1767,8 @@ void audioreach_sp_session_begin(void)
+ 	memcpy(sp_session.name, sp_speaker_map.name, sizeof(sp_session.name));
+ 	sp_session.rx_ok = false;
+ 	sp_session.vi_ok = false;
++	sp_session.hpf_expected = 0;
++	sp_session.hpf_checked = 0;
+ 	sp_session.active = true;
+ }
+ EXPORT_SYMBOL_GPL(audioreach_sp_session_begin);
+@@ -1722,11 +1779,13 @@ EXPORT_SYMBOL_GPL(audioreach_sp_session_begin);
+  */
+ int audioreach_sp_session_end(struct device *dev)
+ {
+-	bool rx, vi;
++	bool rx, vi, hpf;
+ 
+ 	scoped_guard(mutex, &sp_session_lock) {
+ 		rx = sp_session.rx_ok;
+ 		vi = sp_session.vi_ok;
++		hpf = sp_session.hpf_expected &&
++		      sp_session.hpf_checked == sp_session.hpf_expected;
+ 		sp_session.active = false;
+ 	}
+ 
+@@ -1739,6 +1798,10 @@ int audioreach_sp_session_end(struct device *dev)
+ 		dev_err(dev, "SP: speaker protection is required and this graph has no SP RX/VI; refusing\n");
+ 		return -EPERM;
+ 	}
++	if (rx && READ_ONCE(sp_hpf_speakers) && !hpf) {
++		dev_err(dev, "SP: no checked high-pass in front of SP RX; refusing\n");
++		return -EPERM;
++	}
+ 
+ 	return 0;
+ }
+@@ -1764,6 +1827,10 @@ static int audioreach_sp_session_mark(struct device *dev, bool rx)
+ 			rx ? "SP RX" : "SP VI");
+ 		return -EPERM;
+ 	}
++	if (rx && sp_session.rx_ok) {
++		dev_err(dev, "SP: more than one SP RX in one WSA RX graph; refusing\n");
++		return -EPERM;
++	}
+ 	if (rx)
+ 		sp_session.rx_ok = true;
+ 	else
+@@ -1772,6 +1839,27 @@ static int audioreach_sp_session_mark(struct device *dev, bool rx)
+ 	return 0;
+ }
+ 
++/*
++ * Record @iid as the MSIIR the SP RX chain runs through (@expected, 0 for
++ * none) or as the one whose blob passed the check and was acknowledged. A
++ * pass that requires the high-pass needs both to match.
++ */
++static int audioreach_sp_session_note_hpf(struct device *dev, bool expected, u32 iid)
++{
++	guard(mutex)(&sp_session_lock);
++
++	if (!sp_session.active) {
++		dev_err(dev, "SP HPF: configured outside a checked WSA RX graph; refusing\n");
++		return -EPERM;
++	}
++	if (expected)
++		sp_session.hpf_expected = iid;
++	else
++		sp_session.hpf_checked = iid;
++
++	return 0;
++}
++
+ /* Read each speaker's T0 in Q6 (degC * 64), 0 if its zone cannot be read */
+ int audioreach_get_sp_vi_t0(long *vals, unsigned int count)
+ {
+@@ -2571,6 +2659,42 @@ static int audioreach_sp_cfg_walk(const u32 *word, u32 num_words, u32 iid,
+ 	return bytes;
+ }
+ 
++/*
++ * Parameters the kernel sets itself. Where SP is required a blob may not set
++ * them, so it cannot override what the configuration pass checked.
++ */
++static bool audioreach_sp_kernel_owned(u32 pid)
++{
++	switch (pid) {
++	case PARAM_ID_SP_OP_MODE:
++	case 0x08001b40:			/* SP RX operation mode, v2 */
++	case PARAM_ID_SP_VI_OP_MODE_CFG:
++	case PARAM_ID_SP_TH_VI_R0T0_CFG:
++	case 0x080011f9:			/* TH VI factory test mode */
++	case 0x080011fb:			/* TH VI validation mode */
++	case PARAM_ID_SP_VI_EX_MODE_CFG:
++	case 0x08001200:			/* EX VI factory test mode */
++		return true;
++	}
++	return false;
++}
++
++/* The first kernel-owned parameter in packed records, 0 if none */
++static u32 audioreach_sp_blob_kernel_pid(const u8 *packed, u32 total)
++{
++	u32 pos = 0;
++
++	while (pos + APM_MODULE_PARAM_DATA_SIZE <= total) {
++		const struct apm_module_param_data *pd = (const void *)(packed + pos);
++
++		if (audioreach_sp_kernel_owned(pd->param_id))
++			return pd->param_id;
++		pos += APM_MODULE_PARAM_DATA_SIZE + ALIGN(pd->param_size, 8);
++	}
++
++	return 0;
++}
++
+ static int audioreach_speaker_protection_send_static_cfg(struct q6apm_graph *graph,
+ 							 const struct audioreach_module *module,
+ 							 const char *tag)
+@@ -2589,9 +2713,18 @@ static int audioreach_speaker_protection_send_static_cfg(struct q6apm_graph *gra
+ 	word = (const u32 *)module->data->data;
+ 	num_words = size / sizeof(u32);
+ 
+-	/* Not laid out as parameter records, so send it as the topology built it */
+-	if (size % sizeof(u32) || !num_words || word[0] != module->instance_id)
++	/*
++	 * Not parameter records: such a blob may address any module, so it is
++	 * sent as built, and never where SP or the high-pass is required.
++	 */
++	if (size % sizeof(u32) || !num_words || word[0] != module->instance_id) {
++		if (audioreach_sp_isolated()) {
++			dev_err(graph->dev, "%s cfg blob is not in parameter records; refusing\n",
++				tag);
++			return -EINVAL;
++		}
+ 		return audioreach_speaker_protection_send_chunk(graph, tag, word, size, 0);
++	}
+ 
+ 	total = audioreach_sp_cfg_walk(word, num_words, module->instance_id, 0,
+ 				       NULL, NULL, U32_MAX);
+@@ -2604,6 +2737,20 @@ static int audioreach_speaker_protection_send_static_cfg(struct q6apm_graph *gra
+ 	if (!packed)
+ 		return -ENOMEM;
+ 
++	if (audioreach_sp_isolated()) {
++		u32 pid;
++
++		if (audioreach_sp_cfg_walk(word, num_words, module->instance_id, 0,
++					   NULL, packed, U32_MAX) != total)
++			return -EINVAL;
++		pid = audioreach_sp_blob_kernel_pid(packed, total);
++		if (pid) {
++			dev_err(graph->dev, "%s cfg blob sets 0x%08x, which the kernel owns; refusing\n",
++				tag, pid);
++			return -EINVAL;
++		}
++	}
++
+ 	while (pos < num_words && !rc) {
+ 		int bytes = audioreach_sp_cfg_walk(word, num_words, module->instance_id,
+ 						   pos, &pos, packed,
+@@ -2630,53 +2777,354 @@ static int audioreach_speaker_protection_vi_static_cfg(struct q6apm_graph *graph
+ 	return audioreach_speaker_protection_send_static_cfg(graph, module, "VI");
+ }
+ 
++/*
++ * Count every connection into @module in its graph (module outputs and the
++ * front end link) and return the last feeding module.
++ */
++static unsigned int audioreach_graph_feeders(const struct audioreach_module *module,
++					     const struct audioreach_module **feeder)
++{
++	const struct audioreach_sub_graph *sg;
++	const struct audioreach_container *c;
++	const struct audioreach_module *m;
++	unsigned int n = 0, pn;
++
++	*feeder = NULL;
++	if (!module->container || !module->container->sub_graph ||
++	    !module->container->sub_graph->info)
++		return UINT_MAX;
++	sg = module->container->sub_graph;
++	if (sg->info->dst_mod_inst_id == module->instance_id)
++		n++;
++
++	list_for_each_entry(sg, &module->container->sub_graph->info->sg_list, node)
++		list_for_each_entry(c, &sg->container_list, node)
++			list_for_each_entry(m, &c->modules_list, node) {
++				u32 nports = min_t(u32, m->max_op_port, AR_MAX_MOD_LINKS);
++
++				for (pn = 0; pn < nports; pn++)
++					if (m->dst_mod_inst_id[pn] == module->instance_id) {
++						n++;
++						*feeder = m;
++					}
++			}
++
++	return n;
++}
++
+ static const struct audioreach_module *
+-audioreach_sg_find_module(const struct audioreach_module *ref, u32 iid)
++audioreach_graph_find_module(const struct audioreach_module *ref, u32 iid)
+ {
+ 	const struct audioreach_sub_graph *sg;
+ 	const struct audioreach_container *c;
+ 	const struct audioreach_module *m;
+ 
+-	if (!ref->container || !ref->container->sub_graph)
++	if (!ref->container || !ref->container->sub_graph ||
++	    !ref->container->sub_graph->info)
+ 		return NULL;
+-	sg = ref->container->sub_graph;
+ 
+-	list_for_each_entry(c, &sg->container_list, node)
+-		list_for_each_entry(m, &c->modules_list, node)
+-			if (m->instance_id == iid)
+-				return m;
++	list_for_each_entry(sg, &ref->container->sub_graph->info->sg_list, node)
++		list_for_each_entry(c, &sg->container_list, node)
++			list_for_each_entry(m, &c->modules_list, node)
++				if (m->instance_id == iid)
++					return m;
+ 
+ 	return NULL;
+ }
+ 
+-static bool audioreach_fed_by_mfc(const struct audioreach_module *module)
++/* The module @module's output goes to, if it has exactly one output */
++static const struct audioreach_module *
++audioreach_only_successor(const struct audioreach_module *module)
++{
++	const struct audioreach_module *next = NULL;
++	unsigned int pn, n = 0;
++
++	for (pn = 0; pn < min_t(u32, module->max_op_port, AR_MAX_MOD_LINKS); pn++) {
++		if (!module->dst_mod_inst_id[pn])
++			continue;
++		n++;
++		next = audioreach_graph_find_module(module, module->dst_mod_inst_id[pn]);
++	}
++
++	return n == 1 ? next : NULL;
++}
++
++#define AR_LPAIF_INTF_TYPE_WSA	2
++#define AR_CODEC_INTF_IDX_RX0	1
++
++/* Is @sink the graph's only codec DMA sink, and the WSA RX0 (speaker) one? */
++static bool audioreach_is_only_speaker_sink(const struct audioreach_module *sink)
+ {
+ 	const struct audioreach_sub_graph *sg;
+ 	const struct audioreach_container *c;
+ 	const struct audioreach_module *m;
++	unsigned int n = 0;
+ 
+-	if (!module->container || !module->container->sub_graph)
++	if (sink->module_id != MODULE_ID_CODEC_DMA_SINK ||
++	    sink->hw_interface_type != AR_LPAIF_INTF_TYPE_WSA ||
++	    sink->hw_interface_idx != AR_CODEC_INTF_IDX_RX0 ||
++	    !sink->container || !sink->container->sub_graph ||
++	    !sink->container->sub_graph->info)
+ 		return false;
+-	sg = module->container->sub_graph;
+ 
+-	list_for_each_entry(c, &sg->container_list, node)
+-		list_for_each_entry(m, &c->modules_list, node)
+-			if (m->module_id == MODULE_ID_MFC &&
+-			    m->dst_mod_inst_id[0] == module->instance_id)
+-				return true;
++	list_for_each_entry(sg, &sink->container->sub_graph->info->sg_list, node)
++		list_for_each_entry(c, &sg->container_list, node)
++			list_for_each_entry(m, &c->modules_list, node)
++				if (m->module_id == MODULE_ID_CODEC_DMA_SINK)
++					n++;
+ 
+-	return false;
++	return n == 1;
+ }
+ 
+-static u32 audioreach_next_module_id(const struct audioreach_module *module)
++/*
++ * The only shape SP RX runs in: MFC -> [MSIIR ->] SP -> MFC -> ... -> the
++ * WSA RX0 codec DMA sink, the graph's only codec DMA sink, where each link
++ * is the only output of one module and the only input of the next, so
++ * nothing reaches the speakers around SP or around the high-pass. From the
++ * MSIIR (or SP) on, every module has a single input port, which its
++ * predecessor already holds, so no other graph can connect into the chain
++ * downstream of the high-pass. Returns the MSIIR, NULL without one, or an
++ * ERR_PTR.
++ */
++static const struct audioreach_module *
++audioreach_sp_rx_chain(const struct audioreach_module *sp)
+ {
+-	const struct audioreach_module *next;
++	const struct audioreach_module *f, *m, *next, *hpf = NULL;
++	int hops;
+ 
+-	if (!module->dst_mod_inst_id[0])
+-		return 0;
+-	next = audioreach_sg_find_module(module, module->dst_mod_inst_id[0]);
++	if (sp->max_ip_port != 1 || audioreach_graph_feeders(sp, &f) != 1 || !f)
++		return ERR_PTR(-EINVAL);
++	if (f->module_id == MODULE_ID_MSIIR) {
++		if (f->max_ip_port != 1 || audioreach_only_successor(f) != sp)
++			return ERR_PTR(-EINVAL);
++		hpf = f;
++		if (audioreach_graph_feeders(hpf, &f) != 1 || !f)
++			return ERR_PTR(-EINVAL);
++	}
++	if (f->module_id != MODULE_ID_MFC ||
++	    audioreach_only_successor(f) != (hpf ? hpf : sp))
++		return ERR_PTR(-EINVAL);
++
++	next = audioreach_only_successor(sp);
++	if (!next || next->module_id != MODULE_ID_MFC)
++		return ERR_PTR(-EINVAL);
++
++	for (m = sp, hops = 0; hops < 16; hops++, m = next) {
++		next = audioreach_only_successor(m);
++		if (!next || next->max_ip_port != 1 ||
++		    audioreach_graph_feeders(next, &f) != 1 || f != m)
++			return ERR_PTR(-EINVAL);
++		if (next->module_id == MODULE_ID_CODEC_DMA_SINK)
++			return audioreach_is_only_speaker_sink(next) ? hpf : ERR_PTR(-EINVAL);
++	}
+ 
+-	return next ? next->module_id : 0;
++	return ERR_PTR(-EINVAL);
++}
++
++/* Does @module feed SP RX, directly or through one MSIIR? */
++static bool audioreach_feeds_sp_rx(const struct audioreach_module *module)
++{
++	const struct audioreach_module *next = audioreach_only_successor(module);
++
++	if (next && next->module_id == MODULE_ID_MSIIR)
++		next = audioreach_only_successor(next);
++
++	return next && next->module_id == MODULE_ID_SPEAKER_PROTECTION;
++}
++
++#define PARAM_ID_MSIIR_TUNING_FILTER_ENABLE		0x08001020
++#define PARAM_ID_MSIIR_TUNING_FILTER_CONFIG_PARAMS	0x08001022
++#define AR_MSIIR_Q30_ONE				((s64)BIT_ULL(30))
++#define AR_MSIIR_MAX_STAGES				20
++
++/* cos/sin of 1 and 2 x 2 pi 500 Hz / 48 kHz in Q30 */
++static const s64 ar_msiir_cs500[2][2] = {
++	{ 1071442860, 70226075 },
++	{ 1064555814, 140151432 },
++};
++
++/* |c0 + c1 z^-1 + c2 z^-2|^2 at 500 Hz, coefficients in Q30, result in Q44 */
++static s64 audioreach_msiir_mag2_500(s64 c0, s64 c1, s64 c2)
++{
++	s64 re = c0 + ((c1 * ar_msiir_cs500[0][0] + c2 * ar_msiir_cs500[1][0]) >> 30);
++	s64 im = (c1 * ar_msiir_cs500[0][1] + c2 * ar_msiir_cs500[1][1]) >> 30;
++
++	re >>= 8;
++	im >>= 8;
++	return re * re + im * im;
++}
++
++/*
++ * A stable high-pass: zero at DC (b0 + b1 + b2 == 0), unity gain at Nyquist
++ * within 1 %, shift 2 (all five in Q30), at least 10 dB down at 500 Hz at
++ * 48 kHz.
++ */
++static bool audioreach_msiir_stage_is_hp(const s32 *c, s16 shift)
++{
++	s64 b0 = c[0], b1 = c[1], b2 = c[2], a1 = c[3], a2 = c[4];
++	s64 num_nyq = b0 - b1 + b2, den_nyq = AR_MSIIR_Q30_ONE - a1 + a2;
++
++	if (shift != 2 || b0 <= 0 || b0 + b1 + b2 != 0)
++		return false;
++	if (a2 >= AR_MSIIR_Q30_ONE || a2 <= -AR_MSIIR_Q30_ONE ||
++	    abs(a1) >= AR_MSIIR_Q30_ONE + a2)
++		return false;
++	if (den_nyq <= 0 || abs(num_nyq - den_nyq) * 100 > den_nyq)
++		return false;
++
++	return audioreach_msiir_mag2_500(b0, b1, b2) * 10 <=
++	       audioreach_msiir_mag2_500(AR_MSIIR_Q30_ONE, a1, a2);
++}
++
++/*
++ * Only one canonical MSIIR blob form is accepted: module enable (1), MSIIR
++ * enable and MSIIR config exactly once, each with one entry and the same
++ * non-empty channel mask, enabled, and 2..20 stages that all pass
++ * audioreach_msiir_stage_is_hp(). The DSP keeps only the last payload of
++ * each parameter and walks entries by their own sizes, so anything else
++ * could leave the kernel and the DSP reading different filters.
++ */
++static int audioreach_msiir_hpf_scan(const struct audioreach_module *module, u64 *mask)
++{
++	bool module_on = false, en_seen = false, cfg_seen = false;
++	u64 en_mask = 0, cfg_mask = 0;
++	const u32 *word;
++	u32 num_words, pos = 0;
++
++	if (!module->data || !module->data->size ||
++	    le32_to_cpu(module->data->size) % sizeof(u32))
++		return -EINVAL;
++	word = (const u32 *)module->data->data;
++	num_words = le32_to_cpu(module->data->size) / sizeof(u32);
++
++	while (pos < num_words) {
++		u32 pid, psize, nst, s;
++		const u8 *p;
++
++		if (num_words - pos < 4 || word[pos] != module->instance_id)
++			return -EINVAL;
++		pid = word[pos + 1];
++		psize = word[pos + 2];
++		if (psize > (num_words - pos - 4) * sizeof(u32))
++			return -EINVAL;
++		p = (const u8 *)&word[pos + 4];
++
++		switch (pid) {
++		case PARAM_ID_MODULE_ENABLE:
++			if (module_on || psize != sizeof(u32) || get_unaligned_le32(p) != 1)
++				return -EINVAL;
++			module_on = true;
++			break;
++		case PARAM_ID_MSIIR_TUNING_FILTER_ENABLE:
++			if (en_seen || psize != 16 || get_unaligned_le32(p) != 1 ||
++			    get_unaligned_le32(p + 12) != 1)
++				return -EINVAL;
++			en_mask = get_unaligned_le32(p + 4) |
++				  (u64)get_unaligned_le32(p + 8) << 32;
++			en_seen = true;
++			break;
++		case PARAM_ID_MSIIR_TUNING_FILTER_CONFIG_PARAMS:
++			if (cfg_seen || psize < 16 || get_unaligned_le32(p) != 1)
++				return -EINVAL;
++			cfg_mask = get_unaligned_le32(p + 4) |
++				   (u64)get_unaligned_le32(p + 8) << 32;
++			nst = get_unaligned_le16(p + 14);
++			if (nst < 2 || nst > AR_MSIIR_MAX_STAGES ||
++			    psize != 16 + nst * 5 * sizeof(s32) + ALIGN(nst * sizeof(s16), 4))
++				return -EINVAL;
++			for (s = 0; s < nst; s++) {
++				s32 c[5];
++				int k;
++
++				const u8 *shift = p + 16 + nst * 5 * sizeof(s32) + s * sizeof(s16);
++
++				for (k = 0; k < 5; k++)
++					c[k] = get_unaligned_le32(p + 16 +
++								  (s * 5 + k) * sizeof(s32));
++				if (!audioreach_msiir_stage_is_hp(c, get_unaligned_le16(shift)))
++					return -EINVAL;
++			}
++			cfg_seen = true;
++			break;
++		default:
++			return -EINVAL;
++		}
++
++		pos += 4 + DIV_ROUND_UP(psize, sizeof(u32));
++		while (pos < num_words && !word[pos])
++			pos++;
++	}
++
++	if (!module_on || !en_seen || !cfg_seen || en_mask != cfg_mask ||
++	    !(cfg_mask & ~BIT_ULL(0)) || (cfg_mask & BIT_ULL(0)))
++		return -EINVAL;
++
++	*mask = cfg_mask;
++	return 0;
++}
++
++/*
++ * Each speaker reaches this MSIIR under its codec DMA lane's channel type.
++ * When the machine driver lists speakers that need the high-pass (the
++ * tweeters), the blob must high-pass exactly those; with no list the filter
++ * is only reported.
++ */
++static int audioreach_sp_rx_hpf(struct q6apm_graph *graph,
++				const struct audioreach_module *module,
++				const struct audioreach_module_config *cfg)
++{
++	char name[MAX_SP_VI_SPEAKERS][32];
++	u8 lane[MAX_SP_VI_SPEAKERS];
++	u32 need = READ_ONCE(sp_hpf_speakers);
++	unsigned int s, n = cfg->num_channels;
++	u64 mask;
++	int rc;
++
++	if (n > MAX_SP_VI_SPEAKERS || audioreach_sp_get_lanes(lane, name, n)) {
++		dev_err(graph->dev, "SP HPF: no speaker lane map for %u speakers\n", n);
++		return -EINVAL;
++	}
++	if (need & ~GENMASK(n - 1, 0)) {
++		dev_err(graph->dev, "SP HPF: speakers 0x%x not in this %u-speaker graph\n",
++			need, n);
++		return -EINVAL;
++	}
++	if (cfg->sample_rate != 48000) {
++		dev_err(graph->dev, "SP HPF: checked at 48 kHz only, not %u Hz\n",
++			cfg->sample_rate);
++		return -EINVAL;
++	}
++
++	if (audioreach_msiir_hpf_scan(module, &mask)) {
++		dev_err(graph->dev, "SP HPF: MSIIR 0x%x cfg blob missing, malformed or not a high-pass\n",
++			module->instance_id);
++		return -EINVAL;
++	}
++
++	for (s = 0; s < n; s++) {
++		u8 type = cfg->channel_map[lane[s]];
++		bool filtered = type && type < 64 && (mask & BIT_ULL(type));
++
++		if (need && !!(need & BIT(s)) != filtered) {
++			dev_err(graph->dev, "SP HPF: speaker %u %s (lane %u, channel type %u) is %s\n",
++				s, name[s], lane[s], type,
++				filtered ? "high-passed but not listed" :
++					   "listed but not high-passed");
++			return -EINVAL;
++		}
++		dev_info(graph->dev, "SP HPF speaker %u %s: lane %u, channel type %u, %s\n",
++			 s, name[s], lane[s], type, filtered ? "high-passed" : "full band");
++	}
++
++	rc = audioreach_speaker_protection_send_static_cfg(graph, module, "SP HPF");
++	if (!rc)
++		rc = audioreach_module_enable(graph, module, true);
++	if (rc) {
++		dev_err(graph->dev, "SP HPF setup failed: %d\n", rc);
++		return rc;
++	}
++
++	return audioreach_sp_session_note_hpf(graph->dev, false, module->instance_id);
+ }
+ 
+ /*
+@@ -2794,8 +3242,17 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 		if (!rc)
+ 			rc = audioreach_sal_limiter_enable(graph, module, true);
+ 		break;
++	case MODULE_ID_MSIIR: {
++		const struct audioreach_module *next = audioreach_only_successor(module);
++
++		if (next && next->module_id == MODULE_ID_SPEAKER_PROTECTION)
++			rc = audioreach_sp_rx_hpf(graph, module, cfg);
++		else
++			rc = 0;
++		break;
++	}
+ 	case MODULE_ID_MFC:
+-		if (audioreach_next_module_id(module) == MODULE_ID_SPEAKER_PROTECTION) {
++		if (audioreach_feeds_sp_rx(module)) {
+ 			struct audioreach_module_config sp_cfg;
+ 
+ 			rc = audioreach_sp_rx_mfc_cfg(graph->dev, cfg, &sp_cfg);
+@@ -2808,14 +3265,23 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 	case MODULE_ID_GAPLESS:
+ 		rc = audioreach_gapless_set_media_format(graph, module, cfg);
+ 		break;
+-	case MODULE_ID_SPEAKER_PROTECTION:
+-		if (!audioreach_fed_by_mfc(module) ||
+-		    audioreach_next_module_id(module) != MODULE_ID_MFC) {
++	case MODULE_ID_SPEAKER_PROTECTION: {
++		const struct audioreach_module *hpf = audioreach_sp_rx_chain(module);
++
++		if (IS_ERR(hpf)) {
+ 			dev_err(graph->dev,
+-				"SP RX: the SP module must sit directly between two MFCs\n");
++				"SP RX: SP must sit in MFC -> [MSIIR ->] SP -> MFC -> ... -> codec DMA, one link each\n");
+ 			rc = -EINVAL;
+ 			break;
+ 		}
++		if (READ_ONCE(sp_hpf_speakers) && !hpf) {
++			dev_err(graph->dev, "SP RX: no MSIIR high-pass in front of SP RX\n");
++			rc = -EINVAL;
++			break;
++		}
++		rc = audioreach_sp_session_note_hpf(graph->dev, true, hpf ? hpf->instance_id : 0);
++		if (rc)
++			break;
+ 		{
+ 			u8 lane[MAX_SP_VI_SPEAKERS];
+ 
+@@ -2841,6 +3307,7 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 		}
+ 
+ 		break;
++	}
+ 	case MODULE_ID_SPEAKER_PROTECTION_VI: {
+ 		u32 mode = audioreach_sp_session_mode();
+ 		bool r0t0_sent = false;
+diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
+index 3168ec6ee99c..7e0de33f4e2e 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.h
++++ b/sound/soc/qcom/qdsp6/audioreach.h
+@@ -36,6 +36,7 @@ struct thermal_zone_device;
+ #define MODULE_ID_DISPLAY_PORT_SINK	0x07001069
+ #define MODULE_ID_SPEAKER_PROTECTION	0x070010E2
+ #define MODULE_ID_SPEAKER_PROTECTION_VI	0x070010E3
++#define MODULE_ID_MSIIR			0x07001014
+ #define MODULE_ID_OPUS_DEC		0x07001174
+ #define MODULE_ID_AUDIO_IF_SINK		0x0700117C
+ #define MODULE_ID_AUDIO_IF_SOURCE	0x0700117D
+@@ -1145,6 +1146,7 @@ int audioreach_get_sp_vi_t0(long *vals, unsigned int count);
+ void audioreach_sp_set_required(bool required);
+ void audioreach_sp_set_r0t0_from_uefi(bool enable, u32 r0_min_uohm, u32 r0_max_uohm);
+ bool audioreach_sp_required(void);
++void audioreach_sp_set_hpf_speakers(u32 speakers);
+ void audioreach_sp_session_begin(void);
+ int audioreach_sp_session_end(struct device *dev);
+ int audioreach_get_sp_vi_cal_state(long *vals, unsigned int count);
+diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
+index 18eb44a56622..a34d5802deef 100644
+--- a/sound/soc/qcom/x1e80100.c
++++ b/sound/soc/qcom/x1e80100.c
+@@ -41,10 +41,12 @@ static int x1e80100_register_sp_speakers(struct snd_soc_pcm_runtime *rtd)
+ 	u8 lanes[MAX_SP_VI_SPEAKERS];
+ 	struct thermal_zone_device *tz_sorted[MAX_SP_VI_SPEAKERS];
+ 	const char *name_sorted[MAX_SP_VI_SPEAKERS];
++	bool tweeter[MAX_SP_VI_SPEAKERS], tweeter_sorted[MAX_SP_VI_SPEAKERS];
+ 	u8 lane_sorted[MAX_SP_VI_SPEAKERS];
+ 	struct snd_soc_dai *codec_dai;
+ 	bool have_lanes = false;
+ 	unsigned int num = 0, k;
++	u32 hpf = 0;
+ 	int i, n;
+ 
+ 	for_each_rtd_codec_dais(rtd, i, codec_dai) {
+@@ -75,6 +77,7 @@ static int x1e80100_register_sp_speakers(struct snd_soc_pcm_runtime *rtd)
+ 			tz = NULL;
+ 		}
+ 		names[num] = component->name_prefix ?: dev_name(component->dev);
++		tweeter[num] = of_property_read_bool(component->dev->of_node, "qcom,tweeter");
+ 		tzs[num++] = tz;
+ 	}
+ 
+@@ -111,21 +114,31 @@ static int x1e80100_register_sp_speakers(struct snd_soc_pcm_runtime *rtd)
+ 			}
+ 			tz_sorted[k] = tzs[found];
+ 			name_sorted[k] = names[found];
++			tweeter_sorted[k] = tweeter[found];
+ 			lane_sorted[k] = k;
+ 		}
+ 		memcpy(tzs, tz_sorted, num * sizeof(tzs[0]));
+ 		memcpy(names, name_sorted, num * sizeof(names[0]));
++		memcpy(tweeter, tweeter_sorted, num * sizeof(tweeter[0]));
+ 		memcpy(lanes, lane_sorted, num);
+ 	}
+ 
++	/* The tweeters only run speaker protection behind a DSP high-pass */
++	for (k = 0; k < num; k++)
++		if (tweeter[k])
++			hpf |= BIT(k);
++	audioreach_sp_set_hpf_speakers(hpf);
++
+ 	/* Also drops the speakers of a previous bind when none are found */
+ 	return audioreach_sp_register_speaker_map(tzs, names, have_lanes ? lanes : NULL, num);
+ }
+ 
+ static void x1e80100_snd_exit(struct snd_soc_pcm_runtime *rtd)
+ {
+-	if (snd_soc_rtd_to_cpu(rtd, 0)->id == WSA_CODEC_DMA_RX_0)
++	if (snd_soc_rtd_to_cpu(rtd, 0)->id == WSA_CODEC_DMA_RX_0) {
+ 		audioreach_sp_register_speaker_map(NULL, NULL, NULL, 0);
++		audioreach_sp_set_hpf_speakers(0);
++	}
+ }
+ 
+ static const struct {
+From 76163bf60ac9359b6eb7ca81a19d5d4391d9c176 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Tue, 10 Nov 2026 23:14:50 -0500
+Subject: [PATCH 2/3] ASoC: qcom: x1e80100: also limit the WSA mix path digital
+ volumes
+
+Each WSA interpolator has a second digital gain for its mix input,
+"WSA_RXn_MIX Digital Volume", which also resets to 0 dB, so a stream
+routed through the mix input bypasses the -3 dB limit of the main gain.
+Limit it to the same value.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/x1e80100.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
+index a34d5802deef..fa802d2e2ce7 100644
+--- a/sound/soc/qcom/x1e80100.c
++++ b/sound/soc/qcom/x1e80100.c
+@@ -149,6 +149,10 @@ static const struct {
+ 	{ "WSA WSA_RX1 Digital Volume", 81 },
+ 	{ "WSA2 WSA_RX0 Digital Volume", 81 },
+ 	{ "WSA2 WSA_RX1 Digital Volume", 81 },
++	{ "WSA WSA_RX0_MIX Digital Volume", 81 },
++	{ "WSA WSA_RX1_MIX Digital Volume", 81 },
++	{ "WSA2 WSA_RX0_MIX Digital Volume", 81 },
++	{ "WSA2 WSA_RX1_MIX Digital Volume", 81 },
+ 	{ "SpkrLeft PA Volume", 6 },
+ 	{ "SpkrRight PA Volume", 6 },
+ 	{ "WooferLeft PA Volume", 6 },
+From 3b48ab489db674ae46d5b295028413340e6b530c Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 15:02:19 -0500
+Subject: [PATCH 3/3] ASoC: qcom: audioreach: nothing after SP RX may remix or
+ amplify
+
+audioreach_sp_rx_chain() accepts any single-link chain between SP RX and
+the WSA RX0 codec DMA sink, so a channel mixer, volume or gain module
+there can swap woofer and tweeter lanes or add gain after SP and the
+tweeter high-pass, undoing both.
+
+When speaker protection is required, allow only the MFC right after SP,
+which restores lane order and may not carry a cfg blob, and data logging
+modules.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index 5168d803ca83..4127316b09d1 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -2916,6 +2916,11 @@ audioreach_sp_rx_chain(const struct audioreach_module *sp)
+ 			return ERR_PTR(-EINVAL);
+ 		if (next->module_id == MODULE_ID_CODEC_DMA_SINK)
+ 			return audioreach_is_only_speaker_sink(next) ? hpf : ERR_PTR(-EINVAL);
++		/* With SP required, only the restoring MFC or logging follow */
++		if (READ_ONCE(sp_required) &&
++		    !(m == sp && next->module_id == MODULE_ID_MFC) &&
++		    next->module_id != MODULE_ID_DATA_LOGGING)
++			return ERR_PTR(-EINVAL);
+ 	}
+ 
+ 	return ERR_PTR(-EINVAL);

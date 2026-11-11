@@ -1,0 +1,34 @@
+From 5f3f4c3d272d990161ef505999f1d7ce700c2c7e Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 15:03:01 -0500
+Subject: [PATCH] ASoC: soc-core: start a new runtime's component count at zero
+
+Since the devm_kmalloc_obj() conversion, soc_new_pcm_runtime()
+allocates the runtime with devm_kzalloc_flex(), which sets the
+__counted_by counter num_components to the array's capacity.
+snd_soc_rtd_add_component() uses it as the fill count, so every
+component is stored past the end of the array and the first slots stay
+NULL. The link's components are never probed and cards fail to bind on
+their DAPM routes.
+
+Reset num_components after the allocation.
+
+Fixes: 4dd10fbbeb9c ("treewide: Convert devm_kmalloc() family to the devm_kmalloc_obj() family")
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/soc-core.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/sound/soc/soc-core.c b/sound/soc/soc-core.c
+index 68b54e509b65..2492ecc1beeb 100644
+--- a/sound/soc/soc-core.c
++++ b/sound/soc/soc-core.c
+@@ -387,6 +387,8 @@ static struct snd_soc_pcm_runtime *soc_new_pcm_runtime(
+ 		device_unregister(dev);
+ 		return NULL;
+ 	}
++	/* devm_kzalloc_flex() set this to capacity, but it is a fill count */
++	rtd->num_components = 0;
+ 
+ 	rtd->dev = dev;
+ 	INIT_LIST_HEAD(&rtd->list);

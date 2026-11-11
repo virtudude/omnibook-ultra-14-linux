@@ -1,0 +1,35 @@
+From 5f19e7057e640fcc5a92969df82c0f12f2991aa0 Mon Sep 17 00:00:00 2001
+From: Birk Skyum <birk.skyum@pm.me>
+Date: Wed, 21 Oct 2026 12:54:33 +0000
+Subject: [PATCH] arm64: dts: qcom: hamoa, glymur: Disable the crypto engine
+
+Since 7.3 the QCE driver is BROKEN (df373d39c6f0, "crypto: qce - Mark
+QCE as BROKEN"), so nothing binds to the crypto node. fw_devlink still
+counts it as a consumer of the interconnects it names, so on the X1
+aggre2_noc and mc_virt never reach sync_state(). mc_virt then keeps its
+boot-time vote on DDR, and in suspend the SoC never collapses CX or puts
+DDR in self-refresh.
+
+Disable the node on the X1 (hamoa) and the X2 (glymur), whose crypto
+engine names aggre1_noc and mc_virt the same way.
+
+Signed-off-by: Birk Skyum <birk.skyum@pm.me>
+
+[virtudude: only the glymur hunk; the hamoa hunk does not apply to this tree]
+---
+ arch/arm64/boot/dts/qcom/glymur.dtsi | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/glymur.dtsi b/arch/arm64/boot/dts/qcom/glymur.dtsi
+index 65a398c0a992..52f04a1ff554 100644
+--- a/arch/arm64/boot/dts/qcom/glymur.dtsi
++++ b/arch/arm64/boot/dts/qcom/glymur.dtsi
+@@ -4126,6 +4126,8 @@ crypto: crypto@1dfa000 {
+ 			interconnects = <&aggre1_noc MASTER_CRYPTO QCOM_ICC_TAG_ALWAYS
+ 					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
+ 			interconnect-names = "memory";
++
++			status = "disabled";
+ 		};
+ 
+ 		tcsr_mutex: hwlock@1f40000 {

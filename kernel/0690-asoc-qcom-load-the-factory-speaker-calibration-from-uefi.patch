@@ -1,0 +1,234 @@
+From 07a8074ba12197d4a2f6a0960707ce14ff6d9884 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Tue, 10 Nov 2026 23:13:35 -0500
+Subject: [PATCH] ASoC: qcom: load the factory speaker calibration from UEFI
+
+Without the factory R0/T0 the VI module runs on the topology's default
+speaker model; on the HP OmniBook Ultra 14 the protected graph then
+plays about 11 dB quieter. HP keeps the factory R0/T0 of the speakers
+in the UEFI variable SmartAmpCalibrationData, as Windows uses it.
+
+With "qcom,uefi-speaker-calibration", the first Normal mode SP open with
+no R0/T0 set reads the variable, unless the R0/T0 control was written
+meanwhile. It is read at open, not probe, because uefisecapp may come up
+after the card; a failure is retried at the next open, rate limited.
+
+The variable is used only if it has the expected size, is marked valid,
+covers every speaker, and every R0 lies within the board's
+"qcom,speaker-r0-range-micro-ohms", which catches unit or scale errors
+the control's range check cannot. It is read with efivar_get_variable()
+under efivar_lock(), as rtc-pm8xxx does, because on these laptops the
+variables come from uefisecapp, not EFI runtime services.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 133 +++++++++++++++++++++++++++++-
+ sound/soc/qcom/qdsp6/audioreach.h |   1 +
+ sound/soc/qcom/x1e80100.c         |  10 +++
+ 3 files changed, 143 insertions(+), 1 deletion(-)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index a40c0418f126..ef1e57c2fdf2 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -1,6 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0
+ // Copyright (c) 2020, Linaro Limited
+ 
++#include <linux/efi.h>
+ #include <linux/kernel.h>
+ #include <linux/mutex.h>
+ #include <linux/slab.h>
+@@ -1842,7 +1843,8 @@ int audioreach_get_sp_vi_cal_state(long *vals, unsigned int count)
+ }
+ EXPORT_SYMBOL_GPL(audioreach_get_sp_vi_cal_state);
+ 
+-int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int count)
++static int __audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals,
++				       unsigned int count, bool only_if_unset)
+ {
+ 	char name[MAX_SP_VI_SPEAKERS][32];
+ 	struct sp_vi_r0t0_cfg new = {};
+@@ -1889,6 +1891,10 @@ int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int
+ 
+ 	guard(mutex)(&sp_vi_r0t0_cfg_lock);
+ 
++	/* Never replace a pair set through the control in the meantime */
++	if (only_if_unset && sp_vi_r0t0_cfg.num_ch)
++		return 0;
++
+ 	sp_vi_r0t0_cfg = new;
+ 
+ 	if (audioreach_sp_get_lanes(lane, name, num_ch))
+@@ -1909,6 +1915,129 @@ int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int
+ 	return num_ch;
+ }
+ 
++int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int count)
++{
++	return __audioreach_set_sp_vi_r0t0(dev, vals, count, false);
++}
++
++#ifdef CONFIG_EFI
++MODULE_IMPORT_NS("EFIVAR");
++
++/*
++ * Factory R0/T0 that Qualcomm Windows platforms keep in a UEFI variable,
++ * little endian:
++ *   u32 num_speakers; s32 r0_q24[8]; u32 t0_q6[8]; u32 valid;
++ * in the speaker order of the "Speaker Protection R0T0" control. The same
++ * variable holds another layout on Cirrus Logic amplifiers (cs-amp-lib), so
++ * only the exact size of this one is accepted.
++ */
++#define SP_UEFI_R0T0_NAME	L"SmartAmpCalibrationData"
++#define SP_UEFI_R0T0_GUID	EFI_GUID(0x53559579, 0x8753, 0x4f5c, \
++					 0x91, 0x30, 0xe8, 0x2a, 0xcf, 0xb8, 0xd8, 0x93)
++
++struct sp_uefi_r0t0 {
++	__le32 num_speakers;
++	__le32 r0_q24[8];
++	__le32 t0_q6[8];
++	__le32 valid;
++} __packed;
++
++/*
++ * Off unless the DT asks for it and gives the board's plausible R0 range:
++ * the range check of the control (0.25..64 ohms) cannot catch a unit or
++ * scale error in the variable.
++ */
++static bool sp_r0t0_from_uefi;
++static s64 sp_uefi_r0_min_q24, sp_uefi_r0_max_q24;
++
++void audioreach_sp_set_r0t0_from_uefi(bool enable, u32 r0_min_uohm, u32 r0_max_uohm)
++{
++	if (enable && (!r0_min_uohm || r0_min_uohm >= r0_max_uohm)) {
++		pr_err("SP: no valid R0 range for the UEFI factory R0/T0, not loading it\n");
++		enable = false;
++	}
++	sp_uefi_r0_min_q24 = div_s64((s64)r0_min_uohm << 24, 1000000);
++	sp_uefi_r0_max_q24 = div_s64((s64)r0_max_uohm << 24, 1000000);
++	WRITE_ONCE(sp_r0t0_from_uefi, enable);
++}
++EXPORT_SYMBOL_GPL(audioreach_sp_set_r0t0_from_uefi);
++
++/*
++ * Runs at the first SP open, not at probe: uefisecapp can come up after the
++ * sound card. A failure leaves the VI module on the topology defaults and is
++ * retried at the next open.
++ */
++static void audioreach_sp_load_uefi_r0t0(struct device *dev)
++{
++	efi_guid_t guid = SP_UEFI_R0T0_GUID;
++	struct sp_uefi_r0t0 var;
++	unsigned long size = sizeof(var);
++	long vals[2 * MAX_SP_VI_SPEAKERS];
++	efi_status_t status;
++	unsigned int i, n, num_spk;
++	int rc;
++
++	if (!READ_ONCE(sp_r0t0_from_uefi))
++		return;
++	scoped_guard(mutex, &sp_vi_r0t0_cfg_lock)
++		if (sp_vi_r0t0_cfg.num_ch)
++			return;
++	scoped_guard(mutex, &sp_speaker_map_lock)
++		num_spk = sp_speaker_map.num;
++
++	/* efivar_lock() fails cleanly if the provider goes away after this */
++	if (!efivar_is_available()) {
++		dev_warn_ratelimited(dev, "SP: UEFI variables not available yet, no factory R0/T0\n");
++		return;
++	}
++	rc = efivar_lock();
++	if (rc) {
++		dev_warn_ratelimited(dev, "SP: UEFI variables not available (%d), no factory R0/T0\n",
++				     rc);
++		return;
++	}
++	status = efivar_get_variable(SP_UEFI_R0T0_NAME, &guid, NULL, &size, &var);
++	efivar_unlock();
++	if (status != EFI_SUCCESS || size != sizeof(var)) {
++		dev_warn_ratelimited(dev, "SP: no factory R0/T0 in UEFI (status %lu, size %lu)\n",
++				     status, size);
++		return;
++	}
++
++	/* A partial or zero set is rejected, never padded or truncated */
++	n = le32_to_cpu(var.num_speakers);
++	if (le32_to_cpu(var.valid) != 1 || !num_spk || n != num_spk ||
++	    n > MAX_SP_VI_SPEAKERS) {
++		dev_warn_ratelimited(dev, "SP: UEFI factory R0/T0 not usable (valid %u, %u speakers, card has %u)\n",
++				     le32_to_cpu(var.valid), n, num_spk);
++		return;
++	}
++	for (i = 0; i < n; i++) {
++		s32 r0 = le32_to_cpu(var.r0_q24[i]);
++
++		if (r0 < sp_uefi_r0_min_q24 || r0 > sp_uefi_r0_max_q24 ||
++		    !le32_to_cpu(var.t0_q6[i])) {
++			dev_err_ratelimited(dev, "SP: UEFI factory R0/T0 of speaker %u (Q24 %d, Q6 %u) outside the board range, not loading it\n",
++					    i, r0, le32_to_cpu(var.t0_q6[i]));
++			return;
++		}
++		vals[2 * i] = r0;
++		vals[2 * i + 1] = le32_to_cpu(var.t0_q6[i]);
++	}
++
++	/* Same range checks as the control */
++	rc = __audioreach_set_sp_vi_r0t0(dev, vals, 2 * n, true);
++	if (rc < 0)
++		dev_warn(dev, "SP: UEFI factory R0/T0 rejected (%d)\n", rc);
++	else if (rc)
++		dev_info(dev, "SP: factory R0/T0 loaded from UEFI for %u speakers\n", n);
++}
++#else
++void audioreach_sp_set_r0t0_from_uefi(bool enable, u32 r0_min_uohm, u32 r0_max_uohm) { }
++EXPORT_SYMBOL_GPL(audioreach_sp_set_r0t0_from_uefi);
++static void audioreach_sp_load_uefi_r0t0(struct device *dev) { }
++#endif
++
+ void audioreach_vi_calibration_event(struct device *dev,
+ 				     const struct event_id_vi_per_spkr_calibration *cali,
+ 				     u32 num_ch)
+@@ -2297,6 +2426,8 @@ static int audioreach_sp_vi_send_r0t0(struct q6apm_graph *graph,
+ 	if (mode != PARAM_ID_SP_VI_OP_MODE_NORMAL)
+ 		return 0;
+ 
++	audioreach_sp_load_uefi_r0t0(graph->dev);
++
+ 	guard(mutex)(&sp_vi_r0t0_cfg_lock);
+ 
+ 	if (!sp_vi_r0t0_cfg.num_ch) {
+diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
+index 39fb88a54eae..3168ec6ee99c 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.h
++++ b/sound/soc/qcom/qdsp6/audioreach.h
+@@ -1143,6 +1143,7 @@ int audioreach_sp_register_speaker_map(struct thermal_zone_device * const *tzs,
+ 				       unsigned int num);
+ int audioreach_get_sp_vi_t0(long *vals, unsigned int count);
+ void audioreach_sp_set_required(bool required);
++void audioreach_sp_set_r0t0_from_uefi(bool enable, u32 r0_min_uohm, u32 r0_max_uohm);
+ bool audioreach_sp_required(void);
+ void audioreach_sp_session_begin(void);
+ int audioreach_sp_session_end(struct device *dev);
+diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
+index 162dcc22090d..18eb44a56622 100644
+--- a/sound/soc/qcom/x1e80100.c
++++ b/sound/soc/qcom/x1e80100.c
+@@ -436,6 +436,16 @@ static int x1e80100_platform_probe(struct platform_device *pdev)
+ 	x1e80100_add_be_ops(card);
+ 	audioreach_sp_set_required(of_property_read_bool(dev->of_node,
+ 							 "qcom,speaker-protection-required"));
++	if (of_property_read_bool(dev->of_node, "qcom,uefi-speaker-calibration")) {
++		u32 r0_range[2] = {};
++
++		if (of_property_read_u32_array(dev->of_node, "qcom,speaker-r0-range-micro-ohms",
++					       r0_range, 2))
++			dev_err(dev, "qcom,uefi-speaker-calibration needs qcom,speaker-r0-range-micro-ohms\n");
++		audioreach_sp_set_r0t0_from_uefi(true, r0_range[0], r0_range[1]);
++	} else {
++		audioreach_sp_set_r0t0_from_uefi(false, 0, 0);
++	}
+ 
+ 	return devm_snd_soc_register_card(dev, card);
+ }

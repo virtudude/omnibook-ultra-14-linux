@@ -1,0 +1,459 @@
+From c5154175b2888258120805d8ff3eea155edbe9f8 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 15:02:20 -0500
+Subject: [PATCH] ASoC: qcom: audioreach: one bounded walk of topology private
+ data
+
+The readers of a widget's or control's private data trust its vendor
+arrays: headers and elements are read unchecked, a signed offset is
+advanced by the array's size and can overflow or leave the private
+data, num_elems of 0 makes "<= num_elems - 1" loops overrun, mixer
+controls read their first array without checking there is one, and a
+cfg blob need not be a whole number of words.
+
+Add audioreach_tplg_next_array(), the only walk of private data, which
+bounds every array and its elements before returning it, and convert
+the token finders, the control link parser, the cfg blob lookup and the
+mixer widget and control code to it. A missing or malformed sub-graph,
+container or module array now fails the widget.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/qdsp6/topology.c | 312 +++++++++++++++++---------------
+ 1 file changed, 169 insertions(+), 143 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/topology.c b/sound/soc/qcom/qdsp6/topology.c
+index a4276dd8b87b..aa27676bbe87 100644
+--- a/sound/soc/qcom/qdsp6/topology.c
++++ b/sound/soc/qcom/qdsp6/topology.c
+@@ -252,146 +252,159 @@ static struct audioreach_module *audioreach_tplg_alloc_module(struct q6apm *apm,
+ 	return mod;
+ }
+ 
+-static const struct snd_soc_tplg_vendor_array *
+-audioreach_get_sg_array(const struct snd_soc_tplg_private *private)
++/*
++ * Return the vendor array at *@pos and advance *@pos past it, after bounds
++ * checking its header, extent and tuple elements against @priv. A module cfg
++ * blob's size excludes its audioreach_module_priv_data header.
++ * Returns 1 with *@array set, 0 at the end, -EINVAL on malformed data.
++ */
++static int audioreach_tplg_next_array(const struct snd_soc_tplg_private *priv, u32 *pos,
++				      const struct snd_soc_tplg_vendor_array **array)
+ {
+-	const struct snd_soc_tplg_vendor_array *sg_array = NULL;
+-	bool found = false;
+-	int sz;
+-
+-	for (sz = 0; !found && (sz < le32_to_cpu(private->size)); ) {
+-		const struct snd_soc_tplg_vendor_value_elem *sg_elem;
+-		int tkn_count = 0;
+-
+-		sg_array = (struct snd_soc_tplg_vendor_array *)((u8 *)private->array + sz);
+-		sg_elem = sg_array->value;
+-		sz = sz + le32_to_cpu(sg_array->size);
+-		while (!found && tkn_count <= (le32_to_cpu(sg_array->num_elems) - 1)) {
+-			switch (le32_to_cpu(sg_elem->token)) {
+-			case AR_TKN_U32_SUB_GRAPH_INSTANCE_ID:
+-				found = true;
+-				break;
+-			default:
+-				break;
+-			}
+-			tkn_count++;
+-			sg_elem++;
+-		}
++	const struct snd_soc_tplg_vendor_array *arr;
++	u32 total = le32_to_cpu(priv->size);
++	u32 remain, size, type, elem_size;
++	u64 elems;
++
++	if (*pos >= total)
++		return 0;
++
++	remain = total - *pos;
++	if (remain < sizeof(*arr))
++		return -EINVAL;
++
++	arr = (const void *)(priv->data + *pos);
++	size = le32_to_cpu(arr->size);
++	type = le32_to_cpu(arr->type);
++
++	if (type == SND_SOC_AR_TPLG_MODULE_CFG_TYPE) {
++		if (!IS_ALIGNED(size, sizeof(__le32)) ||
++		    remain < sizeof(struct audioreach_module_priv_data) ||
++		    size > remain - sizeof(struct audioreach_module_priv_data))
++			return -EINVAL;
++		*pos += sizeof(struct audioreach_module_priv_data) + size;
++		*array = arr;
++		return 1;
+ 	}
+ 
+-	if (found)
+-		return sg_array;
++	if (size < sizeof(*arr) || size > remain)
++		return -EINVAL;
+ 
+-	return NULL;
++	switch (type) {
++	case SND_SOC_TPLG_TUPLE_TYPE_UUID:
++		elem_size = sizeof(struct snd_soc_tplg_vendor_uuid_elem);
++		break;
++	case SND_SOC_TPLG_TUPLE_TYPE_STRING:
++		elem_size = sizeof(struct snd_soc_tplg_vendor_string_elem);
++		break;
++	case SND_SOC_TPLG_TUPLE_TYPE_BOOL:
++	case SND_SOC_TPLG_TUPLE_TYPE_BYTE:
++	case SND_SOC_TPLG_TUPLE_TYPE_WORD:
++	case SND_SOC_TPLG_TUPLE_TYPE_SHORT:
++		elem_size = sizeof(struct snd_soc_tplg_vendor_value_elem);
++		break;
++	default:
++		/* Unknown array type: only its extent can be checked */
++		elem_size = 0;
++		break;
++	}
++
++	elems = le32_to_cpu(arr->num_elems);
++	if (elem_size && (!elems || elems * elem_size > size - sizeof(*arr)))
++		return -EINVAL;
++
++	*pos += size;
++	*array = arr;
++	return 1;
+ }
+ 
+-static const struct snd_soc_tplg_vendor_array *
+-audioreach_get_cont_array(const struct snd_soc_tplg_private *private)
++static bool audioreach_tplg_is_value_array(const struct snd_soc_tplg_vendor_array *arr)
+ {
+-	const struct snd_soc_tplg_vendor_array *cont_array = NULL;
+-	bool found = false;
+-	int sz;
+-
+-	for (sz = 0; !found && (sz < le32_to_cpu(private->size)); ) {
+-		const struct snd_soc_tplg_vendor_value_elem *cont_elem;
+-		int tkn_count = 0;
+-
+-		cont_array = (struct snd_soc_tplg_vendor_array *)((u8 *)private->array + sz);
+-		cont_elem = cont_array->value;
+-		sz = sz + le32_to_cpu(cont_array->size);
+-		while (!found && tkn_count <= (le32_to_cpu(cont_array->num_elems) - 1)) {
+-			switch (le32_to_cpu(cont_elem->token)) {
+-			case AR_TKN_U32_CONTAINER_INSTANCE_ID:
+-				found = true;
+-				break;
+-			default:
+-				break;
+-			}
+-			tkn_count++;
+-			cont_elem++;
+-		}
++	switch (le32_to_cpu(arr->type)) {
++	case SND_SOC_TPLG_TUPLE_TYPE_BOOL:
++	case SND_SOC_TPLG_TUPLE_TYPE_BYTE:
++	case SND_SOC_TPLG_TUPLE_TYPE_WORD:
++	case SND_SOC_TPLG_TUPLE_TYPE_SHORT:
++		return true;
++	default:
++		return false;
+ 	}
+-
+-	if (found)
+-		return cont_array;
+-
+-	return NULL;
+ }
+ 
++/* NULL if no value array holds @token, ERR_PTR(-EINVAL) on malformed data */
+ static const struct snd_soc_tplg_vendor_array *
+-audioreach_get_module_array(const struct snd_soc_tplg_private *private)
++audioreach_tplg_find_token_array(const struct snd_soc_tplg_private *priv, u32 token)
+ {
+-	const struct snd_soc_tplg_vendor_array *mod_array = NULL;
+-	bool found = false;
+-	int sz = 0;
+-
+-	for (sz = 0; !found && (sz < le32_to_cpu(private->size)); ) {
+-		const struct snd_soc_tplg_vendor_value_elem *mod_elem;
+-		int tkn_count = 0;
+-
+-		mod_array = (struct snd_soc_tplg_vendor_array *)((u8 *)private->array + sz);
+-		mod_elem = mod_array->value;
+-		sz = sz + le32_to_cpu(mod_array->size);
+-		while (!found && tkn_count <= (le32_to_cpu(mod_array->num_elems) - 1)) {
+-			switch (le32_to_cpu(mod_elem->token)) {
+-			case AR_TKN_U32_MODULE_INSTANCE_ID:
+-				found = true;
+-				break;
+-			default:
+-				break;
+-			}
+-			tkn_count++;
+-			mod_elem++;
+-		}
+-	}
++	const struct snd_soc_tplg_vendor_array *arr;
++	u32 pos = 0, i;
++	int ret;
+ 
+-	if (found)
+-		return mod_array;
++	while ((ret = audioreach_tplg_next_array(priv, &pos, &arr)) > 0) {
++		if (!audioreach_tplg_is_value_array(arr))
++			continue;
++		for (i = 0; i < le32_to_cpu(arr->num_elems); i++)
++			if (le32_to_cpu(arr->value[i].token) == token)
++				return arr;
++	}
+ 
+-	return NULL;
++	return ret < 0 ? ERR_PTR(ret) : NULL;
+ }
+ 
+-static struct audioreach_module_priv_data *
+-audioreach_get_module_priv_data(const struct snd_soc_tplg_private *private)
++static const struct snd_soc_tplg_vendor_array *
++audioreach_tplg_first_value_array(const struct snd_soc_tplg_private *priv)
+ {
+-	int sz;
++	const struct snd_soc_tplg_vendor_array *arr;
++	u32 pos = 0;
++	int ret;
+ 
+-	for (sz = 0; sz < le32_to_cpu(private->size); ) {
+-		const struct snd_soc_tplg_vendor_array *mod_array;
+-		u32 array_size;
++	while ((ret = audioreach_tplg_next_array(priv, &pos, &arr)) > 0)
++		if (audioreach_tplg_is_value_array(arr))
++			return arr;
+ 
+-		mod_array = (struct snd_soc_tplg_vendor_array *)((u8 *)private->array + sz);
+-		array_size = le32_to_cpu(mod_array->size);
++	return ret < 0 ? ERR_PTR(ret) : NULL;
++}
+ 
+-		if (le32_to_cpu(mod_array->type) == SND_SOC_AR_TPLG_MODULE_CFG_TYPE) {
+-			struct audioreach_module_priv_data *pdata;
+-			u32 nwords;
++static const struct snd_soc_tplg_vendor_array *
++audioreach_get_sg_array(const struct snd_soc_tplg_private *private)
++{
++	return audioreach_tplg_find_token_array(private, AR_TKN_U32_SUB_GRAPH_INSTANCE_ID);
++}
+ 
+-			/* size is the byte count of the __le32 data[] */
+-			nwords = array_size / sizeof(__le32);
++static const struct snd_soc_tplg_vendor_array *
++audioreach_get_cont_array(const struct snd_soc_tplg_private *private)
++{
++	return audioreach_tplg_find_token_array(private, AR_TKN_U32_CONTAINER_INSTANCE_ID);
++}
+ 
+-			/* the blob must lie within the private data */
+-			if (sizeof(*pdata) + (u64)array_size >
+-			    le32_to_cpu(private->size) - sz)
+-				return ERR_PTR(-EINVAL);
++static const struct snd_soc_tplg_vendor_array *
++audioreach_get_module_array(const struct snd_soc_tplg_private *private)
++{
++	return audioreach_tplg_find_token_array(private, AR_TKN_U32_MODULE_INSTANCE_ID);
++}
+ 
+-			pdata = kzalloc_flex(*pdata, data, nwords);
+-			if (!pdata)
+-				return ERR_PTR(-ENOMEM);
++static struct audioreach_module_priv_data *
++audioreach_get_module_priv_data(const struct snd_soc_tplg_private *private)
++{
++	const struct snd_soc_tplg_vendor_array *arr;
++	struct audioreach_module_priv_data *pdata;
++	u32 pos = 0, nwords;
++	int ret;
+ 
+-			memcpy(pdata, ((u8 *)private->data + sz),
+-			       struct_size(pdata, data, nwords));
+-			return pdata;
+-		}
++	while ((ret = audioreach_tplg_next_array(private, &pos, &arr)) > 0) {
++		if (le32_to_cpu(arr->type) != SND_SOC_AR_TPLG_MODULE_CFG_TYPE)
++			continue;
+ 
+-		/* a zero size would never advance the walk */
+-		if (!array_size)
+-			return ERR_PTR(-EINVAL);
++		/* size is the byte count of the __le32 data[] */
++		nwords = le32_to_cpu(arr->size) / sizeof(__le32);
++		pdata = kzalloc_flex(*pdata, data, nwords);
++		if (!pdata)
++			return ERR_PTR(-ENOMEM);
+ 
+-		sz = sz + array_size;
++		memcpy(pdata, arr, struct_size(pdata, data, nwords));
++		return pdata;
+ 	}
+ 
+-	return NULL;
++	return ret < 0 ? ERR_PTR(ret) : NULL;
+ }
+ 
+ static void audioreach_parse_control_link_tokens(struct q6apm *apm,
+@@ -440,37 +453,31 @@ static void audioreach_parse_control_link_tokens(struct q6apm *apm,
+ 	}
+ }
+ 
+-static void audioreach_parse_cl_tokens(struct q6apm *apm, struct audioreach_sub_graph *sg,
+-				       const struct snd_soc_tplg_private *private)
++static int audioreach_parse_cl_tokens(struct q6apm *apm, struct audioreach_sub_graph *sg,
++				      const struct snd_soc_tplg_private *private)
+ {
+-	const struct snd_soc_tplg_vendor_value_elem *cl_elem;
+ 	const struct snd_soc_tplg_vendor_array *cl_array;
+ 	struct audioreach_control_link *link;
+-	int link_id, tkn_count, sz;
++	u32 pos = 0, i;
+ 	bool found = false;
+-
+-	for (sz = 0; sz < le32_to_cpu(private->size);) {
+-		cl_array = (struct snd_soc_tplg_vendor_array *)((u8 *)private->array + sz);
+-		cl_elem = cl_array->value;
+-		sz = sz + le32_to_cpu(cl_array->size);
+-		tkn_count = 0;
+-
+-		/* Module config blobs are not token tuples, stop here */
+-		if (le32_to_cpu(cl_array->type) == SND_SOC_AR_TPLG_MODULE_CFG_TYPE)
+-			break;
+-
+-		while (tkn_count <= (le32_to_cpu(cl_array->num_elems) - 1)) {
+-			if (le32_to_cpu(cl_elem->token) == AR_TKN_U32_CONTROL_LINK_IID) {
+-				link_id = le32_to_cpu(cl_elem->value);
+-				link = audioreach_tplg_alloc_control_link(apm, sg, link_id, &found);
+-				/* Skip on error or already parsed control link data */
+-				if (!IS_ERR(link) && !found)
+-					audioreach_parse_control_link_tokens(apm, link, cl_array);
+-			}
+-			tkn_count++;
+-			cl_elem++;
++	int link_id, ret;
++
++	while ((ret = audioreach_tplg_next_array(private, &pos, &cl_array)) > 0) {
++		if (!audioreach_tplg_is_value_array(cl_array))
++			continue;
++
++		for (i = 0; i < le32_to_cpu(cl_array->num_elems); i++) {
++			if (le32_to_cpu(cl_array->value[i].token) != AR_TKN_U32_CONTROL_LINK_IID)
++				continue;
++			link_id = le32_to_cpu(cl_array->value[i].value);
++			link = audioreach_tplg_alloc_control_link(apm, sg, link_id, &found);
++			/* Skip on error or already parsed control link data */
++			if (!IS_ERR(link) && !found)
++				audioreach_parse_control_link_tokens(apm, link, cl_array);
+ 		}
+ 	}
++
++	return ret;
+ }
+ 
+ static struct audioreach_sub_graph *audioreach_parse_sg_tokens(struct q6apm *apm,
+@@ -484,6 +491,8 @@ static struct audioreach_sub_graph *audioreach_parse_sg_tokens(struct q6apm *apm
+ 	bool found;
+ 
+ 	sg_array = audioreach_get_sg_array(private);
++	if (IS_ERR_OR_NULL(sg_array))
++		return sg_array ? ERR_CAST(sg_array) : ERR_PTR(-EINVAL);
+ 	sg_elem = sg_array->value;
+ 
+ 	while (tkn_count <= (le32_to_cpu(sg_array->num_elems) - 1)) {
+@@ -541,6 +550,8 @@ static struct audioreach_container *audioreach_parse_cont_tokens(struct q6apm *a
+ 	bool found = false;
+ 
+ 	cont_array = audioreach_get_cont_array(private);
++	if (IS_ERR_OR_NULL(cont_array))
++		return cont_array ? ERR_CAST(cont_array) : ERR_PTR(-EINVAL);
+ 	cont_elem = cont_array->value;
+ 
+ 	while (tkn_count <= (le32_to_cpu(cont_array->num_elems) - 1)) {
+@@ -595,6 +606,8 @@ static struct audioreach_module *audioreach_parse_common_tokens(struct q6apm *ap
+ 	int max_tokens;
+ 
+ 	mod_array = audioreach_get_module_array(private);
++	if (IS_ERR_OR_NULL(mod_array))
++		return mod_array ? ERR_CAST(mod_array) : ERR_PTR(-EINVAL);
+ 	mod_elem = mod_array->value;
+ 	max_tokens = le32_to_cpu(mod_array->num_elems);
+ 	while (tkn_count <= (max_tokens - 1)) {
+@@ -743,12 +756,15 @@ static int audioreach_widget_load_module_common(struct snd_soc_component *compon
+ 	struct audioreach_sub_graph *sg;
+ 	struct audioreach_module *mod;
+ 	struct snd_soc_dobj *dobj;
++	int ret;
+ 
+ 	sg = audioreach_parse_sg_tokens(apm, &tplg_w->priv);
+ 	if (IS_ERR(sg))
+ 		return PTR_ERR(sg);
+ 
+-	audioreach_parse_cl_tokens(apm, sg, &tplg_w->priv);
++	ret = audioreach_parse_cl_tokens(apm, sg, &tplg_w->priv);
++	if (ret)
++		return ret;
+ 
+ 	cont = audioreach_parse_cont_tokens(apm, sg, &tplg_w->priv);
+ 	if (IS_ERR(cont))
+@@ -790,6 +806,8 @@ static int audioreach_widget_load_enc_dec_cnv(struct snd_soc_component *componen
+ 	dobj = &w->dobj;
+ 	mod = dobj->private;
+ 	mod_array = audioreach_get_module_array(&tplg_w->priv);
++	if (IS_ERR_OR_NULL(mod_array))
++		return -EINVAL;
+ 	mod_elem = mod_array->value;
+ 
+ 	while (tkn_count <= (le32_to_cpu(mod_array->num_elems) - 1)) {
+@@ -1044,6 +1062,8 @@ static int audioreach_widget_load_buffer(struct snd_soc_component *component,
+ 	mod = dobj->private;
+ 
+ 	mod_array = audioreach_get_module_array(&tplg_w->priv);
++	if (IS_ERR_OR_NULL(mod_array))
++		return -EINVAL;
+ 
+ 	switch (mod->module_id) {
+ 	case MODULE_ID_CODEC_DMA_SINK:
+@@ -1084,7 +1104,9 @@ static int audioreach_widget_load_mixer(struct snd_soc_component *component,
+ 	struct snd_soc_dobj *dobj;
+ 	int tkn_count = 0;
+ 
+-	w_array = &tplg_w->priv.array[0];
++	w_array = audioreach_tplg_first_value_array(&tplg_w->priv);
++	if (IS_ERR(w_array))
++		return PTR_ERR(w_array);
+ 
+ 	scontrol = kzalloc_obj(*scontrol);
+ 	if (!scontrol)
+@@ -1094,8 +1116,8 @@ static int audioreach_widget_load_mixer(struct snd_soc_component *component,
+ 	dobj = &w->dobj;
+ 	dobj->private = scontrol;
+ 
+-	w_elem = w_array->value;
+-	while (tkn_count <= (le32_to_cpu(w_array->num_elems) - 1)) {
++	w_elem = w_array ? w_array->value : NULL;
++	while (w_array && tkn_count < le32_to_cpu(w_array->num_elems)) {
+ 		switch (le32_to_cpu(w_elem->token)) {
+ 		case AR_TKN_U32_SUB_GRAPH_INSTANCE_ID:
+ 			scontrol->sgid = le32_to_cpu(w_elem->value);
+@@ -1616,11 +1638,15 @@ static int audioreach_control_load_mix(struct snd_soc_component *scomp,
+ 	int tkn_count = 0;
+ 
+ 	mc = container_of_const(hdr, struct snd_soc_tplg_mixer_control, hdr);
+-	c_array = (struct snd_soc_tplg_vendor_array *)mc->priv.data;
++	c_array = audioreach_tplg_first_value_array(&mc->priv);
++	if (IS_ERR(c_array))
++		return PTR_ERR(c_array);
++	if (!c_array)
++		return 0;
+ 
+ 	c_elem = c_array->value;
+ 
+-	while (tkn_count <= (le32_to_cpu(c_array->num_elems) - 1)) {
++	while (tkn_count < le32_to_cpu(c_array->num_elems)) {
+ 		switch (le32_to_cpu(c_elem->token)) {
+ 		case AR_TKN_U32_SUB_GRAPH_INSTANCE_ID:
+ 			scontrol->sgid = le32_to_cpu(c_elem->value);

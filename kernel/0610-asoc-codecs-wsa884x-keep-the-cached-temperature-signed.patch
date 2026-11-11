@@ -1,0 +1,30 @@
+From 03cd4e40b58f92675c556ba3e7fa94089c1411d3 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Mon, 9 Nov 2026 19:31:05 -0500
+Subject: [PATCH] ASoC: codecs: wsa884x: keep the cached temperature signed
+
+Since the accepted range was widened to the -10..150 degC trim range, a
+reading below 0 degC can be cached, but temperature is unsigned, so the
+value reported while the PA is on (hwmon, speaker protection T0
+readback) wraps to about 4.29e9 millidegrees. Make it an int.
+
+Reported by the sashiko-bot review of the temperature range change.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/codecs/wsa884x.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/sound/soc/codecs/wsa884x.c b/sound/soc/codecs/wsa884x.c
+index b1260674b62c..a2e77faacc55 100644
+--- a/sound/soc/codecs/wsa884x.c
++++ b/sound/soc/codecs/wsa884x.c
+@@ -750,7 +750,7 @@ struct wsa884x_priv {
+ 	 * fields: temperature and pa_on.
+ 	 */
+ 	struct mutex sp_lock;
+-	unsigned int temperature;
++	int temperature;
+ 	bool pa_on;
+ };
+ 

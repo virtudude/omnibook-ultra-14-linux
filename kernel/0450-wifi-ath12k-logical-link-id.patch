@@ -1,0 +1,2027 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/11] wifi: ath12k: logical link id
+
+The "ath12k-logical-link-id" v5 series, all eleven patches, queued in
+ath-next.
+
+ 1/11 wifi: ath12k: fix potential OOB access due to unverified hardware link id
+     Author: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+     Message-ID: <20261110-ath12k-logical-link-id-v5-1-26a3ed38db09@oss.qualcomm.com>
+ 2/11 wifi: ath12k: skip hw link id match for devices without hw link id support
+     Author: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+     Message-ID: <20261110-ath12k-logical-link-id-v5-2-26a3ed38db09@oss.qualcomm.com>
+ 3/11 wifi: ath12k: rename ath12k_dp_peer::hw_links to link_id_map
+     Author: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+     Message-ID: <20261110-ath12k-logical-link-id-v5-3-26a3ed38db09@oss.qualcomm.com>
+ 4/11 wifi: ath12k: rename ath12k_dp_link_peer::hw_link_id to drv_link_id
+     Author: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+     Message-ID: <20261110-ath12k-logical-link-id-v5-4-26a3ed38db09@oss.qualcomm.com>
+ 5/11 wifi: ath12k: rename ath12k_skb_rxcb::hw_link_id to drv_link_id
+     Author: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+     Message-ID: <20261110-ath12k-logical-link-id-v5-5-26a3ed38db09@oss.qualcomm.com>
+ 6/11 wifi: ath12k: derive device id without drv_link_id for single device group
+     Author: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+     Message-ID: <20261110-ath12k-logical-link-id-v5-6-26a3ed38db09@oss.qualcomm.com>
+ 7/11 wifi: ath12k: add support for HTT_T2H_MSG_TYPE_PEER_EXTENDED event
+     Author: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+     Message-ID: <20261110-ath12k-logical-link-id-v5-7-26a3ed38db09@oss.qualcomm.com>
+ 8/11 wifi: ath12k: allocate logical link id on host when firmware does not report it
+     Author: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+     Message-ID: <20261110-ath12k-logical-link-id-v5-8-26a3ed38db09@oss.qualcomm.com>
+ 9/11 wifi: ath12k: derive REO RX drv_link_id per device via HAL ops
+     Author: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+     Message-ID: <20261110-ath12k-logical-link-id-v5-9-26a3ed38db09@oss.qualcomm.com>
+10/11 wifi: ath12k: derive WBM RX drv_link_id per device via HAL ops
+     Author: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+     Message-ID: <20261110-ath12k-logical-link-id-v5-10-26a3ed38db09@oss.qualcomm.com>
+11/11 wifi: ath12k: use link_id_map to resolve RX link id for all devices
+     Author: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+     Message-ID: <20261110-ath12k-logical-link-id-v5-11-26a3ed38db09@oss.qualcomm.com>
+
+From 7745a97740b7d676198c5374d882b3d88fcb84d7 Mon Sep 17 00:00:00 2001
+From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Date: Tue, 10 Nov 2026 14:40:22 +0800
+Subject: [PATCH 1/11] wifi: ath12k: fix potential OOB access due to unverified
+ hardware link id
+
+In ath12k_wifi7_dp_rx_process(), hw_link_id is extracted from
+hardware/firmware descriptor and directly used here (and also stored in
+rxcb->hw_link_id which is used later in other functions) to index
+ag->hw_links. ag->hw_links is an array with size ATH12K_GROUP_MAX_RADIO,
+unverified hw_link_id could lead to out-of-bounds access.
+
+Add the boundary check before using it. If the check fails, continue to
+process next descriptor.
+
+The same applies to ath12k_wifi7_dp_rx_process_err(), fix it as well.
+
+This is found during code review.
+
+Tested-on: WCN7850 hw2.0 PCI WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Tested-on: QCC2072 hw1.0 PCI WLAN.COL.1.0.c2-00068-QCACOLSWPL_V1_TO_SILICONZ-1
+
+Tested-by: Burke Cates <burke.cates@gmail.com> # ASUS Zenbook A16 (UX3607OA)
+Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261110-ath12k-logical-link-id-v5-1-26a3ed38db09@oss.qualcomm.com
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+---
+ drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c | 20 ++++++++++++++++---
+ 1 file changed, 17 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
+index a32c804403e8..c8e590e5e250 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
+@@ -705,13 +705,22 @@ int ath12k_wifi7_dp_rx_process(struct ath12k_dp *dp, int ring_id,
+ 		cookie = le32_get_bits(desc->buf_addr_info.info1,
+ 				       BUFFER_ADDR_INFO1_SW_COOKIE);
+ 
+-		hw_link_id = le32_get_bits(desc->info0,
+-					   HAL_REO_DEST_RING_INFO0_SRC_LINK_ID);
+-
+ 		desc_va = ((u64)le32_to_cpu(desc->buf_va_hi) << 32 |
+ 			   le32_to_cpu(desc->buf_va_lo));
+ 		desc_info = (struct ath12k_rx_desc_info *)((unsigned long)desc_va);
+ 
++		hw_link_id = le32_get_bits(desc->info0,
++					   HAL_REO_DEST_RING_INFO0_SRC_LINK_ID);
++		if (unlikely(hw_link_id >= ATH12K_GROUP_MAX_RADIO)) {
++			if (desc_info && desc_info->skb) {
++				dev_kfree_skb_any(desc_info->skb);
++				desc_info->skb = NULL;
++			}
++
++			ath12k_warn(ab, "invalid HW link id %u\n", hw_link_id);
++			continue;
++		}
++
+ 		device_id = hw_links[hw_link_id].device_id;
+ 		partner_dp = ath12k_dp_hw_grp_to_dp(dp_hw_grp, device_id);
+ 		if (unlikely(!partner_dp)) {
+@@ -1469,6 +1478,11 @@ int ath12k_wifi7_dp_rx_process_err(struct ath12k_dp *dp, struct napi_struct *nap
+ 
+ 		hw_link_id = le32_get_bits(reo_desc->info0,
+ 					   HAL_REO_DEST_RING_INFO0_SRC_LINK_ID);
++		if (unlikely(hw_link_id >= ATH12K_GROUP_MAX_RADIO)) {
++			ath12k_warn(ab, "invalid HW link id %u\n", hw_link_id);
++			continue;
++		}
++
+ 		device_id = hw_links[hw_link_id].device_id;
+ 		partner_dp = ath12k_dp_hw_grp_to_dp(dp_hw_grp, device_id);
+ 
+From 22db2bd3c7c872758d64bc33e606baa3ed16e45b Mon Sep 17 00:00:00 2001
+From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Date: Tue, 10 Nov 2026 14:40:23 +0800
+Subject: [PATCH 2/11] wifi: ath12k: skip hw link id match for devices without hw
+ link id support
+
+ath12k_dp_link_peer_assign()/unassign() maintain an address-keyed
+rhashtable of link peers. To handle the split PHY and roaming scenario,
+where two pdevs share the same rhashtable and an address may still be
+present under a different hw link, both functions compare the stored
+hw_link_id against the one being assigned to decide whether the existing
+entry belongs to this link before adding or removing it.
+
+hw_link_id is only used by QCN9274, IPQ5332 and IPQ5424, QCN6432; WCN7850
+and QCC2072 do not use it and rely on the logical link id instead. Also
+such devices are single pdev and never hit the split PHY/roaming case, so
+the disambiguation is unnecessary; keeping it would also break the logical
+link id support added in subsequent patches.
+
+Add a support_hw_link_id hardware parameter and, for devices that do not
+support hw_link_id, add or remove the rhashtable entry directly. Devices
+supporting hw_link_id are not affected.
+
+Tested-on: WCN7850 hw2.0 PCI WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Tested-on: QCC2072 hw1.0 PCI WLAN.COL.1.0.c2-00068-QCACOLSWPL_V1_TO_SILICONZ-1
+
+Tested-by: Burke Cates <burke.cates@gmail.com> # ASUS Zenbook A16 (UX3607OA)
+Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261110-ath12k-logical-link-id-v5-2-26a3ed38db09@oss.qualcomm.com
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+---
+ drivers/net/wireless/ath/ath12k/dp_peer.c  | 48 +++++++++++++---------
+ drivers/net/wireless/ath/ath12k/hw.h       |  2 +
+ drivers/net/wireless/ath/ath12k/wifi7/hw.c | 12 ++++++
+ 3 files changed, 42 insertions(+), 20 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/dp_peer.c b/drivers/net/wireless/ath/ath12k/dp_peer.c
+index 06f6eccfb574..8dcb07773bd1 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.c
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.c
+@@ -558,25 +558,29 @@ int ath12k_dp_link_peer_assign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_hw,
+ 
+ 	spin_unlock_bh(&dp_hw->peer_lock);
+ 
+-	/*
+-	 * In case of Split PHY and roaming scenario, pdev idx
+-	 * might differ but both the pdev will share same rhash
+-	 * table. In that case update the rhash table if link_peer is
+-	 * already present
+-	 */
+-	temp_peer = ath12k_dp_link_peer_find_by_addr(dp, addr);
+-	if (temp_peer && temp_peer->hw_link_id != hw_link_id)
+-		ath12k_dp_link_peer_rhash_delete(dp, temp_peer);
+-
+-	ret = ath12k_dp_link_peer_rhash_add(dp, peer);
+-	if (ret) {
++	if (dp->hw_params->support_hw_link_id) {
+ 		/*
+-		 * If new entry addition failed, add back old entry
+-		 * If old entry addition also fails, then nothing
+-		 * can be done, simply proceed
++		 * In case of Split PHY and roaming scenario, pdev idx
++		 * might differ but both the pdev will share same rhash
++		 * table. In that case update the rhash table if link_peer is
++		 * already present
+ 		 */
+-		if (temp_peer)
+-			ath12k_dp_link_peer_rhash_add(dp, temp_peer);
++		temp_peer = ath12k_dp_link_peer_find_by_addr(dp, addr);
++		if (temp_peer && temp_peer->hw_link_id != hw_link_id)
++			ath12k_dp_link_peer_rhash_delete(dp, temp_peer);
++
++		ret = ath12k_dp_link_peer_rhash_add(dp, peer);
++		if (ret) {
++			/*
++			 * If new entry addition failed, add back old entry
++			 * If old entry addition also fails, then nothing
++			 * can be done, simply proceed
++			 */
++			if (temp_peer)
++				ath12k_dp_link_peer_rhash_add(dp, temp_peer);
++		}
++	} else {
++		ret = ath12k_dp_link_peer_rhash_add(dp, peer);
+ 	}
+ 
+ 	spin_unlock_bh(&dp->dp_lock);
+@@ -622,10 +626,14 @@ void ath12k_dp_link_peer_unassign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_
+ 
+ 	spin_unlock_bh(&dp_hw->peer_lock);
+ 
+-	/* To handle roaming and split phy scenario */
+-	temp_peer = ath12k_dp_link_peer_find_by_addr(dp, addr);
+-	if (temp_peer && temp_peer->hw_link_id == hw_link_id)
++	if (dp->hw_params->support_hw_link_id) {
++		/* To handle roaming and split phy scenario */
++		temp_peer = ath12k_dp_link_peer_find_by_addr(dp, addr);
++		if (temp_peer && temp_peer->hw_link_id == hw_link_id)
++			ath12k_dp_link_peer_rhash_delete(dp, peer);
++	} else {
+ 		ath12k_dp_link_peer_rhash_delete(dp, peer);
++	}
+ 
+ 	spin_unlock_bh(&dp->dp_lock);
+ 
+diff --git a/drivers/net/wireless/ath/ath12k/hw.h b/drivers/net/wireless/ath/ath12k/hw.h
+index 52558dd126a0..b5fa8e224ca5 100644
+--- a/drivers/net/wireless/ath/ath12k/hw.h
++++ b/drivers/net/wireless/ath/ath12k/hw.h
+@@ -240,6 +240,8 @@ struct ath12k_hw_params {
+ 
+ 	bool host_alloc_ml_id;
+ 	bool advertise_iface_mac_pool;
++
++	bool support_hw_link_id;
+ };
+ 
+ struct ath12k_hw_ops {
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/hw.c b/drivers/net/wireless/ath/ath12k/wifi7/hw.c
+index b1c17cc197df..5b31719b15ca 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hw.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hw.c
+@@ -448,6 +448,8 @@ static const struct ath12k_hw_params ath12k_wifi7_hw_params[] = {
+ 
+ 		.host_alloc_ml_id = true,
+ 		.advertise_iface_mac_pool = false,
++
++		.support_hw_link_id = true,
+ 	},
+ 	{
+ 		.name = "wcn7850 hw2.0",
+@@ -544,6 +546,8 @@ static const struct ath12k_hw_params ath12k_wifi7_hw_params[] = {
+ 
+ 		.host_alloc_ml_id = false,
+ 		.advertise_iface_mac_pool = true,
++
++		.support_hw_link_id = false,
+ 	},
+ 	{
+ 		.name = "qcn9274 hw2.0",
+@@ -636,6 +640,8 @@ static const struct ath12k_hw_params ath12k_wifi7_hw_params[] = {
+ 
+ 		.host_alloc_ml_id = true,
+ 		.advertise_iface_mac_pool = false,
++
++		.support_hw_link_id = true,
+ 	},
+ 	{
+ 		.name = "ipq5332 hw1.0",
+@@ -722,6 +728,8 @@ static const struct ath12k_hw_params ath12k_wifi7_hw_params[] = {
+ 
+ 		.host_alloc_ml_id = true,
+ 		.advertise_iface_mac_pool = false,
++
++		.support_hw_link_id = true,
+ 	},
+ 	{
+ 		.name = "qcc2072 hw1.0",
+@@ -819,6 +827,8 @@ static const struct ath12k_hw_params ath12k_wifi7_hw_params[] = {
+ 
+ 		.host_alloc_ml_id = false,
+ 		.advertise_iface_mac_pool = true,
++
++		.support_hw_link_id = false,
+ 	},
+ 	{
+ 		.name = "ipq5424 hw1.0",
+@@ -908,6 +918,8 @@ static const struct ath12k_hw_params ath12k_wifi7_hw_params[] = {
+ 
+ 		.host_alloc_ml_id = true,
+ 		.advertise_iface_mac_pool = false,
++
++		.support_hw_link_id = true,
+ 	},
+ };
+ 
+From 570e8aa8f5bb2dcac476093e80b2d1888e8d97d2 Mon Sep 17 00:00:00 2001
+From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Date: Tue, 10 Nov 2026 14:40:24 +0800
+Subject: [PATCH 3/11] wifi: ath12k: rename ath12k_dp_peer::hw_links to link_id_map
+
+The name hw_links is not clear about what this array actually holds.
+It maps a driver link index to the IEEE80211 link id, where the index
+is the hw_link_id for QCN9274. For WCN7850/QCC2072 it will be the
+logical_link_id, which will be introduced in a later change.
+
+Rename it to link_id_map to better reflect its purpose. No functional
+change intended.
+
+Tested-on: WCN7850 hw2.0 PCI WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Tested-on: QCC2072 hw1.0 PCI WLAN.COL.1.0.c2-00068-QCACOLSWPL_V1_TO_SILICONZ-1
+
+Tested-by: Burke Cates <burke.cates@gmail.com> # ASUS Zenbook A16 (UX3607OA)
+Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261110-ath12k-logical-link-id-v5-3-26a3ed38db09@oss.qualcomm.com
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+---
+ drivers/net/wireless/ath/ath12k/dp_peer.c     | 6 +++---
+ drivers/net/wireless/ath/ath12k/dp_peer.h     | 7 ++++++-
+ drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c | 2 +-
+ 3 files changed, 10 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/dp_peer.c b/drivers/net/wireless/ath/ath12k/dp_peer.c
+index 8dcb07773bd1..2826d6016ce8 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.c
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.c
+@@ -418,7 +418,7 @@ ath12k_dp_link_peer_find_by_peerid(struct ath12k_pdev_dp *dp_pdev, u16 peer_id)
+ 	if (!dp_peer)
+ 		return NULL;
+ 
+-	link_id = dp_peer->hw_links[dp_pdev->hw_link_id];
++	link_id = dp_peer->link_id_map[dp_pdev->hw_link_id];
+ 
+ 	return rcu_dereference(dp_peer->link_peers[link_id]);
+ }
+@@ -546,7 +546,7 @@ int ath12k_dp_link_peer_assign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_hw,
+ 	peer->dp_peer = dp_peer;
+ 	peer->hw_link_id = hw_link_id;
+ 
+-	dp_peer->hw_links[peer->hw_link_id] = link_id;
++	dp_peer->link_id_map[peer->hw_link_id] = link_id;
+ 
+ 	peerid_index = ath12k_dp_peer_get_peerid_index(dp, peer->peer_id);
+ 
+@@ -614,7 +614,7 @@ void ath12k_dp_link_peer_unassign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_
+ 	spin_lock_bh(&dp_hw->peer_lock);
+ 
+ 	dp_peer = peer->dp_peer;
+-	dp_peer->hw_links[peer->hw_link_id] = 0;
++	dp_peer->link_id_map[peer->hw_link_id] = 0;
+ 
+ 	peerid_index = ath12k_dp_peer_get_peerid_index(dp, peer->peer_id);
+ 
+diff --git a/drivers/net/wireless/ath/ath12k/dp_peer.h b/drivers/net/wireless/ath/ath12k/dp_peer.h
+index d01ef1aea48b..b9c94d6366fa 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.h
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.h
+@@ -131,7 +131,12 @@ struct ath12k_dp_peer {
+ 	int peer_id;
+ 	struct ieee80211_sta *sta;
+ 
+-	u8 hw_links[ATH12K_GROUP_MAX_RADIO];
++	/*
++	 * Maps a driver link index to the IEEE80211 link id. The index is
++	 * the hw_link_id for QCN9274 and the logical_link_id for
++	 * WCN7850/QCC2072.
++	 */
++	u8 link_id_map[ATH12K_GROUP_MAX_RADIO];
+ 
+ 	u16 sec_type_grp;
+ 	u16 sec_type;
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
+index c8e590e5e250..2a0141157426 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
+@@ -2368,7 +2368,7 @@ ath12k_wifi7_dp_rx_get_link_id_qcn9274(struct ath12k_dp_peer *dp_peer,
+ 				       struct ath12k_skb_rxcb *rxcb,
+ 				       struct ieee80211_rx_status *status)
+ {
+-	return dp_peer->hw_links[rxcb->hw_link_id];
++	return dp_peer->link_id_map[rxcb->hw_link_id];
+ }
+ 
+ int
+From e61700d7db5dfaa0324549e770f5b93e40a4654a Mon Sep 17 00:00:00 2001
+From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Date: Tue, 10 Nov 2026 14:40:25 +0800
+Subject: [PATCH 4/11] wifi: ath12k: rename ath12k_dp_link_peer::hw_link_id to
+ drv_link_id
+
+The hw_link_id field of ath12k_dp_link_peer holds the driver link id of
+the link peer. This is the hw_link_id for QCN9274, but for
+WCN7850/QCC2072 it is the logical_link_id instead. The hw_link_id name
+is therefore misleading for the latter.
+
+Rename it to drv_link_id to reflect that it is the driver link id
+regardless of how the underlying value is derived. No functional change
+intended.
+
+Tested-on: WCN7850 hw2.0 PCI WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Tested-on: QCC2072 hw1.0 PCI WLAN.COL.1.0.c2-00068-QCACOLSWPL_V1_TO_SILICONZ-1
+
+Tested-by: Burke Cates <burke.cates@gmail.com> # ASUS Zenbook A16 (UX3607OA)
+Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261110-ath12k-logical-link-id-v5-4-26a3ed38db09@oss.qualcomm.com
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+---
+ drivers/net/wireless/ath/ath12k/dp_peer.c | 10 +++++-----
+ drivers/net/wireless/ath/ath12k/dp_peer.h |  7 ++++++-
+ 2 files changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/dp_peer.c b/drivers/net/wireless/ath/ath12k/dp_peer.c
+index 2826d6016ce8..f73dad49e42b 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.c
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.c
+@@ -544,9 +544,9 @@ int ath12k_dp_link_peer_assign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_hw,
+ 		dp_peer->peer_id = peer->peer_id;
+ 
+ 	peer->dp_peer = dp_peer;
+-	peer->hw_link_id = hw_link_id;
++	peer->drv_link_id = hw_link_id;
+ 
+-	dp_peer->link_id_map[peer->hw_link_id] = link_id;
++	dp_peer->link_id_map[peer->drv_link_id] = link_id;
+ 
+ 	peerid_index = ath12k_dp_peer_get_peerid_index(dp, peer->peer_id);
+ 
+@@ -566,7 +566,7 @@ int ath12k_dp_link_peer_assign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_hw,
+ 		 * already present
+ 		 */
+ 		temp_peer = ath12k_dp_link_peer_find_by_addr(dp, addr);
+-		if (temp_peer && temp_peer->hw_link_id != hw_link_id)
++		if (temp_peer && temp_peer->drv_link_id != hw_link_id)
+ 			ath12k_dp_link_peer_rhash_delete(dp, temp_peer);
+ 
+ 		ret = ath12k_dp_link_peer_rhash_add(dp, peer);
+@@ -614,7 +614,7 @@ void ath12k_dp_link_peer_unassign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_
+ 	spin_lock_bh(&dp_hw->peer_lock);
+ 
+ 	dp_peer = peer->dp_peer;
+-	dp_peer->link_id_map[peer->hw_link_id] = 0;
++	dp_peer->link_id_map[peer->drv_link_id] = 0;
+ 
+ 	peerid_index = ath12k_dp_peer_get_peerid_index(dp, peer->peer_id);
+ 
+@@ -629,7 +629,7 @@ void ath12k_dp_link_peer_unassign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_
+ 	if (dp->hw_params->support_hw_link_id) {
+ 		/* To handle roaming and split phy scenario */
+ 		temp_peer = ath12k_dp_link_peer_find_by_addr(dp, addr);
+-		if (temp_peer && temp_peer->hw_link_id == hw_link_id)
++		if (temp_peer && temp_peer->drv_link_id == hw_link_id)
+ 			ath12k_dp_link_peer_rhash_delete(dp, peer);
+ 	} else {
+ 		ath12k_dp_link_peer_rhash_delete(dp, peer);
+diff --git a/drivers/net/wireless/ath/ath12k/dp_peer.h b/drivers/net/wireless/ath/ath12k/dp_peer.h
+index b9c94d6366fa..d2752b35ba0f 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.h
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.h
+@@ -99,7 +99,12 @@ struct ath12k_dp_link_peer {
+ 	/* peer addr based rhashtable list pointer */
+ 	struct rhash_head rhash_addr;
+ 
+-	u8 hw_link_id;
++	/*
++	 * Driver link id of this link peer. It is the hw_link_id for
++	 * QCN9274 and the logical_link_id for WCN7850/QCC2072. Only one
++	 * of them is used at a time.
++	 */
++	u8 drv_link_id;
+ 	u32 rx_tid_active_bitmask;
+ 
+ 	/* link stats */
+From 09117862da5e4e4bd7434d19eaf8fac3a7e32956 Mon Sep 17 00:00:00 2001
+From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Date: Tue, 10 Nov 2026 14:40:26 +0800
+Subject: [PATCH 5/11] wifi: ath12k: rename ath12k_skb_rxcb::hw_link_id to
+ drv_link_id
+
+The hw_link_id field of ath12k_skb_rxcb holds the driver link id of the
+RX frame. This is the hw_link_id for QCN9274, but for WCN7850/QCC2072 it
+is the logical_link_id instead. The hw_link_id name is therefore
+misleading for the latter.
+
+Rename it to drv_link_id to reflect that it is the driver link id
+regardless of how the underlying value is derived. No functional change
+intended.
+
+Tested-on: WCN7850 hw2.0 PCI WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Tested-on: QCC2072 hw1.0 PCI WLAN.COL.1.0.c2-00068-QCACOLSWPL_V1_TO_SILICONZ-1
+
+Tested-by: Burke Cates <burke.cates@gmail.com> # ASUS Zenbook A16 (UX3607OA)
+Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261110-ath12k-logical-link-id-v5-5-26a3ed38db09@oss.qualcomm.com
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+---
+ drivers/net/wireless/ath/ath12k/core.h        |  2 +-
+ drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c | 12 ++++++------
+ 2 files changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/core.h b/drivers/net/wireless/ath/ath12k/core.h
+index e8ecab383a45..406b1bae39af 100644
+--- a/drivers/net/wireless/ath/ath12k/core.h
++++ b/drivers/net/wireless/ath/ath12k/core.h
+@@ -143,7 +143,7 @@ struct ath12k_skb_rxcb {
+ 	struct hal_rx_desc *rx_desc;
+ 	u8 err_rel_src;
+ 	u8 err_code;
+-	u8 hw_link_id;
++	u8 drv_link_id;
+ 	u8 unmapped;
+ 	u8 is_frag;
+ 	u8 tid;
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
+index 2a0141157426..a59adbb78c76 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
+@@ -621,7 +621,7 @@ ath12k_wifi7_dp_rx_process_received_packets(struct ath12k_dp *dp,
+ 
+ 	while ((msdu = __skb_dequeue(msdu_list))) {
+ 		rxcb = ATH12K_SKB_RXCB(msdu);
+-		hw_link_id = rxcb->hw_link_id;
++		hw_link_id = rxcb->drv_link_id;
+ 		partner_dp = ath12k_dp_hw_grp_to_dp(dp_hw_grp,
+ 						    hw_links[hw_link_id].device_id);
+ 		pdev_idx = ath12k_hw_mac_id_to_pdev_id(partner_dp->hw_params,
+@@ -776,7 +776,7 @@ int ath12k_wifi7_dp_rx_process(struct ath12k_dp *dp, int ring_id,
+ 					RX_MSDU_DESC_INFO0_LAST_MSDU_IN_MPDU);
+ 		rxcb->is_continuation = !!(le32_to_cpu(msdu_info->info0) &
+ 					   RX_MSDU_DESC_INFO0_MSDU_CONTINUATION);
+-		rxcb->hw_link_id = hw_link_id;
++		rxcb->drv_link_id = hw_link_id;
+ 		rxcb->peer_id = ath12k_wifi7_dp_rx_get_peer_id(dp, dp->peer_metadata_ver,
+ 							       mpdu_info->peer_meta_data);
+ 		rxcb->tid = le32_get_bits(mpdu_info->info0,
+@@ -2063,7 +2063,7 @@ int ath12k_wifi7_dp_rx_process_wbm_err(struct ath12k_dp *dp,
+ 
+ 			skb_queue_walk(&scatter_msdu_list, msdu) {
+ 				rxcb = ATH12K_SKB_RXCB(msdu);
+-				rxcb->hw_link_id = hw_link_id;
++				rxcb->drv_link_id = hw_link_id;
+ 			}
+ 
+ 			skb_queue_splice_tail_init(&scatter_msdu_list,
+@@ -2071,7 +2071,7 @@ int ath12k_wifi7_dp_rx_process_wbm_err(struct ath12k_dp *dp,
+ 		}
+ 
+ 		rxcb = ATH12K_SKB_RXCB(msdu);
+-		rxcb->hw_link_id = hw_link_id;
++		rxcb->drv_link_id = hw_link_id;
+ 		__skb_queue_tail(&msdu_list, msdu);
+ 	}
+ 
+@@ -2102,7 +2102,7 @@ int ath12k_wifi7_dp_rx_process_wbm_err(struct ath12k_dp *dp,
+ 	rcu_read_lock();
+ 	while ((msdu = __skb_dequeue(&msdu_list))) {
+ 		rxcb = ATH12K_SKB_RXCB(msdu);
+-		hw_link_id = rxcb->hw_link_id;
++		hw_link_id = rxcb->drv_link_id;
+ 
+ 		device_id = hw_links[hw_link_id].device_id;
+ 		partner_dp = ath12k_dp_hw_grp_to_dp(dp_hw_grp, device_id);
+@@ -2368,7 +2368,7 @@ ath12k_wifi7_dp_rx_get_link_id_qcn9274(struct ath12k_dp_peer *dp_peer,
+ 				       struct ath12k_skb_rxcb *rxcb,
+ 				       struct ieee80211_rx_status *status)
+ {
+-	return dp_peer->link_id_map[rxcb->hw_link_id];
++	return dp_peer->link_id_map[rxcb->drv_link_id];
+ }
+ 
+ int
+From 96b0779e55cd45233416b803ae9fb75cc2d63c22 Mon Sep 17 00:00:00 2001
+From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Date: Tue, 10 Nov 2026 14:40:27 +0800
+Subject: [PATCH 6/11] wifi: ath12k: derive device id without drv_link_id for single
+ device group
+
+On the RX path several functions derive the device id from the
+drv_link_id via ag->hw_links[drv_link_id].device_id. This does not work
+for WCN7850/QCC2072, which use a logical link id rather than a
+hw_link_id.
+
+For these devices the whole hardware group contains only a single device,
+so the device id is unambiguous and there is no need to look it up from
+the drv_link_id. Add ath12k_dp_drv_link_id_to_device_id(), which returns
+the device id of the only device when the group has a single device,
+and falls back to the drv_link_id based lookup otherwise. Use it in the
+RX path in place of the direct hw_links[] dereference.
+
+Tested-on: WCN7850 hw2.0 PCI WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Tested-on: QCC2072 hw1.0 PCI WLAN.COL.1.0.c2-00068-QCACOLSWPL_V1_TO_SILICONZ-1
+
+Tested-by: Burke Cates <burke.cates@gmail.com> # ASUS Zenbook A16 (UX3607OA)
+Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261110-ath12k-logical-link-id-v5-6-26a3ed38db09@oss.qualcomm.com
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+---
+ drivers/net/wireless/ath/ath12k/dp.c          | 18 ++++++++++++++++++
+ drivers/net/wireless/ath/ath12k/dp.h          |  1 +
+ drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c | 13 ++++++-------
+ 3 files changed, 25 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/dp.c b/drivers/net/wireless/ath/ath12k/dp.c
+index 83f9edfabf69..67b1a1229d20 100644
+--- a/drivers/net/wireless/ath/ath12k/dp.c
++++ b/drivers/net/wireless/ath/ath12k/dp.c
+@@ -934,6 +934,24 @@ static void ath12k_dp_update_vdev_search(struct ath12k_link_vif *arvif)
+ 	}
+ }
+ 
++u8 ath12k_dp_drv_link_id_to_device_id(struct ath12k_hw_group *ag, u8 drv_link_id)
++{
++	/*
++	 * For a single device group there is only one device, so its
++	 * device id is returned directly without consulting the drv_link_id.
++	 * Otherwise, derive the device id from the drv_link_id.
++	 *
++	 * This is general and works for all chips, but particularly useful for
++	 * WCN7850/QCC2072, which cannot rely on the drv_link_id to look up the
++	 * device id.
++	 */
++	if (ag->num_devices == 1)
++		return ag->ab[0]->device_id;
++
++	return ag->hw_links[drv_link_id].device_id;
++}
++EXPORT_SYMBOL(ath12k_dp_drv_link_id_to_device_id);
++
+ void ath12k_dp_vdev_tx_attach(struct ath12k *ar, struct ath12k_link_vif *arvif)
+ {
+ 	struct ath12k_base *ab = ar->ab;
+diff --git a/drivers/net/wireless/ath/ath12k/dp.h b/drivers/net/wireless/ath/ath12k/dp.h
+index 108e27dd5797..df22f5d43455 100644
+--- a/drivers/net/wireless/ath/ath12k/dp.h
++++ b/drivers/net/wireless/ath/ath12k/dp.h
+@@ -736,6 +736,7 @@ ath12k_dp_rxdma_buf_ring_size(const struct ath12k_dp_profile_params *p)
+ 	return p->rxdma_buf_ring_size;
+ }
+ 
++u8 ath12k_dp_drv_link_id_to_device_id(struct ath12k_hw_group *ag, u8 drv_link_id);
+ void ath12k_dp_vdev_tx_attach(struct ath12k *ar, struct ath12k_link_vif *arvif);
+ void ath12k_dp_partner_cc_init(struct ath12k_base *ab);
+ int ath12k_dp_pdev_alloc(struct ath12k_base *ab);
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
+index a59adbb78c76..08a9f070e4aa 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
+@@ -608,7 +608,7 @@ ath12k_wifi7_dp_rx_process_received_packets(struct ath12k_dp *dp,
+ 	struct ath12k_base *partner_ab;
+ 	struct hal_rx_desc_data rx_info;
+ 	struct ath12k_dp *partner_dp;
+-	u8 hw_link_id, pdev_idx;
++	u8 hw_link_id, pdev_idx, device_id;
+ 	int ret;
+ 
+ 	if (skb_queue_empty(msdu_list))
+@@ -622,8 +622,8 @@ ath12k_wifi7_dp_rx_process_received_packets(struct ath12k_dp *dp,
+ 	while ((msdu = __skb_dequeue(msdu_list))) {
+ 		rxcb = ATH12K_SKB_RXCB(msdu);
+ 		hw_link_id = rxcb->drv_link_id;
+-		partner_dp = ath12k_dp_hw_grp_to_dp(dp_hw_grp,
+-						    hw_links[hw_link_id].device_id);
++		device_id = ath12k_dp_drv_link_id_to_device_id(ag, hw_link_id);
++		partner_dp = ath12k_dp_hw_grp_to_dp(dp_hw_grp, device_id);
+ 		pdev_idx = ath12k_hw_mac_id_to_pdev_id(partner_dp->hw_params,
+ 						       hw_links[hw_link_id].pdev_idx);
+ 		partner_ab = partner_dp->ab;
+@@ -669,7 +669,6 @@ int ath12k_wifi7_dp_rx_process(struct ath12k_dp *dp, int ring_id,
+ 	struct ath12k_hal *hal = dp->hal;
+ 	struct ath12k_dp_hw_group *dp_hw_grp = &ag->dp_hw_grp;
+ 	struct list_head rx_desc_used_list[ATH12K_MAX_DEVICES];
+-	struct ath12k_hw_link *hw_links = ag->hw_links;
+ 	int num_buffs_reaped[ATH12K_MAX_DEVICES] = {};
+ 	struct ath12k_rx_desc_info *desc_info;
+ 	struct dp_rxdma_ring *rx_ring = &dp->rx_refill_buf_ring;
+@@ -721,7 +720,7 @@ int ath12k_wifi7_dp_rx_process(struct ath12k_dp *dp, int ring_id,
+ 			continue;
+ 		}
+ 
+-		device_id = hw_links[hw_link_id].device_id;
++		device_id = ath12k_dp_drv_link_id_to_device_id(ag, hw_link_id);
+ 		partner_dp = ath12k_dp_hw_grp_to_dp(dp_hw_grp, device_id);
+ 		if (unlikely(!partner_dp)) {
+ 			if (desc_info->skb) {
+@@ -1483,7 +1482,7 @@ int ath12k_wifi7_dp_rx_process_err(struct ath12k_dp *dp, struct napi_struct *nap
+ 			continue;
+ 		}
+ 
+-		device_id = hw_links[hw_link_id].device_id;
++		device_id = ath12k_dp_drv_link_id_to_device_id(ag, hw_link_id);
+ 		partner_dp = ath12k_dp_hw_grp_to_dp(dp_hw_grp, device_id);
+ 
+ 		/* Below case is added to handle data packet from un-associated clients.
+@@ -2104,7 +2103,7 @@ int ath12k_wifi7_dp_rx_process_wbm_err(struct ath12k_dp *dp,
+ 		rxcb = ATH12K_SKB_RXCB(msdu);
+ 		hw_link_id = rxcb->drv_link_id;
+ 
+-		device_id = hw_links[hw_link_id].device_id;
++		device_id = ath12k_dp_drv_link_id_to_device_id(ag, hw_link_id);
+ 		partner_dp = ath12k_dp_hw_grp_to_dp(dp_hw_grp, device_id);
+ 		if (unlikely(!partner_dp)) {
+ 			ath12k_dbg(ab, ATH12K_DBG_DATA,
+From 13540af6b5cf07547041b04357f4066c5c5a60b5 Mon Sep 17 00:00:00 2001
+From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Date: Tue, 10 Nov 2026 14:40:28 +0800
+Subject: [PATCH 7/11] wifi: ath12k: add support for HTT_T2H_MSG_TYPE_PEER_EXTENDED
+ event
+
+WCN7850/QCC2072 hardware/firmware report only the logical link id to
+identify the link on which a packet is received. The host, however,
+needs the IEEE80211 link id. So a mapping between them needs to
+be established.
+
+Add support for the HTT_T2H_MSG_TYPE_PEER_EXTENDED event, which reports
+the logical link id for a given link peer. Find the link peer and
+populate ath12k_dp_peer::link_id_map, mapping the logical link id to the
+IEEE80211 link id. This map is later used in the data path to derive the
+IEEE80211 link id.
+
+The firmware sends this event after each peer assoc, but only when it
+advertises WMI_TLV_SERVICE_PER_LINK_STATS_SUPPORT. On such devices, block
+in ath12k_mac_peer_assoc() until the event arrives. The event arrives
+before the MLO_RX_PEER_MAP event, so wait for it first.
+
+Tested-on: WCN7850 hw2.0 PCI WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Tested-on: QCC2072 hw1.0 PCI WLAN.COL.1.0.c2-00068-QCACOLSWPL_V1_TO_SILICONZ-1
+
+Tested-by: Burke Cates <burke.cates@gmail.com> # ASUS Zenbook A16 (UX3607OA)
+Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261110-ath12k-logical-link-id-v5-7-26a3ed38db09@oss.qualcomm.com
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+---
+ drivers/net/wireless/ath/ath12k/core.c    |  1 +
+ drivers/net/wireless/ath/ath12k/core.h    |  1 +
+ drivers/net/wireless/ath/ath12k/dp_htt.c  | 17 ++++++
+ drivers/net/wireless/ath/ath12k/dp_htt.h  | 15 ++++++
+ drivers/net/wireless/ath/ath12k/dp_peer.c | 66 ++++++++++++++++++++++-
+ drivers/net/wireless/ath/ath12k/dp_peer.h |  3 ++
+ drivers/net/wireless/ath/ath12k/mac.c     | 13 +++++
+ drivers/net/wireless/ath/ath12k/wmi.h     |  1 +
+ 8 files changed, 115 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/core.c b/drivers/net/wireless/ath/ath12k/core.c
+index 25987bc58556..745488900739 100644
+--- a/drivers/net/wireless/ath/ath12k/core.c
++++ b/drivers/net/wireless/ath/ath12k/core.c
+@@ -1562,6 +1562,7 @@ static void ath12k_core_pre_reconfigure_recovery(struct ath12k_base *ab)
+ 			complete_all(&ar->scan.completed);
+ 			complete(&ar->scan.on_channel);
+ 			complete(&ar->peer_assoc_done);
++			complete(&ar->peer_ext_event_done);
+ 			ath12k_peer_delete_wait_flush(ar);
+ 			complete(&ar->install_key_done);
+ 			complete(&ar->vdev_setup_done);
+diff --git a/drivers/net/wireless/ath/ath12k/core.h b/drivers/net/wireless/ath/ath12k/core.h
+index 406b1bae39af..23bd252a182e 100644
+--- a/drivers/net/wireless/ath/ath12k/core.h
++++ b/drivers/net/wireless/ath/ath12k/core.h
+@@ -682,6 +682,7 @@ struct ath12k {
+ 	u8 radio_idx;
+ 
+ 	struct completion peer_assoc_done;
++	struct completion peer_ext_event_done;
+ 	struct list_head peer_delete_waits;
+ 
+ 	int install_key_status;
+diff --git a/drivers/net/wireless/ath/ath12k/dp_htt.c b/drivers/net/wireless/ath/ath12k/dp_htt.c
+index 72069640bd38..25c1f915defd 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_htt.c
++++ b/drivers/net/wireless/ath/ath12k/dp_htt.c
+@@ -627,6 +627,7 @@ void ath12k_dp_htt_htc_t2h_msg_handler(struct ath12k_base *ab,
+ 	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
+ 	struct htt_resp_msg *resp = (struct htt_resp_msg *)skb->data;
+ 	enum htt_t2h_msg_type type;
++	u8 logical_link_id, valid;
+ 	u16 peer_id;
+ 	u8 vdev_id;
+ 	u8 mac_addr[ETH_ALEN];
+@@ -708,6 +709,22 @@ void ath12k_dp_htt_htc_t2h_msg_handler(struct ath12k_base *ab,
+ 	case HTT_T2H_MSG_TYPE_MLO_RX_PEER_MAP:
+ 		ath12k_dp_htt_mlo_peer_map_handler(ab, skb);
+ 		break;
++	case HTT_T2H_MSG_TYPE_PEER_EXTENDED:
++		peer_id = le32_get_bits(resp->peer_extended_ev.info,
++					HTT_T2H_PEER_EXT_INFO_PEER_ID);
++		vdev_id = le32_get_bits(resp->peer_extended_ev.info,
++					HTT_T2H_PEER_EXT_INFO_VDEV_ID);
++		peer_mac_h16 = le32_get_bits(resp->peer_extended_ev.info1,
++					     HTT_T2H_PEER_EXT_INFO1_MAC_ADDR_H16);
++		ath12k_dp_get_mac_addr(le32_to_cpu(resp->peer_extended_ev.mac_addr_l32),
++				       peer_mac_h16, mac_addr);
++		logical_link_id = le32_get_bits(resp->peer_extended_ev.info1,
++						HTT_T2H_PEER_EXT_INFO1_LOGICAL_LINK_ID);
++		valid = le32_get_bits(resp->peer_extended_ev.info1,
++				      HTT_T2H_PEER_EXT_INFO1_LOGICAL_LINK_ID_VALID);
++		ath12k_dp_link_peer_extended_event(ab, vdev_id, peer_id, mac_addr,
++						   logical_link_id, valid);
++		break;
+ 	default:
+ 		ath12k_dbg(ab, ATH12K_DBG_DP_HTT, "dp_htt event %d not handled\n",
+ 			   type);
+diff --git a/drivers/net/wireless/ath/ath12k/dp_htt.h b/drivers/net/wireless/ath/ath12k/dp_htt.h
+index 2db7fb27c036..1d192bde0c29 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_htt.h
++++ b/drivers/net/wireless/ath/ath12k/dp_htt.h
+@@ -933,6 +933,7 @@ enum htt_t2h_msg_type {
+ 	HTT_T2H_MSG_TYPE_MLO_RX_PEER_MAP = 0x29,
+ 	HTT_T2H_MSG_TYPE_PEER_MAP3	= 0x2b,
+ 	HTT_T2H_MSG_TYPE_VDEV_TXRX_STATS_PERIODIC_IND = 0x2c,
++	HTT_T2H_MSG_TYPE_PEER_EXTENDED	= 0x39,
+ };
+ 
+ #define HTT_TARGET_VERSION_MAJOR 3
+@@ -985,12 +986,26 @@ struct htt_t2h_mlo_peer_map_event {
+ 	__le32 reserved[5];
+ } __packed;
+ 
++#define HTT_T2H_PEER_EXT_INFO_PEER_ID		GENMASK(23, 8)
++#define HTT_T2H_PEER_EXT_INFO_VDEV_ID		GENMASK(31, 24)
++#define HTT_T2H_PEER_EXT_INFO1_MAC_ADDR_H16	GENMASK(15, 0)
++#define HTT_T2H_PEER_EXT_INFO1_LOGICAL_LINK_ID	GENMASK(18, 16)
++#define HTT_T2H_PEER_EXT_INFO1_LOGICAL_LINK_ID_VALID	BIT(19)
++
++struct htt_t2h_peer_extended_event {
++	__le32 info;
++	__le32 mac_addr_l32;
++	__le32 info1;
++	__le32 info2;
++} __packed;
++
+ struct htt_resp_msg {
+ 	union {
+ 		struct htt_t2h_version_conf_msg version_msg;
+ 		struct htt_t2h_peer_map_event peer_map_ev;
+ 		struct htt_t2h_peer_unmap_event peer_unmap_ev;
+ 		struct htt_t2h_mlo_peer_map_event mlo_peer_map_ev;
++		struct htt_t2h_peer_extended_event peer_extended_ev;
+ 	};
+ } __packed;
+ 
+diff --git a/drivers/net/wireless/ath/ath12k/dp_peer.c b/drivers/net/wireless/ath/ath12k/dp_peer.c
+index f73dad49e42b..1e84b9b817f3 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.c
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.c
+@@ -8,6 +8,7 @@
+ #include "dp_peer.h"
+ #include "debug.h"
+ #include "debugfs.h"
++#include "mac.h"
+ 
+ void ath12k_dp_link_peer_free(struct ath12k_dp_link_peer *peer)
+ {
+@@ -195,6 +196,60 @@ void ath12k_dp_link_peer_map_event(struct ath12k_base *ab, u8 vdev_id, u16 peer_
+ 	spin_unlock_bh(&dp->dp_lock);
+ }
+ 
++void ath12k_dp_link_peer_extended_event(struct ath12k_base *ab, u8 vdev_id,
++					u16 peer_id, u8 *mac_addr,
++					u8 logical_link_id, u8 valid)
++{
++	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
++	struct ath12k_dp_link_peer *peer;
++	struct ath12k_dp_peer *dp_peer;
++	struct ath12k *ar;
++
++	if (!valid || logical_link_id >= ATH12K_GROUP_MAX_RADIO) {
++		ath12k_warn(ab, "invalid logical link id %u valid %u\n",
++			    logical_link_id, valid);
++		goto exit;
++	}
++
++	spin_lock_bh(&dp->dp_lock);
++
++	peer = ath12k_dp_link_peer_find_by_vdev_and_addr(dp, vdev_id, mac_addr);
++	if (!peer) {
++		ath12k_warn(ab, "failed to find link peer with vdev id %u addr %pM\n",
++			    vdev_id, mac_addr);
++		goto unlock;
++	}
++
++	if (peer->peer_id != peer_id) {
++		ath12k_warn(ab, "link peer id mismatch, expected %u got %u\n",
++			    peer->peer_id, peer_id);
++		goto unlock;
++	}
++
++	dp_peer = peer->dp_peer;
++
++	peer->drv_link_id = logical_link_id;
++	dp_peer->link_id_map[peer->drv_link_id] = peer->link_id;
++
++	ath12k_dbg(ab, ATH12K_DBG_DP_HTT,
++		   "htt peer extended vdev %d peer %pM id %d logical_link_id %u link_id %u\n",
++		   vdev_id, mac_addr, peer_id, logical_link_id, peer->link_id);
++
++unlock:
++	spin_unlock_bh(&dp->dp_lock);
++
++exit:
++	rcu_read_lock();
++
++	ar = ath12k_mac_get_ar_by_vdev_id(ab, vdev_id);
++	if (ar)
++		complete(&ar->peer_ext_event_done);
++	else
++		ath12k_warn(ab, "failed to get ar with vdev id %u\n", vdev_id);
++
++	rcu_read_unlock();
++}
++
+ static int ath12k_dp_link_peer_rhash_addr_tbl_init(struct ath12k_dp *dp)
+ {
+ 	struct ath12k_base *ab = dp->ab;
+@@ -544,9 +599,16 @@ int ath12k_dp_link_peer_assign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_hw,
+ 		dp_peer->peer_id = peer->peer_id;
+ 
+ 	peer->dp_peer = dp_peer;
+-	peer->drv_link_id = hw_link_id;
+ 
+-	dp_peer->link_id_map[peer->drv_link_id] = link_id;
++	/*
++	 * Only devices that use hw_link_id can map it to the IEEE80211
++	 * link id here. Devices that do not support hw_link_id fill
++	 * link_id_map later from the PEER_EXTENDED HTT event.
++	 */
++	if (dp->hw_params->support_hw_link_id) {
++		peer->drv_link_id = hw_link_id;
++		dp_peer->link_id_map[peer->drv_link_id] = link_id;
++	}
+ 
+ 	peerid_index = ath12k_dp_peer_get_peerid_index(dp, peer->peer_id);
+ 
+diff --git a/drivers/net/wireless/ath/ath12k/dp_peer.h b/drivers/net/wireless/ath/ath12k/dp_peer.h
+index d2752b35ba0f..ea36947d1707 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.h
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.h
+@@ -122,6 +122,9 @@ struct ath12k_dp_link_peer {
+ void ath12k_dp_link_peer_unmap_event(struct ath12k_base *ab, u16 peer_id);
+ void ath12k_dp_link_peer_map_event(struct ath12k_base *ab, u8 vdev_id, u16 peer_id,
+ 				   u8 *mac_addr, u16 ast_hash, u16 hw_peer_id);
++void ath12k_dp_link_peer_extended_event(struct ath12k_base *ab, u8 vdev_id,
++					u16 peer_id, u8 *mac_addr,
++					u8 logical_link_id, u8 valid);
+ 
+ struct ath12k_dp_peer {
+ 	struct list_head list;
+diff --git a/drivers/net/wireless/ath/ath12k/mac.c b/drivers/net/wireless/ath/ath12k/mac.c
+index d820d36882ac..eb0fca43e6f7 100644
+--- a/drivers/net/wireless/ath/ath12k/mac.c
++++ b/drivers/net/wireless/ath/ath12k/mac.c
+@@ -3881,6 +3881,7 @@ static int ath12k_mac_peer_assoc(struct ath12k *ar,
+ 	int ret;
+ 
+ 	reinit_completion(&ar->peer_assoc_done);
++	reinit_completion(&ar->peer_ext_event_done);
+ 	reinit_completion(&ah->peer_ml_id_done);
+ 
+ 	ret = ath12k_wmi_send_peer_assoc_cmd(ar, peer_arg);
+@@ -3896,6 +3897,17 @@ static int ath12k_mac_peer_assoc(struct ath12k *ar,
+ 		return -ETIMEDOUT;
+ 	}
+ 
++	if (!ar->ab->hw_params->support_hw_link_id &&
++	    test_bit(WMI_TLV_SERVICE_PER_LINK_STATS_SUPPORT,
++		     ar->ab->wmi_ab.svc_map) &&
++	    peer_arg->ml.enabled &&
++	    peer_arg->is_assoc &&
++	    !wait_for_completion_timeout(&ar->peer_ext_event_done, 1 * HZ)) {
++		ath12k_warn(ar->ab, "failed to get peer extended event for %pM vdev %u\n",
++			    peer_arg->peer_mac, peer_arg->vdev_id);
++		return -ETIMEDOUT;
++	}
++
+ 	/*
+ 	 * For devices where the firmware allocates the MLD peer ID, the host
+ 	 * learns the real ID only from the MLO_RX_PEER_MAP HTT event, which is
+@@ -15197,6 +15209,7 @@ static void ath12k_mac_setup(struct ath12k *ar)
+ 	init_completion(&ar->vdev_setup_done);
+ 	init_completion(&ar->vdev_delete_done);
+ 	init_completion(&ar->peer_assoc_done);
++	init_completion(&ar->peer_ext_event_done);
+ 	init_completion(&ar->install_key_done);
+ 	init_completion(&ar->bss_survey_done);
+ 	init_completion(&ar->scan.started);
+diff --git a/drivers/net/wireless/ath/ath12k/wmi.h b/drivers/net/wireless/ath/ath12k/wmi.h
+index b508aa759bd8..5506f2ce8d05 100644
+--- a/drivers/net/wireless/ath/ath12k/wmi.h
++++ b/drivers/net/wireless/ath/ath12k/wmi.h
+@@ -2278,6 +2278,7 @@ enum wmi_tlv_service {
+ 	WMI_TLV_SERVICE_WMSK_COMPACTION_RX_TLVS = 361,
+ 
+ 	WMI_TLV_SERVICE_PEER_METADATA_V1A_V1B_SUPPORT = 365,
++	WMI_TLV_SERVICE_PER_LINK_STATS_SUPPORT = 380,
+ 	WMI_TLV_SERVICE_THERM_THROT_POUT_REDUCTION = 410,
+ 	WMI_TLV_SERVICE_WDS_NULL_FRAME_SUPPORT = 421,
+ 	WMI_TLV_SERVICE_IS_TARGET_IPA = 425,
+From dfc445cbe807f40bbce0b78b5afcad04e61d1890 Mon Sep 17 00:00:00 2001
+From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Date: Tue, 10 Nov 2026 14:40:29 +0800
+Subject: [PATCH 8/11] wifi: ath12k: allocate logical link id on host when firmware
+ does not report it
+
+For devices that do not support hw_link_id (WCN7850/QCC2072), the driver
+link id used to index ath12k_dp_peer::link_id_map is the logical link id.
+When the firmware advertises WMI_TLV_SERVICE_PER_LINK_STATS_SUPPORT it
+reports this id in the PEER_EXTENDED HTT event, and the host waits for
+that event to fill link_id_map.
+
+However some old firmwares don't advertise it, and no such event is sent.
+In that case allocate the logical link id on the host, mirroring the
+firmware scheme: pick the lowest free slot from a per peer bitmap
+(ath12k_dp_peer::free_slot_map) at peer assoc, after the peer assoc
+command has been sent. This matches the firmware, which allocates the id
+while handling the peer assoc command.
+
+Tested-on: WCN7850 hw2.0 PCI WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Tested-on: QCC2072 hw1.0 PCI WLAN.COL.1.0.c2-00068-QCACOLSWPL_V1_TO_SILICONZ-1
+
+Tested-by: Burke Cates <burke.cates@gmail.com> # ASUS Zenbook A16 (UX3607OA)
+Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261110-ath12k-logical-link-id-v5-8-26a3ed38db09@oss.qualcomm.com
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+---
+ drivers/net/wireless/ath/ath12k/dp_cmn.h  |  3 ++
+ drivers/net/wireless/ath/ath12k/dp_peer.c | 50 +++++++++++++++++++++-
+ drivers/net/wireless/ath/ath12k/dp_peer.h |  8 ++++
+ drivers/net/wireless/ath/ath12k/mac.c     | 52 ++++++++++++++++++++---
+ 4 files changed, 105 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/dp_cmn.h b/drivers/net/wireless/ath/ath12k/dp_cmn.h
+index e17f044ff812..88abe90767eb 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_cmn.h
++++ b/drivers/net/wireless/ath/ath12k/dp_cmn.h
+@@ -9,6 +9,7 @@
+ #include "cmn_defs.h"
+ 
+ struct ath12k_hw_group;
++struct ath12k_dp_link_peer;
+ 
+ /*
+  * ML Peer IDs start from 8192, assuming max SLO clients count 1536,
+@@ -97,6 +98,8 @@ void ath12k_dp_cmn_hw_group_assign(struct ath12k_dp *dp,
+ int ath12k_dp_link_peer_assign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_hw,
+ 			       u8 vdev_id, struct ieee80211_sta *sta, u8 *addr,
+ 			       u8 link_id, u32 hw_link_id);
++int ath12k_dp_peer_alloc_logical_link_id(struct ath12k_dp *dp,
++					 struct ath12k_dp_link_peer *peer);
+ void ath12k_dp_link_peer_unassign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_hw,
+ 				  u8 vdev_id, u8 *addr, u32 hw_link_id);
+ void
+diff --git a/drivers/net/wireless/ath/ath12k/dp_peer.c b/drivers/net/wireless/ath/ath12k/dp_peer.c
+index 1e84b9b817f3..12bd7aeb9380 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.c
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.c
+@@ -514,6 +514,8 @@ int ath12k_dp_peer_create(struct ath12k_dp_hw *dp_hw, u8 *addr,
+ 	dp_peer->sec_type_grp = HAL_ENCRYPT_TYPE_OPEN;
+ 	dp_peer->ucast_ra_only = params->ucast_ra_only;
+ 
++	dp_peer->free_slot_map = U16_MAX;
++
+ 	spin_lock_bh(&dp_hw->peer_lock);
+ 
+ 	list_add(&dp_peer->list, &dp_hw->dp_peers_list);
+@@ -562,6 +564,49 @@ void ath12k_dp_peer_delete(struct ath12k_dp_hw *dp_hw, u8 *addr,
+ 	kfree(dp_peer);
+ }
+ 
++int ath12k_dp_peer_alloc_logical_link_id(struct ath12k_dp *dp,
++					 struct ath12k_dp_link_peer *peer)
++{
++	struct ath12k_dp_peer *dp_peer = peer->dp_peer;
++	u8 slot;
++
++	lockdep_assert_held(&dp->dp_lock);
++
++	if (dp->hw_params->support_hw_link_id)
++		return 0;
++
++	if (test_bit(WMI_TLV_SERVICE_PER_LINK_STATS_SUPPORT,
++		     dp->ab->wmi_ab.svc_map))
++		return 0;
++
++	slot = __ffs(dp_peer->free_slot_map);
++	if (slot >= ARRAY_SIZE(dp_peer->link_id_map))
++		return -ENOSPC;
++
++	dp_peer->free_slot_map &= ~BIT(slot);
++	peer->drv_link_id = slot;
++	dp_peer->link_id_map[slot] = peer->link_id;
++
++	return 0;
++}
++
++static void ath12k_dp_peer_free_logical_link_id(struct ath12k_dp *dp,
++						struct ath12k_dp_link_peer *peer)
++{
++	struct ath12k_dp_peer *dp_peer = peer->dp_peer;
++
++	lockdep_assert_held(&dp->dp_lock);
++
++	if (dp->hw_params->support_hw_link_id)
++		return;
++
++	if (test_bit(WMI_TLV_SERVICE_PER_LINK_STATS_SUPPORT,
++		     dp->ab->wmi_ab.svc_map))
++		return;
++
++	dp_peer->free_slot_map |= BIT(peer->drv_link_id);
++}
++
+ int ath12k_dp_link_peer_assign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_hw,
+ 			       u8 vdev_id, struct ieee80211_sta *sta, u8 *addr,
+ 			       u8 link_id, u32 hw_link_id)
+@@ -603,7 +648,8 @@ int ath12k_dp_link_peer_assign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_hw,
+ 	/*
+ 	 * Only devices that use hw_link_id can map it to the IEEE80211
+ 	 * link id here. Devices that do not support hw_link_id fill
+-	 * link_id_map later from the PEER_EXTENDED HTT event.
++	 * link_id_map later, either from the PEER_EXTENDED HTT event or
++	 * from the logical link id allocated at peer assoc.
+ 	 */
+ 	if (dp->hw_params->support_hw_link_id) {
+ 		peer->drv_link_id = hw_link_id;
+@@ -678,6 +724,8 @@ void ath12k_dp_link_peer_unassign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_
+ 	dp_peer = peer->dp_peer;
+ 	dp_peer->link_id_map[peer->drv_link_id] = 0;
+ 
++	ath12k_dp_peer_free_logical_link_id(dp, peer);
++
+ 	peerid_index = ath12k_dp_peer_get_peerid_index(dp, peer->peer_id);
+ 
+ 	rcu_assign_pointer(dp_peer->link_peers[peer->link_id], NULL);
+diff --git a/drivers/net/wireless/ath/ath12k/dp_peer.h b/drivers/net/wireless/ath/ath12k/dp_peer.h
+index ea36947d1707..c2d060de88ea 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.h
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.h
+@@ -145,6 +145,14 @@ struct ath12k_dp_peer {
+ 	 * WCN7850/QCC2072.
+ 	 */
+ 	u8 link_id_map[ATH12K_GROUP_MAX_RADIO];
++	/*
++	 * Tracks which link_id_map slots are free for devices that do not
++	 * support hw_link_id and do not report per-link stats. A set bit
++	 * means the slot is free. Mirrors the firmware logical link id
++	 * allocation: the lowest free slot is assigned at peer assoc and
++	 * released when the link peer is removed.
++	 */
++	u16 free_slot_map;
+ 
+ 	u16 sec_type_grp;
+ 	u16 sec_type;
+diff --git a/drivers/net/wireless/ath/ath12k/mac.c b/drivers/net/wireless/ath/ath12k/mac.c
+index eb0fca43e6f7..065253545f52 100644
+--- a/drivers/net/wireless/ath/ath12k/mac.c
++++ b/drivers/net/wireless/ath/ath12k/mac.c
+@@ -3898,14 +3898,52 @@ static int ath12k_mac_peer_assoc(struct ath12k *ar,
+ 	}
+ 
+ 	if (!ar->ab->hw_params->support_hw_link_id &&
+-	    test_bit(WMI_TLV_SERVICE_PER_LINK_STATS_SUPPORT,
+-		     ar->ab->wmi_ab.svc_map) &&
+ 	    peer_arg->ml.enabled &&
+-	    peer_arg->is_assoc &&
+-	    !wait_for_completion_timeout(&ar->peer_ext_event_done, 1 * HZ)) {
+-		ath12k_warn(ar->ab, "failed to get peer extended event for %pM vdev %u\n",
+-			    peer_arg->peer_mac, peer_arg->vdev_id);
+-		return -ETIMEDOUT;
++	    peer_arg->is_assoc) {
++		const u8 *addr = peer_arg->peer_mac;
++		u32 vdev_id = peer_arg->vdev_id;
++
++		if (test_bit(WMI_TLV_SERVICE_PER_LINK_STATS_SUPPORT,
++			     ar->ab->wmi_ab.svc_map)) {
++			/*
++			 * The firmware reports the logical link id of this peer
++			 * in the PEER_EXTENDED event, which fills link_id_map.
++			 * Wait for it before returning.
++			 */
++			if (!wait_for_completion_timeout(&ar->peer_ext_event_done,
++							 1 * HZ)) {
++				ath12k_warn(ar->ab,
++					    "failed to get peer extended event for %pM vdev %u\n",
++					    addr, vdev_id);
++				return -ETIMEDOUT;
++			}
++		} else {
++			/*
++			 * The firmware does not report the logical link id, so
++			 * allocate it on the host by mirroring the firmware
++			 * scheme: assign the lowest free slot.
++			 */
++			struct ath12k_dp *dp = ath12k_ab_to_dp(ar->ab);
++			struct ath12k_dp_link_peer *peer;
++
++			guard(spinlock_bh)(&dp->dp_lock);
++
++			peer = ath12k_dp_link_peer_find_by_vdev_and_addr(dp, vdev_id,
++									 addr);
++			if (!peer) {
++				ath12k_warn(ar->ab, "failed to find dp_link_peer with mac %pM vdev %u\n",
++					    addr, vdev_id);
++				return -ENOENT;
++			}
++
++			ret = ath12k_dp_peer_alloc_logical_link_id(dp, peer);
++			if (ret) {
++				ath12k_warn(ar->ab,
++					    "failed to allocate logical link id for %pM: %d\n",
++					    addr, ret);
++				return ret;
++			}
++		}
+ 	}
+ 
+ 	/*
+From f92b5ecbb3d530290e1976858f6061f9af9b6cc9 Mon Sep 17 00:00:00 2001
+From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Date: Tue, 10 Nov 2026 14:40:30 +0800
+Subject: [PATCH 9/11] wifi: ath12k: derive REO RX drv_link_id per device via HAL
+ ops
+
+On the RX path the driver link id stored in ath12k_skb_rxcb::drv_link_id
+is later used to index ath12k_dp_peer::link_id_map and derive the
+IEEE80211 link id. The source of this driver link id differs per devices:
+QCN9274 uses the hw_link_id from the descriptor, while WCN7850/QCC2072
+use the logical_link_id carried in the peer metadata.
+
+Add a HAL op rx_reo_desc_get_drv_link_id() to let each device provide its
+own driver link id on the REO path, so the RX code no longer needs to
+know where the value comes from. For QCN9274 keep the existing behavior;
+for WCN7850/QCC2072 extract the logical link id from the peer metadata via
+the common ath12k_wifi7_dp_rx_get_logical_link_id() helper.
+
+Tested-on: WCN7850 hw2.0 PCI WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Tested-on: QCC2072 hw1.0 PCI WLAN.COL.1.0.c2-00068-QCACOLSWPL_V1_TO_SILICONZ-1
+
+Tested-by: Burke Cates <burke.cates@gmail.com> # ASUS Zenbook A16 (UX3607OA)
+Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261110-ath12k-logical-link-id-v5-9-26a3ed38db09@oss.qualcomm.com
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+---
+ drivers/net/wireless/ath/ath12k/dp_rx.h       |  7 +++
+ drivers/net/wireless/ath/ath12k/hal.h         |  2 +
+ drivers/net/wireless/ath/ath12k/hw.h          |  2 +
+ drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c | 49 ++++++++++++-------
+ drivers/net/wireless/ath/ath12k/wifi7/dp_rx.h |  2 +
+ .../wireless/ath/ath12k/wifi7/hal_qcc2072.c   |  1 +
+ .../wireless/ath/ath12k/wifi7/hal_qcn9274.c   |  9 ++++
+ .../wireless/ath/ath12k/wifi7/hal_wcn7850.c   |  9 ++++
+ .../wireless/ath/ath12k/wifi7/hal_wcn7850.h   |  2 +
+ 9 files changed, 65 insertions(+), 18 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/dp_rx.h b/drivers/net/wireless/ath/ath12k/dp_rx.h
+index 82700474548a..fcad6a7ad6ba 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_rx.h
++++ b/drivers/net/wireless/ath/ath12k/dp_rx.h
+@@ -170,6 +170,13 @@ static inline u8 ath12k_dp_rx_get_msdu_src_link(struct ath12k_hal *hal,
+ 	return hal->ops->rx_desc_get_msdu_src_link_id(desc);
+ }
+ 
++static inline u8
++ath12k_dp_rx_reo_get_drv_link_id(struct ath12k_dp *dp,
++				 struct hal_reo_dest_ring *reo_desc)
++{
++	return dp->hal->ops->rx_reo_desc_get_drv_link_id(dp, reo_desc);
++}
++
+ static inline void ath12k_dp_clean_up_skb_list(struct sk_buff_head *skb_list)
+ {
+ 	struct sk_buff *skb;
+diff --git a/drivers/net/wireless/ath/ath12k/hal.h b/drivers/net/wireless/ath/ath12k/hal.h
+index 3a874db7968e..c8bb63d92bfd 100644
+--- a/drivers/net/wireless/ath/ath12k/hal.h
++++ b/drivers/net/wireless/ath/ath12k/hal.h
+@@ -1379,6 +1379,8 @@ struct hal_ops {
+ 	void (*rx_desc_copy_end_tlv)(struct hal_rx_desc *fdesc,
+ 				     struct hal_rx_desc *ldesc);
+ 	u8 (*rx_desc_get_msdu_src_link_id)(struct hal_rx_desc *desc);
++	u8 (*rx_reo_desc_get_drv_link_id)(struct ath12k_dp *dp,
++					  struct hal_reo_dest_ring *reo_desc);
+ 	void (*extract_rx_desc_data)(struct hal_rx_desc_data *rx_desc_data,
+ 				     struct hal_rx_desc *rx_desc,
+ 				     struct hal_rx_desc *ldesc);
+diff --git a/drivers/net/wireless/ath/ath12k/hw.h b/drivers/net/wireless/ath/ath12k/hw.h
+index b5fa8e224ca5..106d858efc44 100644
+--- a/drivers/net/wireless/ath/ath12k/hw.h
++++ b/drivers/net/wireless/ath/ath12k/hw.h
+@@ -130,6 +130,8 @@ enum ath12k_bus {
+ #define ATH12K_EXT_IRQ_GRP_NUM_MAX 11
+ 
+ struct hal_rx_desc;
++struct hal_reo_dest_ring;
++struct ath12k_dp;
+ struct hal_tcl_data_cmd;
+ struct htt_rx_ring_tlv_filter;
+ enum hal_encrypt_type;
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
+index 08a9f070e4aa..312c7ac74b3b 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
+@@ -44,6 +44,21 @@ static u16 ath12k_wifi7_dp_rx_get_peer_id(struct ath12k_dp *dp,
+ 	}
+ }
+ 
++u8 ath12k_wifi7_dp_rx_get_logical_link_id(struct ath12k_dp *dp,
++					  __le32 peer_metadata)
++{
++	switch (dp->peer_metadata_ver) {
++	case ATH12K_PEER_METADATA_V1:
++		return le32_get_bits(peer_metadata,
++				     RX_MPDU_DESC_META_DATA_V1_LOGICAL_LINK_ID);
++	case ATH12K_PEER_METADATA_V1A:
++		return le32_get_bits(peer_metadata,
++				     RX_MPDU_DESC_META_DATA_V1A_LOGICAL_LINK_ID);
++	default:
++		return ATH12K_GROUP_MAX_RADIO;
++	}
++}
++
+ void ath12k_wifi7_peer_rx_tid_qref_setup(struct ath12k_base *ab, u16 peer_id, u16 tid,
+ 					 dma_addr_t paddr)
+ {
+@@ -608,7 +623,7 @@ ath12k_wifi7_dp_rx_process_received_packets(struct ath12k_dp *dp,
+ 	struct ath12k_base *partner_ab;
+ 	struct hal_rx_desc_data rx_info;
+ 	struct ath12k_dp *partner_dp;
+-	u8 hw_link_id, pdev_idx, device_id;
++	u8 drv_link_id, pdev_idx, device_id;
+ 	int ret;
+ 
+ 	if (skb_queue_empty(msdu_list))
+@@ -621,11 +636,11 @@ ath12k_wifi7_dp_rx_process_received_packets(struct ath12k_dp *dp,
+ 
+ 	while ((msdu = __skb_dequeue(msdu_list))) {
+ 		rxcb = ATH12K_SKB_RXCB(msdu);
+-		hw_link_id = rxcb->drv_link_id;
+-		device_id = ath12k_dp_drv_link_id_to_device_id(ag, hw_link_id);
++		drv_link_id = rxcb->drv_link_id;
++		device_id = ath12k_dp_drv_link_id_to_device_id(ag, drv_link_id);
+ 		partner_dp = ath12k_dp_hw_grp_to_dp(dp_hw_grp, device_id);
+ 		pdev_idx = ath12k_hw_mac_id_to_pdev_id(partner_dp->hw_params,
+-						       hw_links[hw_link_id].pdev_idx);
++						       hw_links[drv_link_id].pdev_idx);
+ 		partner_ab = partner_dp->ab;
+ 		ar = partner_ab->pdevs[pdev_idx].ar;
+ 		if (!rcu_dereference(partner_ab->pdevs_active[pdev_idx])) {
+@@ -677,7 +692,7 @@ int ath12k_wifi7_dp_rx_process(struct ath12k_dp *dp, int ring_id,
+ 	struct sk_buff_head msdu_list;
+ 	struct ath12k_skb_rxcb *rxcb;
+ 	int total_msdu_reaped = 0;
+-	u8 hw_link_id, device_id;
++	u8 drv_link_id, device_id;
+ 	struct hal_srng *srng;
+ 	struct sk_buff *msdu;
+ 	bool done = false;
+@@ -708,19 +723,18 @@ int ath12k_wifi7_dp_rx_process(struct ath12k_dp *dp, int ring_id,
+ 			   le32_to_cpu(desc->buf_va_lo));
+ 		desc_info = (struct ath12k_rx_desc_info *)((unsigned long)desc_va);
+ 
+-		hw_link_id = le32_get_bits(desc->info0,
+-					   HAL_REO_DEST_RING_INFO0_SRC_LINK_ID);
+-		if (unlikely(hw_link_id >= ATH12K_GROUP_MAX_RADIO)) {
++		drv_link_id = ath12k_dp_rx_reo_get_drv_link_id(dp, desc);
++		if (unlikely(drv_link_id >= ATH12K_GROUP_MAX_RADIO)) {
+ 			if (desc_info && desc_info->skb) {
+ 				dev_kfree_skb_any(desc_info->skb);
+ 				desc_info->skb = NULL;
+ 			}
+ 
+-			ath12k_warn(ab, "invalid HW link id %u\n", hw_link_id);
++			ath12k_warn(ab, "invalid drv link id %u\n", drv_link_id);
+ 			continue;
+ 		}
+ 
+-		device_id = ath12k_dp_drv_link_id_to_device_id(ag, hw_link_id);
++		device_id = ath12k_dp_drv_link_id_to_device_id(ag, drv_link_id);
+ 		partner_dp = ath12k_dp_hw_grp_to_dp(dp_hw_grp, device_id);
+ 		if (unlikely(!partner_dp)) {
+ 			if (desc_info->skb) {
+@@ -775,7 +789,7 @@ int ath12k_wifi7_dp_rx_process(struct ath12k_dp *dp, int ring_id,
+ 					RX_MSDU_DESC_INFO0_LAST_MSDU_IN_MPDU);
+ 		rxcb->is_continuation = !!(le32_to_cpu(msdu_info->info0) &
+ 					   RX_MSDU_DESC_INFO0_MSDU_CONTINUATION);
+-		rxcb->drv_link_id = hw_link_id;
++		rxcb->drv_link_id = drv_link_id;
+ 		rxcb->peer_id = ath12k_wifi7_dp_rx_get_peer_id(dp, dp->peer_metadata_ver,
+ 							       mpdu_info->peer_meta_data);
+ 		rxcb->tid = le32_get_bits(mpdu_info->info0,
+@@ -1446,7 +1460,7 @@ int ath12k_wifi7_dp_rx_process_err(struct ath12k_dp *dp, struct napi_struct *nap
+ 	struct dp_srng *reo_except;
+ 	struct ath12k_hw_link *hw_links = ag->hw_links;
+ 	struct ath12k_pdev_dp *dp_pdev;
+-	u8 hw_link_id, device_id;
++	u8 drv_link_id, device_id;
+ 	u32 desc_bank, num_msdus;
+ 	struct hal_srng *srng;
+ 	dma_addr_t paddr;
+@@ -1475,14 +1489,13 @@ int ath12k_wifi7_dp_rx_process_err(struct ath12k_dp *dp, struct napi_struct *nap
+ 		drop = false;
+ 		dp->device_stats.err_ring_pkts++;
+ 
+-		hw_link_id = le32_get_bits(reo_desc->info0,
+-					   HAL_REO_DEST_RING_INFO0_SRC_LINK_ID);
+-		if (unlikely(hw_link_id >= ATH12K_GROUP_MAX_RADIO)) {
+-			ath12k_warn(ab, "invalid HW link id %u\n", hw_link_id);
++		drv_link_id = ath12k_dp_rx_reo_get_drv_link_id(dp, reo_desc);
++		if (unlikely(drv_link_id >= ATH12K_GROUP_MAX_RADIO)) {
++			ath12k_warn(ab, "invalid drv link id %u\n", drv_link_id);
+ 			continue;
+ 		}
+ 
+-		device_id = ath12k_dp_drv_link_id_to_device_id(ag, hw_link_id);
++		device_id = ath12k_dp_drv_link_id_to_device_id(ag, drv_link_id);
+ 		partner_dp = ath12k_dp_hw_grp_to_dp(dp_hw_grp, device_id);
+ 
+ 		/* Below case is added to handle data packet from un-associated clients.
+@@ -1509,7 +1522,7 @@ int ath12k_wifi7_dp_rx_process_err(struct ath12k_dp *dp, struct napi_struct *nap
+ 		}
+ 
+ 		pdev_idx = ath12k_hw_mac_id_to_pdev_id(partner_dp->hw_params,
+-						       hw_links[hw_link_id].pdev_idx);
++						       hw_links[drv_link_id].pdev_idx);
+ 
+ 		link_desc_banks = partner_dp->link_desc_banks;
+ 		link_desc_va = link_desc_banks[desc_bank].vaddr +
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.h b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.h
+index d68489ff7b03..8a16fb3dd005 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.h
++++ b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.h
+@@ -12,6 +12,8 @@
+ 
+ struct ath12k_hal_reo_cmd;
+ 
++u8 ath12k_wifi7_dp_rx_get_logical_link_id(struct ath12k_dp *dp,
++					  __le32 peer_metadata);
+ int ath12k_wifi7_dp_rx_process_wbm_err(struct ath12k_dp *dp,
+ 				       struct napi_struct *napi, int budget);
+ int ath12k_wifi7_dp_rx_process_err(struct ath12k_dp *dp, struct napi_struct *napi,
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/hal_qcc2072.c b/drivers/net/wireless/ath/ath12k/wifi7/hal_qcc2072.c
+index 7ea7559e882c..edf122fd46b5 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal_qcc2072.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal_qcc2072.c
+@@ -472,6 +472,7 @@ const struct hal_ops hal_qcc2072_ops = {
+ 	.rx_desc_get_crypto_header = ath12k_hal_rx_desc_get_crypto_hdr_qcc2072,
+ 	.rx_desc_copy_end_tlv = ath12k_hal_rx_desc_copy_end_tlv_qcc2072,
+ 	.rx_desc_get_msdu_src_link_id = ath12k_hal_rx_desc_get_msdu_src_link_qcc2072,
++	.rx_reo_desc_get_drv_link_id = ath12k_hal_rx_reo_desc_get_drv_link_id_wcn7850,
+ 	.extract_rx_desc_data = ath12k_hal_extract_rx_desc_data_qcc2072,
+ 	.rx_desc_get_l3_pad_bytes = ath12k_hal_rx_desc_get_l3_pad_bytes_qcc2072,
+ 	.rx_desc_get_mpdu_start_tag = ath12k_hal_rx_desc_get_mpdu_start_tag_qcc2072,
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.c b/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.c
+index 355cf50d2785..7bcde08f0d76 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.c
+@@ -813,6 +813,14 @@ u8 ath12k_hal_rx_desc_get_msdu_src_link_qcn9274(struct hal_rx_desc *desc)
+ 			     RX_MSDU_END_64_TLV_SRC_LINK_ID);
+ }
+ 
++static u8
++ath12k_hal_rx_reo_desc_get_drv_link_id_qcn9274(struct ath12k_dp *dp,
++					       struct hal_reo_dest_ring *reo_desc)
++{
++	return le32_get_bits(reo_desc->info0,
++			     HAL_REO_DEST_RING_INFO0_SRC_LINK_ID);
++}
++
+ u16 ath12k_hal_rx_mpdu_start_wmask_get_qcn9274(void)
+ {
+ 	return QCN9274_MPDU_START_WMASK;
+@@ -1114,6 +1122,7 @@ const struct hal_ops hal_qcn9274_ops = {
+ 	.rx_desc_get_crypto_header = ath12k_hal_rx_desc_get_crypto_hdr_qcn9274,
+ 	.rx_desc_copy_end_tlv = ath12k_hal_rx_desc_copy_end_tlv_qcn9274,
+ 	.rx_desc_get_msdu_src_link_id = ath12k_hal_rx_desc_get_msdu_src_link_qcn9274,
++	.rx_reo_desc_get_drv_link_id = ath12k_hal_rx_reo_desc_get_drv_link_id_qcn9274,
+ 	.extract_rx_desc_data = ath12k_hal_extract_rx_desc_data_qcn9274,
+ 	.rx_desc_get_l3_pad_bytes = ath12k_hal_rx_desc_get_l3_pad_bytes_qcn9274,
+ 	.rx_desc_get_mpdu_ppdu_id = ath12k_hal_rx_desc_get_mpdu_ppdu_id_qcn9274,
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.c b/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.c
+index abe982faeb2b..fec625a0ea0b 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.c
+@@ -4,6 +4,7 @@
+  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+  */
+ 
++#include "dp_rx.h"
+ #include "hal_desc.h"
+ #include "hal_wcn7850.h"
+ #include "hw.h"
+@@ -509,6 +510,13 @@ u8 ath12k_hal_rx_desc_get_msdu_src_link_wcn7850(struct hal_rx_desc *desc)
+ 	return 0;
+ }
+ 
++u8 ath12k_hal_rx_reo_desc_get_drv_link_id_wcn7850(struct ath12k_dp *dp,
++						  struct hal_reo_dest_ring *reo_desc)
++{
++	return ath12k_wifi7_dp_rx_get_logical_link_id(dp,
++						      reo_desc->rx_mpdu_info.peer_meta_data);
++}
++
+ static u32 ath12k_hal_rx_h_mpdu_err_wcn7850(struct hal_rx_desc *desc)
+ {
+ 	u32 info = __le32_to_cpu(desc->u.wcn7850.msdu_end.info13);
+@@ -796,6 +804,7 @@ const struct hal_ops hal_wcn7850_ops = {
+ 	.rx_desc_get_crypto_header = ath12k_hal_rx_desc_get_crypto_hdr_wcn7850,
+ 	.rx_desc_copy_end_tlv = ath12k_hal_rx_desc_copy_end_tlv_wcn7850,
+ 	.rx_desc_get_msdu_src_link_id = ath12k_hal_rx_desc_get_msdu_src_link_wcn7850,
++	.rx_reo_desc_get_drv_link_id = ath12k_hal_rx_reo_desc_get_drv_link_id_wcn7850,
+ 	.extract_rx_desc_data = ath12k_hal_extract_rx_desc_data_wcn7850,
+ 	.rx_desc_get_l3_pad_bytes = ath12k_hal_rx_desc_get_l3_pad_bytes_wcn7850,
+ 	.rx_desc_get_mpdu_start_tag = ath12k_hal_rx_desc_get_mpdu_start_tag_wcn7850,
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.h b/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.h
+index a56ca9fd3de4..c7e1fba9bb4b 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.h
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.h
+@@ -28,6 +28,8 @@ u32 ath12k_hal_rx_desc_get_mpdu_start_offset_wcn7850(void);
+ u32 ath12k_hal_rx_desc_get_msdu_end_offset_wcn7850(void);
+ u32 ath12k_hal_get_rx_desc_size_wcn7850(void);
+ u8 ath12k_hal_rx_desc_get_msdu_src_link_wcn7850(struct hal_rx_desc *desc);
++u8 ath12k_hal_rx_reo_desc_get_drv_link_id_wcn7850(struct ath12k_dp *dp,
++						  struct hal_reo_dest_ring *reo_desc);
+ void ath12k_hal_rx_desc_get_crypto_hdr_wcn7850(struct hal_rx_desc *desc,
+ 					       u8 *crypto_hdr,
+ 					       enum hal_encrypt_type enctype);
+From 3157776039ba37af79b348812c0b247f5ea9edf9 Mon Sep 17 00:00:00 2001
+From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Date: Tue, 10 Nov 2026 14:40:31 +0800
+Subject: [PATCH 10/11] wifi: ath12k: derive WBM RX drv_link_id per device via HAL
+ ops
+
+The WBM error path also stores a driver link id in
+ath12k_skb_rxcb::drv_link_id, previously derived from the source link id
+via rx_desc_get_msdu_src_link_id(). Like the REO path, the source of
+this id differs per device.
+
+Add a HAL op rx_msdu_desc_get_drv_link_id() to let each device provide its
+own driver link id on the WBM error path. For QCN9274 keep the existing
+behavior; for WCN7850/QCC2072 extract the logical link id from the peer
+metadata via ath12k_wifi7_dp_rx_get_logical_link_id().
+
+This replaces the old rx_desc_get_msdu_src_link_id op, which had no
+other user and is removed along with its per-device implementations.
+
+Tested-on: WCN7850 hw2.0 PCI WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Tested-on: QCC2072 hw1.0 PCI WLAN.COL.1.0.c2-00068-QCACOLSWPL_V1_TO_SILICONZ-1
+
+Tested-by: Burke Cates <burke.cates@gmail.com> # ASUS Zenbook A16 (UX3607OA)
+Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261110-ath12k-logical-link-id-v5-10-26a3ed38db09@oss.qualcomm.com
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+---
+ drivers/net/wireless/ath/ath12k/dp_rx.h       | 15 ++++++++-----
+ drivers/net/wireless/ath/ath12k/hal.h         |  4 +++-
+ drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c | 22 +++++++++----------
+ .../wireless/ath/ath12k/wifi7/hal_qcc2072.c   |  7 +-----
+ .../wireless/ath/ath12k/wifi7/hal_qcn9274.c   |  7 ++++--
+ .../wireless/ath/ath12k/wifi7/hal_qcn9274.h   |  1 -
+ .../wireless/ath/ath12k/wifi7/hal_wcn7850.c   |  8 ++++---
+ .../wireless/ath/ath12k/wifi7/hal_wcn7850.h   |  4 +++-
+ 8 files changed, 37 insertions(+), 31 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/dp_rx.h b/drivers/net/wireless/ath/ath12k/dp_rx.h
+index fcad6a7ad6ba..a78efa1d9569 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_rx.h
++++ b/drivers/net/wireless/ath/ath12k/dp_rx.h
+@@ -164,12 +164,6 @@ static inline void ath12k_dp_rx_desc_get_crypto_header(struct ath12k_hal *hal,
+ 	hal->ops->rx_desc_get_crypto_header(desc, crypto_hdr, enctype);
+ }
+ 
+-static inline u8 ath12k_dp_rx_get_msdu_src_link(struct ath12k_hal *hal,
+-						struct hal_rx_desc *desc)
+-{
+-	return hal->ops->rx_desc_get_msdu_src_link_id(desc);
+-}
+-
+ static inline u8
+ ath12k_dp_rx_reo_get_drv_link_id(struct ath12k_dp *dp,
+ 				 struct hal_reo_dest_ring *reo_desc)
+@@ -177,6 +171,15 @@ ath12k_dp_rx_reo_get_drv_link_id(struct ath12k_dp *dp,
+ 	return dp->hal->ops->rx_reo_desc_get_drv_link_id(dp, reo_desc);
+ }
+ 
++static inline u8
++ath12k_dp_rx_wbm_get_drv_link_id(struct ath12k_dp *dp,
++				 struct hal_rx_desc *rx_desc,
++				 __le32 peer_metadata)
++{
++	return dp->hal->ops->rx_msdu_desc_get_drv_link_id(dp, rx_desc,
++							  peer_metadata);
++}
++
+ static inline void ath12k_dp_clean_up_skb_list(struct sk_buff_head *skb_list)
+ {
+ 	struct sk_buff *skb;
+diff --git a/drivers/net/wireless/ath/ath12k/hal.h b/drivers/net/wireless/ath/ath12k/hal.h
+index c8bb63d92bfd..343e1636b4cc 100644
+--- a/drivers/net/wireless/ath/ath12k/hal.h
++++ b/drivers/net/wireless/ath/ath12k/hal.h
+@@ -1378,9 +1378,11 @@ struct hal_ops {
+ 					  enum hal_encrypt_type enctype);
+ 	void (*rx_desc_copy_end_tlv)(struct hal_rx_desc *fdesc,
+ 				     struct hal_rx_desc *ldesc);
+-	u8 (*rx_desc_get_msdu_src_link_id)(struct hal_rx_desc *desc);
+ 	u8 (*rx_reo_desc_get_drv_link_id)(struct ath12k_dp *dp,
+ 					  struct hal_reo_dest_ring *reo_desc);
++	u8 (*rx_msdu_desc_get_drv_link_id)(struct ath12k_dp *dp,
++					   struct hal_rx_desc *rx_desc,
++					   __le32 peer_metadata);
+ 	void (*extract_rx_desc_data)(struct hal_rx_desc_data *rx_desc_data,
+ 				     struct hal_rx_desc *rx_desc,
+ 				     struct hal_rx_desc *ldesc);
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
+index 312c7ac74b3b..4132578085cc 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
+@@ -1961,7 +1961,7 @@ int ath12k_wifi7_dp_rx_process_wbm_err(struct ath12k_dp *dp,
+ 	struct ath12k_rx_desc_info *desc_info;
+ 	struct ath12k_device_dp_stats *device_stats = &dp->device_stats;
+ 	struct ath12k_hw_link *hw_links = ag->hw_links;
+-	u8 hw_link_id, device_id;
++	u8 drv_link_id, device_id;
+ 	int ret, pdev_idx;
+ 	struct hal_rx_desc *msdu_data;
+ 
+@@ -2057,9 +2057,9 @@ int ath12k_wifi7_dp_rx_process_wbm_err(struct ath12k_dp *dp,
+ 			continue;
+ 		}
+ 
+-		hw_link_id = ath12k_dp_rx_get_msdu_src_link(partner_dp->hal,
+-							    msdu_data);
+-		if (hw_link_id >= ATH12K_GROUP_MAX_RADIO) {
++		drv_link_id = ath12k_dp_rx_wbm_get_drv_link_id(partner_dp, msdu_data,
++							       err_info.peer_metadata);
++		if (drv_link_id >= ATH12K_GROUP_MAX_RADIO) {
+ 			ath12k_wifi7_dp_rx_wbm_err_free_skb(dp, msdu,
+ 							    WBM_ERR_DROP_INV_HW_ID);
+ 
+@@ -2075,7 +2075,7 @@ int ath12k_wifi7_dp_rx_process_wbm_err(struct ath12k_dp *dp,
+ 
+ 			skb_queue_walk(&scatter_msdu_list, msdu) {
+ 				rxcb = ATH12K_SKB_RXCB(msdu);
+-				rxcb->drv_link_id = hw_link_id;
++				rxcb->drv_link_id = drv_link_id;
+ 			}
+ 
+ 			skb_queue_splice_tail_init(&scatter_msdu_list,
+@@ -2083,7 +2083,7 @@ int ath12k_wifi7_dp_rx_process_wbm_err(struct ath12k_dp *dp,
+ 		}
+ 
+ 		rxcb = ATH12K_SKB_RXCB(msdu);
+-		rxcb->drv_link_id = hw_link_id;
++		rxcb->drv_link_id = drv_link_id;
+ 		__skb_queue_tail(&msdu_list, msdu);
+ 	}
+ 
+@@ -2114,21 +2114,21 @@ int ath12k_wifi7_dp_rx_process_wbm_err(struct ath12k_dp *dp,
+ 	rcu_read_lock();
+ 	while ((msdu = __skb_dequeue(&msdu_list))) {
+ 		rxcb = ATH12K_SKB_RXCB(msdu);
+-		hw_link_id = rxcb->drv_link_id;
++		drv_link_id = rxcb->drv_link_id;
+ 
+-		device_id = ath12k_dp_drv_link_id_to_device_id(ag, hw_link_id);
++		device_id = ath12k_dp_drv_link_id_to_device_id(ag, drv_link_id);
+ 		partner_dp = ath12k_dp_hw_grp_to_dp(dp_hw_grp, device_id);
+ 		if (unlikely(!partner_dp)) {
+ 			ath12k_dbg(ab, ATH12K_DBG_DATA,
+-				   "Unable to process WBM error msdu due to invalid hw link id %d device id %d\n",
+-				   hw_link_id, device_id);
++				   "Unable to process WBM error msdu due to invalid drv link id %d device id %d\n",
++				   drv_link_id, device_id);
+ 			ath12k_wifi7_dp_rx_wbm_err_free_skb(dp, msdu,
+ 							    WBM_ERR_DROP_NULL_PROC_DP);
+ 			continue;
+ 		}
+ 
+ 		pdev_idx = ath12k_hw_mac_id_to_pdev_id(partner_dp->hw_params,
+-						       hw_links[hw_link_id].pdev_idx);
++						       hw_links[drv_link_id].pdev_idx);
+ 
+ 		dp_pdev = ath12k_dp_to_pdev_dp(partner_dp, pdev_idx);
+ 		if (!dp_pdev) {
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/hal_qcc2072.c b/drivers/net/wireless/ath/ath12k/wifi7/hal_qcc2072.c
+index edf122fd46b5..bad2b60409d9 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal_qcc2072.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal_qcc2072.c
+@@ -173,11 +173,6 @@ static void ath12k_hal_rx_desc_copy_end_tlv_qcc2072(struct hal_rx_desc *fdesc,
+ 	       sizeof(struct rx_msdu_end_qcn9274));
+ }
+ 
+-static u8 ath12k_hal_rx_desc_get_msdu_src_link_qcc2072(struct hal_rx_desc *desc)
+-{
+-	return 0;
+-}
+-
+ static u8 ath12k_hal_rx_desc_get_l3_pad_bytes_qcc2072(struct hal_rx_desc *desc)
+ {
+ 	return le16_get_bits(desc->u.qcc2072.msdu_end.info5,
+@@ -471,8 +466,8 @@ const struct hal_ops hal_qcc2072_ops = {
+ 	.rx_desc_get_dot11_hdr = ath12k_hal_rx_desc_get_dot11_hdr_qcc2072,
+ 	.rx_desc_get_crypto_header = ath12k_hal_rx_desc_get_crypto_hdr_qcc2072,
+ 	.rx_desc_copy_end_tlv = ath12k_hal_rx_desc_copy_end_tlv_qcc2072,
+-	.rx_desc_get_msdu_src_link_id = ath12k_hal_rx_desc_get_msdu_src_link_qcc2072,
+ 	.rx_reo_desc_get_drv_link_id = ath12k_hal_rx_reo_desc_get_drv_link_id_wcn7850,
++	.rx_msdu_desc_get_drv_link_id = ath12k_hal_rx_msdu_desc_get_drv_link_id_wcn7850,
+ 	.extract_rx_desc_data = ath12k_hal_extract_rx_desc_data_qcc2072,
+ 	.rx_desc_get_l3_pad_bytes = ath12k_hal_rx_desc_get_l3_pad_bytes_qcc2072,
+ 	.rx_desc_get_mpdu_start_tag = ath12k_hal_rx_desc_get_mpdu_start_tag_qcc2072,
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.c b/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.c
+index 7bcde08f0d76..a5be431046d9 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.c
+@@ -807,7 +807,10 @@ u32 ath12k_hal_get_rx_desc_size_qcn9274(void)
+ 	return sizeof(struct hal_rx_desc_qcn9274_compact);
+ }
+ 
+-u8 ath12k_hal_rx_desc_get_msdu_src_link_qcn9274(struct hal_rx_desc *desc)
++static u8
++ath12k_hal_rx_msdu_desc_get_drv_link_id_qcn9274(struct ath12k_dp *dp,
++						struct hal_rx_desc *desc,
++						__le32 peer_metadata)
+ {
+ 	return le64_get_bits(desc->u.qcn9274_compact.msdu_end.msdu_end_tag,
+ 			     RX_MSDU_END_64_TLV_SRC_LINK_ID);
+@@ -1121,8 +1124,8 @@ const struct hal_ops hal_qcn9274_ops = {
+ 	.rx_desc_get_dot11_hdr = ath12k_hal_rx_desc_get_dot11_hdr_qcn9274,
+ 	.rx_desc_get_crypto_header = ath12k_hal_rx_desc_get_crypto_hdr_qcn9274,
+ 	.rx_desc_copy_end_tlv = ath12k_hal_rx_desc_copy_end_tlv_qcn9274,
+-	.rx_desc_get_msdu_src_link_id = ath12k_hal_rx_desc_get_msdu_src_link_qcn9274,
+ 	.rx_reo_desc_get_drv_link_id = ath12k_hal_rx_reo_desc_get_drv_link_id_qcn9274,
++	.rx_msdu_desc_get_drv_link_id = ath12k_hal_rx_msdu_desc_get_drv_link_id_qcn9274,
+ 	.extract_rx_desc_data = ath12k_hal_extract_rx_desc_data_qcn9274,
+ 	.rx_desc_get_l3_pad_bytes = ath12k_hal_rx_desc_get_l3_pad_bytes_qcn9274,
+ 	.rx_desc_get_mpdu_ppdu_id = ath12k_hal_rx_desc_get_mpdu_ppdu_id_qcn9274,
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.h b/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.h
+index 03cf3792d523..c5d1e431d015 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.h
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal_qcn9274.h
+@@ -32,7 +32,6 @@ u8 *ath12k_hal_rx_desc_get_msdu_payload_qcn9274(struct hal_rx_desc *desc);
+ u32 ath12k_hal_rx_desc_get_mpdu_start_offset_qcn9274(void);
+ u32 ath12k_hal_rx_desc_get_msdu_end_offset_qcn9274(void);
+ u32 ath12k_hal_get_rx_desc_size_qcn9274(void);
+-u8 ath12k_hal_rx_desc_get_msdu_src_link_qcn9274(struct hal_rx_desc *desc);
+ u16 ath12k_hal_rx_mpdu_start_wmask_get_qcn9274(void);
+ u32 ath12k_hal_rx_msdu_end_wmask_get_qcn9274(void);
+ void ath12k_hal_rx_desc_get_crypto_hdr_qcn9274(struct hal_rx_desc *desc,
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.c b/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.c
+index fec625a0ea0b..2d66d71d1b9b 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.c
+@@ -505,9 +505,11 @@ u32 ath12k_hal_get_rx_desc_size_wcn7850(void)
+ 	return sizeof(struct hal_rx_desc_wcn7850);
+ }
+ 
+-u8 ath12k_hal_rx_desc_get_msdu_src_link_wcn7850(struct hal_rx_desc *desc)
++u8 ath12k_hal_rx_msdu_desc_get_drv_link_id_wcn7850(struct ath12k_dp *dp,
++						   struct hal_rx_desc *desc,
++						   __le32 peer_metadata)
+ {
+-	return 0;
++	return ath12k_wifi7_dp_rx_get_logical_link_id(dp, peer_metadata);
+ }
+ 
+ u8 ath12k_hal_rx_reo_desc_get_drv_link_id_wcn7850(struct ath12k_dp *dp,
+@@ -803,8 +805,8 @@ const struct hal_ops hal_wcn7850_ops = {
+ 	.rx_desc_get_dot11_hdr = ath12k_hal_rx_desc_get_dot11_hdr_wcn7850,
+ 	.rx_desc_get_crypto_header = ath12k_hal_rx_desc_get_crypto_hdr_wcn7850,
+ 	.rx_desc_copy_end_tlv = ath12k_hal_rx_desc_copy_end_tlv_wcn7850,
+-	.rx_desc_get_msdu_src_link_id = ath12k_hal_rx_desc_get_msdu_src_link_wcn7850,
+ 	.rx_reo_desc_get_drv_link_id = ath12k_hal_rx_reo_desc_get_drv_link_id_wcn7850,
++	.rx_msdu_desc_get_drv_link_id = ath12k_hal_rx_msdu_desc_get_drv_link_id_wcn7850,
+ 	.extract_rx_desc_data = ath12k_hal_extract_rx_desc_data_wcn7850,
+ 	.rx_desc_get_l3_pad_bytes = ath12k_hal_rx_desc_get_l3_pad_bytes_wcn7850,
+ 	.rx_desc_get_mpdu_start_tag = ath12k_hal_rx_desc_get_mpdu_start_tag_wcn7850,
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.h b/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.h
+index c7e1fba9bb4b..3fa919352686 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.h
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hal_wcn7850.h
+@@ -27,9 +27,11 @@ u8 *ath12k_hal_rx_desc_get_msdu_payload_wcn7850(struct hal_rx_desc *desc);
+ u32 ath12k_hal_rx_desc_get_mpdu_start_offset_wcn7850(void);
+ u32 ath12k_hal_rx_desc_get_msdu_end_offset_wcn7850(void);
+ u32 ath12k_hal_get_rx_desc_size_wcn7850(void);
+-u8 ath12k_hal_rx_desc_get_msdu_src_link_wcn7850(struct hal_rx_desc *desc);
+ u8 ath12k_hal_rx_reo_desc_get_drv_link_id_wcn7850(struct ath12k_dp *dp,
+ 						  struct hal_reo_dest_ring *reo_desc);
++u8 ath12k_hal_rx_msdu_desc_get_drv_link_id_wcn7850(struct ath12k_dp *dp,
++						   struct hal_rx_desc *desc,
++						   __le32 peer_metadata);
+ void ath12k_hal_rx_desc_get_crypto_hdr_wcn7850(struct hal_rx_desc *desc,
+ 					       u8 *crypto_hdr,
+ 					       enum hal_encrypt_type enctype);
+From 8c3116d657ce72c0b25cda6a2ec34d81a6520745 Mon Sep 17 00:00:00 2001
+From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Date: Tue, 10 Nov 2026 14:40:32 +0800
+Subject: [PATCH 11/11] wifi: ath12k: use link_id_map to resolve RX link id for all
+ devices
+
+Commit a2fe9dc70f3b ("wifi: ath12k: Fix low MLO RX throughput on
+WCN7850") added a set_rx_link_id() op so that each device could resolve
+the RX link id in its own way: QCN9274/IPQ5332 index
+dp_peer->link_id_map[] with the hw_link_id, while WCN7850/QCC2072 walk
+dp_peer->link_peers[] and match by peer_id, tracked with a link_peers_map
+bitmap.
+
+Now that ath12k_skb_rxcb::drv_link_id carries the driver link id for all
+devices (the hw_link_id on QCN9274/IPQ5332 and the logical link id on
+WCN7850/QCC2072) and ath12k_dp_peer::link_id_map maps it to the IEEE80211
+link id, the RX path can resolve the link id uniformly.
+
+Revert the set_rx_link_id() machinery and the link_peers_map bitmap, and
+derive the link id directly from link_id_map[drv_link_id] in
+ath12k_dp_rx_deliver_msdu() for all devices. The NULL dp_peer guard added
+to ath12k_mac_peer_cleanup_all() is kept as it is an independent fix.
+
+Tested-on: WCN7850 hw2.0 PCI WLAN.HMT.1.1.c7-00108-QCAHMTSWPL_V1.0_V2.0_SILICONZ_UPSTREAM-3
+Tested-on: QCC2072 hw1.0 PCI WLAN.COL.1.0.c2-00068-QCACOLSWPL_V1_TO_SILICONZ-1
+
+Tested-by: Burke Cates <burke.cates@gmail.com> # ASUS Zenbook A16 (UX3607OA)
+Signed-off-by: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
+Reviewed-by: Rameshkumar Sundaram <rameshkumar.sundaram@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261110-ath12k-logical-link-id-v5-11-26a3ed38db09@oss.qualcomm.com
+Signed-off-by: Jeff Johnson <jeff.johnson@oss.qualcomm.com>
+---
+ drivers/net/wireless/ath/ath12k/dp_peer.c     |  4 ---
+ drivers/net/wireless/ath/ath12k/dp_peer.h     |  1 -
+ drivers/net/wireless/ath/ath12k/dp_rx.c       |  8 ++---
+ drivers/net/wireless/ath/ath12k/hw.h          | 18 -----------
+ drivers/net/wireless/ath/ath12k/mac.c         |  2 --
+ drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c | 30 -------------------
+ drivers/net/wireless/ath/ath12k/wifi7/dp_rx.h |  6 ----
+ drivers/net/wireless/ath/ath12k/wifi7/hw.c    |  3 --
+ 8 files changed, 2 insertions(+), 70 deletions(-)
+
+diff --git a/drivers/net/wireless/ath/ath12k/dp_peer.c b/drivers/net/wireless/ath/ath12k/dp_peer.c
+index 12bd7aeb9380..5f7384b44807 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.c
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.c
+@@ -659,8 +659,6 @@ int ath12k_dp_link_peer_assign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_hw,
+ 	peerid_index = ath12k_dp_peer_get_peerid_index(dp, peer->peer_id);
+ 
+ 	rcu_assign_pointer(dp_peer->link_peers[peer->link_id], peer);
+-	WRITE_ONCE(dp_peer->link_peers_map,
+-		   READ_ONCE(dp_peer->link_peers_map) | BIT(peer->link_id));
+ 
+ 	rcu_assign_pointer(dp_hw->dp_peers[peerid_index], dp_peer);
+ 
+@@ -729,8 +727,6 @@ void ath12k_dp_link_peer_unassign(struct ath12k_dp *dp, struct ath12k_dp_hw *dp_
+ 	peerid_index = ath12k_dp_peer_get_peerid_index(dp, peer->peer_id);
+ 
+ 	rcu_assign_pointer(dp_peer->link_peers[peer->link_id], NULL);
+-	WRITE_ONCE(dp_peer->link_peers_map,
+-		   READ_ONCE(dp_peer->link_peers_map) & ~BIT(peer->link_id));
+ 
+ 	rcu_assign_pointer(dp_hw->dp_peers[peerid_index], NULL);
+ 
+diff --git a/drivers/net/wireless/ath/ath12k/dp_peer.h b/drivers/net/wireless/ath/ath12k/dp_peer.h
+index c2d060de88ea..2ac4c6c6d535 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_peer.h
++++ b/drivers/net/wireless/ath/ath12k/dp_peer.h
+@@ -159,7 +159,6 @@ struct ath12k_dp_peer {
+ 
+ 	/* Info used in MMIC verification of * RX fragments */
+ 	struct ieee80211_key_conf *keys[WMI_MAX_KEY_INDEX + 1];
+-	unsigned long link_peers_map;
+ 	struct ath12k_dp_link_peer __rcu *link_peers[ATH12K_NUM_MAX_LINKS];
+ 	struct ath12k_reoq_buf reoq_bufs[IEEE80211_NUM_TIDS + 1];
+ 	struct ath12k_dp_rx_tid rx_tid[IEEE80211_NUM_TIDS + 1];
+diff --git a/drivers/net/wireless/ath/ath12k/dp_rx.c b/drivers/net/wireless/ath/ath12k/dp_rx.c
+index f11810c6e0d4..52838ade1b1d 100644
+--- a/drivers/net/wireless/ath/ath12k/dp_rx.c
++++ b/drivers/net/wireless/ath/ath12k/dp_rx.c
+@@ -1370,13 +1370,9 @@ void ath12k_dp_rx_deliver_msdu(struct ath12k_pdev_dp *dp_pdev, struct napi_struc
+ 
+ 	if (pubsta) {
+ 		if (pubsta->valid_links) {
+-			int link_id =
+-				ath12k_hw_get_rx_link_id(dp->hw_params, peer,
+-							 rxcb, status);
++			int link_id = peer->link_id_map[rxcb->drv_link_id];
+ 
+-			if (link_id >= 0)
+-				link_pubsta =
+-					rcu_dereference(pubsta->link[link_id]);
++			link_pubsta = rcu_dereference(pubsta->link[link_id]);
+ 		} else {
+ 			link_pubsta = &pubsta->deflink;
+ 		}
+diff --git a/drivers/net/wireless/ath/ath12k/hw.h b/drivers/net/wireless/ath/ath12k/hw.h
+index 106d858efc44..3a7d1959f19f 100644
+--- a/drivers/net/wireless/ath/ath12k/hw.h
++++ b/drivers/net/wireless/ath/ath12k/hw.h
+@@ -13,10 +13,6 @@
+ #include "wmi.h"
+ #include "hal.h"
+ 
+-struct ath12k_dp_peer;
+-struct ath12k_skb_rxcb;
+-struct ieee80211_rx_status;
+-
+ /* Target configuration defines */
+ 
+ /* Num VDEVS per radio */
+@@ -255,9 +251,6 @@ struct ath12k_hw_ops {
+ 	bool (*dp_srng_is_tx_comp_ring)(int ring_num);
+ 	bool (*is_frame_link_agnostic)(struct ath12k_link_vif *arvif,
+ 				       struct ieee80211_mgmt *mgmt);
+-	int (*get_rx_link_id)(struct ath12k_dp_peer *dp_peer,
+-			      struct ath12k_skb_rxcb *rxcb,
+-			      struct ieee80211_rx_status *status);
+ };
+ 
+ static inline
+@@ -288,17 +281,6 @@ static inline int ath12k_hw_mac_id_to_srng_id(const struct ath12k_hw_params *hw,
+ 	return 0;
+ }
+ 
+-static inline int ath12k_hw_get_rx_link_id(const struct ath12k_hw_params *hw,
+-					   struct ath12k_dp_peer *dp_peer,
+-					   struct ath12k_skb_rxcb *rxcb,
+-					   struct ieee80211_rx_status *status)
+-{
+-	if (hw->hw_ops->get_rx_link_id)
+-		return hw->hw_ops->get_rx_link_id(dp_peer, rxcb, status);
+-
+-	return -1;
+-}
+-
+ struct ath12k_fw_ie {
+ 	__le32 id;
+ 	__le32 len;
+diff --git a/drivers/net/wireless/ath/ath12k/mac.c b/drivers/net/wireless/ath/ath12k/mac.c
+index 065253545f52..e268dabc51c8 100644
+--- a/drivers/net/wireless/ath/ath12k/mac.c
++++ b/drivers/net/wireless/ath/ath12k/mac.c
+@@ -1241,8 +1241,6 @@ void ath12k_mac_peer_cleanup_all(struct ath12k *ar)
+ 		if (dp_peer) {
+ 			peerid_index = ath12k_dp_peer_get_peerid_index(dp, peer->peer_id);
+ 			rcu_assign_pointer(dp_peer->link_peers[peer->link_id], NULL);
+-			WRITE_ONCE(dp_peer->link_peers_map,
+-				   READ_ONCE(dp_peer->link_peers_map) & ~BIT(peer->link_id));
+ 			rcu_assign_pointer(dp_hw->dp_peers[peerid_index], NULL);
+ 		}
+ 		spin_unlock_bh(&dp_hw->peer_lock);
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
+index 4132578085cc..473887ed4bb1 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.c
+@@ -2374,33 +2374,3 @@ ath12k_wifi7_dp_rxdesc_mpdu_valid(struct ath12k_base *ab,
+ 
+ 	return tlv_tag == HAL_RX_MPDU_START;
+ }
+-
+-int
+-ath12k_wifi7_dp_rx_get_link_id_qcn9274(struct ath12k_dp_peer *dp_peer,
+-				       struct ath12k_skb_rxcb *rxcb,
+-				       struct ieee80211_rx_status *status)
+-{
+-	return dp_peer->link_id_map[rxcb->drv_link_id];
+-}
+-
+-int
+-ath12k_wifi7_dp_rx_get_link_id_wcn7850(struct ath12k_dp_peer *dp_peer,
+-				       struct ath12k_skb_rxcb *rxcb,
+-				       struct ieee80211_rx_status *status)
+-{
+-	struct ath12k_dp_link_peer *link_peer;
+-	unsigned long links_map;
+-	int i;
+-
+-	RCU_LOCKDEP_WARN(!rcu_read_lock_held(),
+-			 "ath12k set rx link id called without rcu lock");
+-
+-	links_map = READ_ONCE(dp_peer->link_peers_map);
+-	for_each_set_bit(i, &links_map, ATH12K_NUM_MAX_LINKS) {
+-		link_peer = rcu_dereference(dp_peer->link_peers[i]);
+-		if (link_peer && link_peer->peer_id == rxcb->peer_id)
+-			return link_peer->link_id;
+-	}
+-
+-	return -1;
+-}
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.h b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.h
+index 8a16fb3dd005..3da80da19ced 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.h
++++ b/drivers/net/wireless/ath/ath12k/wifi7/dp_rx.h
+@@ -59,10 +59,4 @@ ath12k_wifi7_dp_rxdesc_mpdu_valid(struct ath12k_base *ab,
+ 				  struct hal_rx_desc *rx_desc);
+ int ath12k_wifi7_dp_rx_tid_delete_handler(struct ath12k_base *ab,
+ 					  struct ath12k_dp_rx_tid_rxq *rx_tid);
+-int ath12k_wifi7_dp_rx_get_link_id_qcn9274(struct ath12k_dp_peer *dp_peer,
+-					   struct ath12k_skb_rxcb *rxcb,
+-					   struct ieee80211_rx_status *status);
+-int ath12k_wifi7_dp_rx_get_link_id_wcn7850(struct ath12k_dp_peer *dp_peer,
+-					   struct ath12k_skb_rxcb *rxcb,
+-					   struct ieee80211_rx_status *status);
+ #endif
+diff --git a/drivers/net/wireless/ath/ath12k/wifi7/hw.c b/drivers/net/wireless/ath/ath12k/wifi7/hw.c
+index 5b31719b15ca..acb8d6e3b4c6 100644
+--- a/drivers/net/wireless/ath/ath12k/wifi7/hw.c
++++ b/drivers/net/wireless/ath/ath12k/wifi7/hw.c
+@@ -159,7 +159,6 @@ static const struct ath12k_hw_ops qcn9274_ops = {
+ 	.get_ring_selector = ath12k_wifi7_hw_get_ring_selector_qcn9274,
+ 	.dp_srng_is_tx_comp_ring = ath12k_wifi7_dp_srng_is_comp_ring_qcn9274,
+ 	.is_frame_link_agnostic = ath12k_wifi7_is_frame_link_agnostic_qcn9274,
+-	.get_rx_link_id = ath12k_wifi7_dp_rx_get_link_id_qcn9274,
+ };
+ 
+ static const struct ath12k_hw_ops wcn7850_ops = {
+@@ -170,7 +169,6 @@ static const struct ath12k_hw_ops wcn7850_ops = {
+ 	.get_ring_selector = ath12k_wifi7_hw_get_ring_selector_wcn7850,
+ 	.dp_srng_is_tx_comp_ring = ath12k_wifi7_dp_srng_is_comp_ring_wcn7850,
+ 	.is_frame_link_agnostic = ath12k_wifi7_is_frame_link_agnostic_wcn7850,
+-	.get_rx_link_id = ath12k_wifi7_dp_rx_get_link_id_wcn7850,
+ };
+ 
+ static const struct ath12k_hw_ops qcc2072_ops = {
+@@ -181,7 +179,6 @@ static const struct ath12k_hw_ops qcc2072_ops = {
+ 	.get_ring_selector = ath12k_wifi7_hw_get_ring_selector_wcn7850,
+ 	.dp_srng_is_tx_comp_ring = ath12k_wifi7_dp_srng_is_comp_ring_wcn7850,
+ 	.is_frame_link_agnostic = ath12k_wifi7_is_frame_link_agnostic_wcn7850,
+-	.get_rx_link_id = ath12k_wifi7_dp_rx_get_link_id_wcn7850,
+ };
+ 
+ #define ATH12K_TX_RING_MASK_0 0x1

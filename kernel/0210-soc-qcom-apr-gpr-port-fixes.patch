@@ -1,0 +1,163 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/3] soc: qcom: apr: GPR port fixes
+
+Three apr/GPR fixes posted together by Krzysztof Kozlowski.
+
+ 1/3 soc: qcom: apr: Reject packets with header size larger than packet size
+     Author: Krzysztof Kozlowski <krzysztof.kozlowski@oss.qualcomm.com>
+     Message-ID: <20261103145635.309032-4-krzysztof.kozlowski@oss.qualcomm.com>
+ 2/3 soc: qcom: apr: Fix theoretical use-after-free of GPR port on concurrent RX callback
+     Author: Krzysztof Kozlowski <krzysztof.kozlowski@oss.qualcomm.com>
+     Message-ID: <20261103145635.309032-5-krzysztof.kozlowski@oss.qualcomm.com>
+ 3/3 soc: qcom: apr: Narrow critical section in error path of gpr_alloc_port()
+     Author: Krzysztof Kozlowski <krzysztof.kozlowski@oss.qualcomm.com>
+     Message-ID: <20261103145635.309032-6-krzysztof.kozlowski@oss.qualcomm.com>
+
+From 5bc9b492c43c4854df6e0b4e8cf919d9f514cda3 Mon Sep 17 00:00:00 2001
+From: Krzysztof Kozlowski <krzysztof.kozlowski@oss.qualcomm.com>
+Date: Tue, 3 Nov 2026 15:56:36 +0100
+Subject: [PATCH 1/3] soc: qcom: apr: Reject packets with header size larger than
+ packet size
+
+apr_do_rx_callback() and gpr_do_rx_callback() validate the header size
+and the packet size separately, but never check that the header fits
+within the packet.  Both sizes are u16, so with a malformed packet where
+the header size exceeds the packet size, the subtraction computing
+resp.payload_size gets promoted to int and becomes negative.
+
+Further check "resp.payload_size > 0" would fail, leading to
+resp.payload left uninitialized (stack value).  Reject such packets as
+having a wrong packet size, although unlikely that firmware would
+produce such packets.
+
+Fixes: 6adba21eb434 ("soc: qcom: Add APR bus driver")
+Fixes: ec1471a898cc ("soc: qcom: apr: Add GPR support")
+Cc: stable@vger.kernel.org
+Reported-by: Sashiko <sashiko-bot@kernel.org>
+Closes: https://sashiko.dev/#/bug/linux-82d40745-1593-4c20-8432-d86099836525
+Signed-off-by: Krzysztof Kozlowski <krzysztof.kozlowski@oss.qualcomm.com>
+Reviewed-by: Abel Vesa <abel.vesa@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261103145635.309032-4-krzysztof.kozlowski@oss.qualcomm.com
+Signed-off-by: Bjorn Andersson <andersson@kernel.org>
+---
+ drivers/soc/qcom/apr.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/soc/qcom/apr.c b/drivers/soc/qcom/apr.c
+index 028e57bfae1e..c952312bf0d9 100644
+--- a/drivers/soc/qcom/apr.c
++++ b/drivers/soc/qcom/apr.c
+@@ -210,7 +210,8 @@ static int apr_do_rx_callback(struct packet_router *apr, struct apr_rx_buf *abuf
+ 		return -EINVAL;
+ 	}
+ 
+-	if (hdr->pkt_size < APR_HDR_SIZE || hdr->pkt_size != len) {
++	if (hdr->pkt_size < APR_HDR_SIZE || hdr->pkt_size != len ||
++	    hdr->pkt_size <= hdr_size) {
+ 		dev_err(apr->dev, "APR: Wrong packet size\n");
+ 		return -EINVAL;
+ 	}
+@@ -280,7 +281,8 @@ static int gpr_do_rx_callback(struct packet_router *gpr, struct apr_rx_buf *abuf
+ 		return -EINVAL;
+ 	}
+ 
+-	if (hdr->pkt_size < GPR_PKT_HEADER_BYTE_SIZE || hdr->pkt_size != len) {
++	if (hdr->pkt_size < GPR_PKT_HEADER_BYTE_SIZE || hdr->pkt_size != len ||
++	    hdr->pkt_size <= hdr_size * 4) {
+ 		dev_err(gpr->dev, "GPR: Wrong packet size\n");
+ 		return -EINVAL;
+ 	}
+From a5c0b83f5ffd4bb517fbeee6b2d3f571e52b8c51 Mon Sep 17 00:00:00 2001
+From: Krzysztof Kozlowski <krzysztof.kozlowski@oss.qualcomm.com>
+Date: Tue, 3 Nov 2026 15:56:37 +0100
+Subject: [PATCH 2/3] soc: qcom: apr: Fix theoretical use-after-free of GPR port on
+ concurrent RX callback
+
+gpr_do_rx_callback(), executed from the RX workqueue, looks up the
+destination port in the IDR under svcs_lock, but then drops the lock to
+call port's callback.
+
+Concurrently closing a graph calls gpr_free_port(), which frees the port
+after removing it from IDR, thus a theoretical scenario (not reproduced)
+is possible:
+
+  CPU0 (RX worker)                  CPU1 (teardown)
+  ----------------                  ---------------
+  gpr_do_rx_callback()
+    lock(svcs_lock)
+    svc = idr_find()
+    unlock(svcs_lock)
+                                    q6apm_graph_close()
+                                      gpr_free_port()
+                                        idr_remove()
+                                        kfree(port)
+                                      kfree(graph)
+    svc->callback(..., svc->priv)   <- use-after-free
+
+Reported-by: Sashiko <sashiko-bot@kernel.org>
+Closes: https://sashiko.dev/#/bug/linux-1ebe255f-a874-46dc-b7cc-455e7bce402f
+Fixes: ec1471a898cc ("soc: qcom: apr: Add GPR support")
+Cc: stable@vger.kernel.org
+Signed-off-by: Krzysztof Kozlowski <krzysztof.kozlowski@oss.qualcomm.com>
+Reviewed-by: Abel Vesa <abel.vesa@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261103145635.309032-5-krzysztof.kozlowski@oss.qualcomm.com
+Signed-off-by: Bjorn Andersson <andersson@kernel.org>
+---
+ drivers/soc/qcom/apr.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/soc/qcom/apr.c b/drivers/soc/qcom/apr.c
+index c952312bf0d9..cca217e05b3b 100644
+--- a/drivers/soc/qcom/apr.c
++++ b/drivers/soc/qcom/apr.c
+@@ -83,6 +83,13 @@ void gpr_free_port(gpr_port_t *port)
+ 	idr_remove(&gpr->svcs_idr, port->id);
+ 	spin_unlock_irqrestore(&gpr->svcs_lock, flags);
+ 
++	/*
++	 * The port is no longer discoverable, but RX worker might have already
++	 * looked it up and be calling its callback, so wait for
++	 * gpr_do_rx_callback() to finish.
++	 */
++	flush_workqueue(gpr->rxwq);
++
+ 	kfree(port);
+ }
+ EXPORT_SYMBOL_GPL(gpr_free_port);
+From 27242ff1db6cb6319624082ddd0a06963b5b5760 Mon Sep 17 00:00:00 2001
+From: Krzysztof Kozlowski <krzysztof.kozlowski@oss.qualcomm.com>
+Date: Tue, 3 Nov 2026 15:56:38 +0100
+Subject: [PATCH 3/3] soc: qcom: apr: Narrow critical section in error path of
+ gpr_alloc_port()
+
+Error path of gpr_alloc_port() can unlocok the spinlock earlier, before
+printing error message and freeing the local memory, because the
+allocated memory is not published outside of this context.  Shorter
+critical section makes system more responsive, although gain won't be
+likely because it is only an error path.
+
+Signed-off-by: Krzysztof Kozlowski <krzysztof.kozlowski@oss.qualcomm.com>
+Reviewed-by: Abel Vesa <abel.vesa@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261103145635.309032-6-krzysztof.kozlowski@oss.qualcomm.com
+Signed-off-by: Bjorn Andersson <andersson@kernel.org>
+---
+ drivers/soc/qcom/apr.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/soc/qcom/apr.c b/drivers/soc/qcom/apr.c
+index cca217e05b3b..515729374762 100644
+--- a/drivers/soc/qcom/apr.c
++++ b/drivers/soc/qcom/apr.c
+@@ -117,9 +117,9 @@ gpr_port_t *gpr_alloc_port(struct apr_device *gdev, struct device *dev,
+ 	id = idr_alloc_cyclic(&pr->svcs_idr, svc, GPR_DYNAMIC_PORT_START,
+ 			      GPR_DYNAMIC_PORT_END, GFP_ATOMIC);
+ 	if (id < 0) {
++		spin_unlock(&pr->svcs_lock);
+ 		dev_err(dev, "Unable to allocate dynamic GPR src port\n");
+ 		kfree(port);
+-		spin_unlock(&pr->svcs_lock);
+ 		return ERR_PTR(id);
+ 	}
+ 

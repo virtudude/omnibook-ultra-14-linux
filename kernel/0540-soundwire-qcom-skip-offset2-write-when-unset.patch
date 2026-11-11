@@ -1,0 +1,35 @@
+From fbaa964fe8585c137d1945032d51f9c0ea32960f Mon Sep 17 00:00:00 2001
+From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Date: Tue, 1 Sep 2026 21:13:22 +0530
+Subject: [PATCH] soundwire: qcom: skip offset2 write when unset
+
+qcom_swrm_transport_params() writes offset2 into the port control
+register even when the port does not use it. Many DTs mark such ports
+with 0xff (SWR_INVALID_PARAM) in qcom,ports-offset2, which is then
+programmed as an offset of 255.
+
+Skip the field when it is unset, like the other optional fields.
+
+Fixes: 02efb49aa805 ("soundwire: qcom: add support for SoundWire controller")
+Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
+Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+---
+ drivers/soundwire/qcom.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/soundwire/qcom.c b/drivers/soundwire/qcom.c
+index a4cb62897192..30e2e76a25e5 100644
+--- a/drivers/soundwire/qcom.c
++++ b/drivers/soundwire/qcom.c
+@@ -1120,7 +1120,10 @@ static int qcom_swrm_transport_params(struct sdw_bus *bus,
+ 	pcfg = &ctrl->pconfig[params->port_num];
+ 
+ 	value = pcfg->off1 << SWRM_DP_PORT_CTRL_OFFSET1_SHFT;
+-	value |= pcfg->off2 << SWRM_DP_PORT_CTRL_OFFSET2_SHFT;
++
++	if (pcfg->off2 != SWR_INVALID_PARAM)
++		value |= pcfg->off2 << SWRM_DP_PORT_CTRL_OFFSET2_SHFT;
++
+ 	value |= pcfg->si & 0xff;
+ 
+ 	ret = ctrl->reg_write(ctrl, reg, value);

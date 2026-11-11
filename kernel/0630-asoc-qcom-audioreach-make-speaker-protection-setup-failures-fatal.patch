@@ -1,0 +1,231 @@
+From 3288ce2c0d636fe9197b94ef2aa68eda63d074ee Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Mon, 9 Nov 2026 20:02:27 -0500
+Subject: [PATCH] ASoC: qcom: audioreach: make speaker protection setup
+ failures fatal
+
+Speaker protection must not run half configured unnoticed:
+
+- an SP or SP_VI module without a static cfg blob fails the graph
+  instead of running on DSP defaults;
+- R0/T0 is sent after the static cfg blob, whose thermal record would
+  otherwise override it with the topology defaults, then the module is
+  enabled;
+- the module state is logged only once every command for it has
+  succeeded, and the failing step otherwise;
+- Normal mode without R0/T0 warns that it runs on topology defaults;
+- the operation mode is read once per VI setup, so the op mode cfg and
+  the R0/T0 decision cannot disagree.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 155 ++++++++++++++++++------------
+ 1 file changed, 95 insertions(+), 60 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index e996be54c42e..8d6e3d7ca3a6 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -1866,9 +1866,9 @@ static void audioreach_arm_vi_calibration(void)
+ 
+ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 					    const struct audioreach_module *module,
+-					    const struct audioreach_module_config *mcfg)
++					    const struct audioreach_module_config *mcfg,
++					    u32 mode)
+ {
+-	u32 mode = READ_ONCE(sp_operation_mode);
+ 	u32 num_channels = mcfg->num_channels;
+ 	struct apm_module_sp_vi_op_mode_cfg *op_cfg;
+ 	struct apm_module_sp_vi_channel_map_cfg *cm_cfg;
+@@ -1958,71 +1958,83 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 
+ 	kfree(pkt);
+ 
+-	if (rc)
+-		return rc;
++	return rc;
++}
+ 
+-	if (sp_operation_mode == PARAM_ID_SP_VI_OP_MODE_NORMAL) {
+-		struct apm_module_sp_th_vi_r0t0_cfg *r0t0_cfg;
+-		int r0t0_sz;
++/*
++ * Sent after the static cfg blob, whose thermal record carries the topology's
++ * R0/T0 defaults; normal mode without a cached R0/T0 runs on those.
++ */
++static int audioreach_sp_vi_send_r0t0(struct q6apm_graph *graph,
++				      const struct audioreach_module *module,
++				      u32 mode, u32 num_speakers, bool *sent)
++{
++	struct apm_module_sp_th_vi_r0t0_cfg *r0t0_cfg;
++	struct apm_module_param_data *param_data;
++	struct gpr_pkt *pkt;
++	int rc, i, r0t0_sz;
++	void *p;
+ 
+-		guard(mutex)(&sp_vi_r0t0_cfg_lock);
++	*sent = false;
++	if (mode != PARAM_ID_SP_VI_OP_MODE_NORMAL)
++		return 0;
+ 
+-		if (!sp_vi_r0t0_cfg.num_ch)
+-			return 0;
++	guard(mutex)(&sp_vi_r0t0_cfg_lock);
+ 
+-		if (sp_vi_r0t0_cfg.num_ch != num_speakers) {
+-			dev_err(graph->dev,
+-				"SP R0T0 is for %u speakers, graph has %u\n",
+-				sp_vi_r0t0_cfg.num_ch, num_speakers);
+-			return -EINVAL;
+-		}
++	if (!sp_vi_r0t0_cfg.num_ch) {
++		dev_warn(graph->dev,
++			 "SP: no R0/T0 set, VI runs on the topology's R0/T0 defaults\n");
++		return 0;
++	}
+ 
+-		r0t0_sz = APM_SP_TH_VI_R0T0_CFG_PSIZE(sp_vi_r0t0_cfg.num_ch);
+-		pkt = audioreach_alloc_apm_cmd_pkt(r0t0_sz, APM_CMD_SET_CFG, 0);
+-		if (IS_ERR(pkt))
+-			return PTR_ERR(pkt);
+-
+-		p = (void *)pkt + GPR_HDR_SIZE + APM_CMD_HDR_SIZE;
+-
+-		r0t0_cfg = p;
+-		param_data = &r0t0_cfg->param_data;
+-		param_data->module_instance_id = module->instance_id;
+-		param_data->error_code = 0;
+-		param_data->param_id = PARAM_ID_SP_TH_VI_R0T0_CFG;
+-		param_data->param_size = r0t0_sz - APM_MODULE_PARAM_DATA_SIZE;
+-
+-		r0t0_cfg->cfg.num_ch = sp_vi_r0t0_cfg.num_ch;
+-		for (i = 0; i < sp_vi_r0t0_cfg.num_ch; i++) {
+-			r0t0_cfg->cfg.r0t0_cfg[i].r0_cali_q24 = sp_vi_r0t0_cfg.r0_cali_q24[i];
+-			r0t0_cfg->cfg.r0t0_cfg[i].t0_cali_q6 = sp_vi_r0t0_cfg.t0_cali_q6[i];
+-			r0t0_cfg->cfg.r0t0_cfg[i].reserved = 0;
+-		}
++	if (sp_vi_r0t0_cfg.num_ch != num_speakers) {
++		dev_err(graph->dev,
++			"SP R0T0 is for %u speakers, graph has %u\n",
++			sp_vi_r0t0_cfg.num_ch, num_speakers);
++		return -EINVAL;
++	}
+ 
+-		rc = q6apm_send_cmd_sync(graph->apm, pkt, 0);
++	r0t0_sz = APM_SP_TH_VI_R0T0_CFG_PSIZE(sp_vi_r0t0_cfg.num_ch);
++	pkt = audioreach_alloc_apm_cmd_pkt(r0t0_sz, APM_CMD_SET_CFG, 0);
++	if (IS_ERR(pkt))
++		return PTR_ERR(pkt);
+ 
+-		kfree(pkt);
++	p = (void *)pkt + GPR_HDR_SIZE + APM_CMD_HDR_SIZE;
+ 
+-		if (rc) {
+-			dev_err(graph->dev, "SP activation failed: %d\n", rc);
+-			return rc;
+-		}
++	r0t0_cfg = p;
++	param_data = &r0t0_cfg->param_data;
++	param_data->module_instance_id = module->instance_id;
++	param_data->error_code = 0;
++	param_data->param_id = PARAM_ID_SP_TH_VI_R0T0_CFG;
++	param_data->param_size = r0t0_sz - APM_MODULE_PARAM_DATA_SIZE;
++
++	r0t0_cfg->cfg.num_ch = sp_vi_r0t0_cfg.num_ch;
++	for (i = 0; i < sp_vi_r0t0_cfg.num_ch; i++) {
++		r0t0_cfg->cfg.r0t0_cfg[i].r0_cali_q24 = sp_vi_r0t0_cfg.r0_cali_q24[i];
++		r0t0_cfg->cfg.r0t0_cfg[i].t0_cali_q6 = sp_vi_r0t0_cfg.t0_cali_q6[i];
++		r0t0_cfg->cfg.r0t0_cfg[i].reserved = 0;
++	}
+ 
+-		/* Protection is now active on the DSP */
+-		dev_info(graph->dev, "SP active in Normal mode (%u channels)\n",
+-			 sp_vi_r0t0_cfg.num_ch);
+-		for (i = 0; i < sp_vi_r0t0_cfg.num_ch; i++) {
+-			int r0_int, r0_frac;
+-
+-			r0_int = sp_vi_q24_to_int_frac(sp_vi_r0t0_cfg.r0_cali_q24[i], &r0_frac);
+-			dev_info(graph->dev,
+-				 "  SP ch%u: R0 %d.%03d ohms, T0 %d.%03d degC\n",
+-				 i, r0_int, r0_frac,
+-				 sp_vi_r0t0_cfg.t0_cali_q6[i] / 64,
+-				 abs((sp_vi_r0t0_cfg.t0_cali_q6[i] % 64) * 1000 / 64));
+-		}
++	rc = q6apm_send_cmd_sync(graph->apm, pkt, 0);
++	kfree(pkt);
++	if (rc) {
++		dev_err(graph->dev, "SP R0/T0 rejected: %d\n", rc);
++		return rc;
+ 	}
+ 
+-	return rc;
++	for (i = 0; i < sp_vi_r0t0_cfg.num_ch; i++) {
++		int r0_int, r0_frac;
++
++		r0_int = sp_vi_q24_to_int_frac(sp_vi_r0t0_cfg.r0_cali_q24[i], &r0_frac);
++		dev_info(graph->dev,
++			 "  SP ch%u: R0 %d.%03d ohms, T0 %d.%03d degC\n",
++			 i, r0_int, r0_frac,
++			 sp_vi_r0t0_cfg.t0_cali_q6[i] / 64,
++			 abs((sp_vi_r0t0_cfg.t0_cali_q6[i] % 64) * 1000 / 64));
++	}
++	*sent = true;
++
++	return 0;
+ }
+ 
+ /* Keep each SET_CFG small; a larger single parameter is sent on its own */
+@@ -2112,8 +2124,11 @@ static int audioreach_speaker_protection_send_static_cfg(struct q6apm_graph *gra
+ 	const u32 *word;
+ 	int total, rc = 0, chunk = 0;
+ 
+-	if (!module->data || !module->data->size)
+-		return 0;
++	if (!module->data || !module->data->size) {
++		dev_err(graph->dev, "%s module 0x%x has no static cfg blob\n",
++			tag, module->instance_id);
++		return -EINVAL;
++	}
+ 
+ 	size = le32_to_cpu(module->data->size);
+ 	word = (const u32 *)module->data->data;
+@@ -2246,16 +2261,36 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 			rc = audioreach_speaker_protection_static_cfg(graph, module);
+ 		if (!rc)
+ 			rc = audioreach_module_enable(graph, module, true);
++		if (rc)
++			dev_err(graph->dev, "SP RX setup failed: %d\n", rc);
++		else
++			dev_info(graph->dev, "SP RX configured and enabled\n");
+ 
+ 		break;
+-	case MODULE_ID_SPEAKER_PROTECTION_VI:
+-		rc = audioreach_speaker_protection_vi(graph, module, cfg);
++	case MODULE_ID_SPEAKER_PROTECTION_VI: {
++		u32 mode = READ_ONCE(sp_operation_mode);
++		bool r0t0_sent = false;
++
++		rc = audioreach_speaker_protection_vi(graph, module, cfg, mode);
+ 		if (!rc)
+ 			rc = audioreach_speaker_protection_vi_static_cfg(graph, module);
++		if (!rc)
++			rc = audioreach_sp_vi_send_r0t0(graph, module, mode,
++							cfg->num_channels, &r0t0_sent);
+ 		if (!rc)
+ 			rc = audioreach_module_enable(graph, module, true);
++		if (rc) {
++			dev_err(graph->dev, "SP VI setup failed: %d\n", rc);
++			break;
++		}
+ 
++		/* Everything above was acknowledged by the DSP */
++		dev_info(graph->dev, "SP VI configured: %s mode, %u channels, %s\n",
++			 mode == PARAM_ID_SP_VI_OP_MODE_NORMAL ? "Normal" : "Calibration",
++			 cfg->num_channels,
++			 r0t0_sent ? "R0/T0 sent" : "no R0/T0 (topology defaults)");
+ 		break;
++	}
+ 	case MODULE_ID_AUDIO_IF_SOURCE:
+ 	case MODULE_ID_AUDIO_IF_SINK:
+ 		rc = audioreach_audio_if_set_media_format(graph, module, cfg);

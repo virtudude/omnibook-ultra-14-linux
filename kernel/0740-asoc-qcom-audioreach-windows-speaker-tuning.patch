@@ -1,0 +1,1068 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/3] ASoC: qcom: audioreach: run the vendor speaker tuning
+
+Sends large parameter records out of band, sends the MSPP, SAL and
+channel mixer blobs of the topology, and adds a dB volume control
+mirrored into MSPP, as the Windows speaker graph does.
+
+ 1/3 ASoC: qcom: audioreach: send large parameter records out of band
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 2/3 ASoC: qcom: audioreach: send MSPP, SAL and channel mixer parameter blobs
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 3/3 ASoC: qcom: audioreach: add a dB volume control mirrored into MSPP
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+
+From 67bcba31f45057ea0281c18bfa82f718a551244f Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 15:02:20 -0500
+Subject: [PATCH 1/3] ASoC: qcom: audioreach: send large parameter records out of
+ band
+
+The SP and SP VI static cfg blobs are sent as in-band SET_CFGs. A record
+whose packet exceeds 2048 bytes, such as the 6.2 kB filter table of
+HP's SP tuning, does not fit the ADSP glink intents. Send such a record
+alone through q6apm_set_cfg_oob(); records stay in blob order and
+smaller ones go out as before.
+
+Factor the sending out of the SP path so other module blobs can use it.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 75 +++++++++++++++++++++++--------
+ 1 file changed, 57 insertions(+), 18 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index 4127316b09d1..aa3dd0ab3672 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -2583,6 +2583,12 @@ static int audioreach_sp_vi_send_r0t0(struct q6apm_graph *graph,
+ /* Keep each SET_CFG small; a larger single parameter is sent on its own */
+ #define AR_SP_CFG_MAX_CHUNK_BYTES	512
+ 
++/*
++ * Largest in-band SET_CFG packet, headers included. The ADSP glink intents
++ * top out around 2.2 kB; a larger parameter goes through shared memory.
++ */
++#define AR_CFG_INLINE_MAX_PKT_BYTES	2048
++
+ static int audioreach_speaker_protection_send_chunk(struct q6apm_graph *graph,
+ 						    const char *tag,
+ 						    const void *data, int size,
+@@ -2695,13 +2701,58 @@ static u32 audioreach_sp_blob_kernel_pid(const u8 *packed, u32 total)
+ 	return 0;
+ }
+ 
++/*
++ * Send the records of a blob checked by audioreach_sp_cfg_walk() in blob
++ * order, packed into SET_CFGs of up to AR_SP_CFG_MAX_CHUNK_BYTES; a record
++ * too large on its own goes through shared memory. Records are never split.
++ */
++static int audioreach_cfg_records_send(struct q6apm_graph *graph,
++				       const struct audioreach_module *module,
++				       const char *tag, const u32 *word,
++				       u32 num_words, int total)
++{
++	u32 pos = 0;
++	int rc = 0, chunk = 0;
++
++	u8 *packed __free(kfree) = kmalloc(total, GFP_KERNEL);
++	if (!packed)
++		return -ENOMEM;
++
++	while (pos < num_words && !rc) {
++		const struct apm_module_param_data *pd = (const void *)packed;
++		int bytes = audioreach_sp_cfg_walk(word, num_words, module->instance_id,
++						   pos, &pos, packed,
++						   AR_SP_CFG_MAX_CHUNK_BYTES);
++		if (bytes <= 0)
++			return bytes ? bytes : -EINVAL;
++
++		if (GPR_HDR_SIZE + APM_CMD_HDR_SIZE + bytes <= AR_CFG_INLINE_MAX_PKT_BYTES) {
++			rc = audioreach_speaker_protection_send_chunk(graph, tag, packed,
++								      bytes, chunk++);
++			continue;
++		}
++
++		/* Only a lone record exceeds the chunk size */
++		rc = q6apm_set_cfg_oob(graph->apm, packed, bytes);
++		if (rc)
++			dev_err(graph->dev, "%s cfg blob: param 0x%08x (%u bytes) out of band failed: %d\n",
++				tag, pd->param_id, pd->param_size, rc);
++		else
++			dev_dbg(graph->dev, "%s cfg blob: param 0x%08x (%u bytes) sent out of band\n",
++				tag, pd->param_id, pd->param_size);
++		chunk++;
++	}
++
++	return rc;
++}
++
+ static int audioreach_speaker_protection_send_static_cfg(struct q6apm_graph *graph,
+ 							 const struct audioreach_module *module,
+ 							 const char *tag)
+ {
+-	u32 size, num_words, pos = 0;
++	u32 size, num_words;
+ 	const u32 *word;
+-	int total, rc = 0, chunk = 0;
++	int total;
+ 
+ 	if (!module->data || !module->data->size) {
+ 		dev_err(graph->dev, "%s module 0x%x has no static cfg blob\n",
+@@ -2733,13 +2784,12 @@ static int audioreach_speaker_protection_send_static_cfg(struct q6apm_graph *gra
+ 		return total;
+ 	}
+ 
+-	u8 *packed __free(kfree) = kmalloc(total, GFP_KERNEL);
+-	if (!packed)
+-		return -ENOMEM;
+-
+ 	if (audioreach_sp_isolated()) {
++		u8 *packed __free(kfree) = kmalloc(total, GFP_KERNEL);
+ 		u32 pid;
+ 
++		if (!packed)
++			return -ENOMEM;
+ 		if (audioreach_sp_cfg_walk(word, num_words, module->instance_id, 0,
+ 					   NULL, packed, U32_MAX) != total)
+ 			return -EINVAL;
+@@ -2751,18 +2801,7 @@ static int audioreach_speaker_protection_send_static_cfg(struct q6apm_graph *gra
+ 		}
+ 	}
+ 
+-	while (pos < num_words && !rc) {
+-		int bytes = audioreach_sp_cfg_walk(word, num_words, module->instance_id,
+-						   pos, &pos, packed,
+-						   AR_SP_CFG_MAX_CHUNK_BYTES);
+-		if (bytes <= 0)
+-			return bytes ? bytes : -EINVAL;
+-
+-		rc = audioreach_speaker_protection_send_chunk(graph, tag, packed, bytes,
+-							      chunk++);
+-	}
+-
+-	return rc;
++	return audioreach_cfg_records_send(graph, module, tag, word, num_words, total);
+ }
+ 
+ static int audioreach_speaker_protection_static_cfg(struct q6apm_graph *graph,
+From 149e1b1c586bc06402d525bed3cfa92312cfd6b4 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 15:02:20 -0500
+Subject: [PATCH 2/3] ASoC: qcom: audioreach: send MSPP, SAL and channel mixer
+ parameter blobs
+
+Only SP, SP VI and SMECNS modules get their topology cfg blob. The
+speaker chain of Windows laptops such as the HP OmniBook Ultra 14 needs
+blobs for more modules, so send them for an allowlist, each limited to
+its parameters: MSPP v5 (any), SAL (limiter static cfg and threshold),
+MFC and the channel mixer (CHMIXER_COEFF, CHMIXER_OUT_CH_CFG).
+
+Records must address the module's own instance and lie within the
+blob; a blob outside these rules fails the graph prepare instead of
+leaving the module on defaults. Blobs on the MFCs around SP RX, and
+while protection or the high-pass is required on any module after SP
+RX, are refused.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 159 ++++++++++++++++++++++++++++++
+ sound/soc/qcom/qdsp6/audioreach.h |  10 ++
+ sound/soc/qcom/qdsp6/topology.c   |   1 +
+ 3 files changed, 170 insertions(+)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index aa3dd0ab3672..ad5c564a4ddb 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -3228,6 +3228,149 @@ static bool audioreach_sg_contains_sp_vi(const struct audioreach_sub_graph *sg)
+ 	return false;
+ }
+ 
++/* Does @module take SP RX output, through any number of single links? */
++static bool audioreach_downstream_of_sp_rx(const struct audioreach_module *module)
++{
++	const struct audioreach_sub_graph *sg;
++	const struct audioreach_container *c;
++	const struct audioreach_module *m, *next;
++	int hops;
++
++	if (!module->container || !module->container->sub_graph ||
++	    !module->container->sub_graph->info)
++		return false;
++
++	list_for_each_entry(sg, &module->container->sub_graph->info->sg_list, node)
++		list_for_each_entry(c, &sg->container_list, node)
++			list_for_each_entry(m, &c->modules_list, node) {
++				if (m->module_id != MODULE_ID_SPEAKER_PROTECTION)
++					continue;
++				for (next = audioreach_only_successor(m), hops = 0;
++				     next && hops < 16;
++				     next = audioreach_only_successor(next), hops++)
++					if (next == module)
++						return true;
++			}
++
++	return false;
++}
++
++/*
++ * Modules whose topology blob is sent as parameter records, and what each
++ * may set. An MSPP blob is HP's whole configuration of that module.
++ */
++static bool audioreach_blob_param_allowed(u32 module_id, u32 param_id)
++{
++	switch (module_id) {
++	case MODULE_ID_MSPP_V5:
++		return true;
++	case MODULE_ID_SAL:
++		return param_id == PARAM_ID_SAL_LIMITER_STATIC_CFG ||
++		       param_id == PARAM_ID_SAL_LIMITER_CFG;
++	case MODULE_ID_MFC:
++		return param_id == PARAM_ID_CHMIXER_COEFF;
++	case MODULE_ID_CHMIXER:
++		return param_id == PARAM_ID_CHMIXER_COEFF ||
++		       param_id == PARAM_ID_CHMIXER_OUT_CH_CFG;
++	default:
++		return false;
++	}
++}
++
++/*
++ * Send an allowlisted module's blob: records addressing only the module, each
++ * an allowed parameter, in blob order. Anything else fails the graph.
++ */
++static int audioreach_module_blob_cfg(struct q6apm_graph *graph,
++				      const struct audioreach_module *module)
++{
++	u32 size, num_words, pos = 0;
++	const u32 *word;
++	int total;
++
++	if (module->data_invalid) {
++		dev_err(graph->dev, "module 0x%x (0x%08x) cfg blob failed to load from the topology\n",
++			module->instance_id, module->module_id);
++		return -EINVAL;
++	}
++	if (!module->data || !module->data->size)
++		return 0;
++
++	/* SP and the tweeter high-pass must be the last word on the speakers */
++	if (audioreach_sp_isolated() && audioreach_downstream_of_sp_rx(module)) {
++		dev_err(graph->dev, "module 0x%x (0x%08x) after SP RX carries a cfg blob; refusing\n",
++			module->instance_id, module->module_id);
++		return -EPERM;
++	}
++
++	size = le32_to_cpu(module->data->size);
++	word = (const u32 *)module->data->data;
++	num_words = size / sizeof(u32);
++
++	if (size % sizeof(u32) || !num_words || word[0] != module->instance_id) {
++		dev_err(graph->dev, "module 0x%x (0x%08x) cfg blob is not its own parameter records; refusing\n",
++			module->instance_id, module->module_id);
++		return -EINVAL;
++	}
++
++	total = audioreach_sp_cfg_walk(word, num_words, module->instance_id, 0,
++				       NULL, NULL, U32_MAX);
++	if (total <= 0) {
++		dev_err(graph->dev, "module 0x%x (0x%08x) cfg blob is malformed\n",
++			module->instance_id, module->module_id);
++		return -EINVAL;
++	}
++
++	u8 *packed __free(kfree) = kmalloc(total, GFP_KERNEL);
++	if (!packed)
++		return -ENOMEM;
++	if (audioreach_sp_cfg_walk(word, num_words, module->instance_id, 0,
++				   NULL, packed, U32_MAX) != total)
++		return -EINVAL;
++
++	while (pos < total) {
++		const struct apm_module_param_data *pd = (const void *)(packed + pos);
++
++		if (!audioreach_blob_param_allowed(module->module_id, pd->param_id)) {
++			dev_err(graph->dev, "module 0x%x (0x%08x) cfg blob sets param 0x%08x; refusing\n",
++				module->instance_id, module->module_id, pd->param_id);
++			return -EPERM;
++		}
++		pos += APM_MODULE_PARAM_DATA_SIZE + ALIGN(pd->param_size, 8);
++	}
++
++	return audioreach_cfg_records_send(graph, module, "module", word, num_words, total);
++}
++
++/* Does @module feed SP RX (through at most one MSIIR), or take SP RX output? */
++static bool audioreach_mfc_is_sp_rx_neighbour(const struct audioreach_module *module)
++{
++	const struct audioreach_sub_graph *sg;
++	const struct audioreach_container *c;
++	const struct audioreach_module *m;
++	unsigned int pn;
++
++	if (audioreach_feeds_sp_rx(module))
++		return true;
++	if (!module->container || !module->container->sub_graph ||
++	    !module->container->sub_graph->info)
++		return false;
++
++	list_for_each_entry(sg, &module->container->sub_graph->info->sg_list, node)
++		list_for_each_entry(c, &sg->container_list, node)
++			list_for_each_entry(m, &c->modules_list, node) {
++				u32 nports = min_t(u32, m->max_op_port, AR_MAX_MOD_LINKS);
++
++				if (m->module_id != MODULE_ID_SPEAKER_PROTECTION)
++					continue;
++				for (pn = 0; pn < nports; pn++)
++					if (m->dst_mod_inst_id[pn] == module->instance_id)
++						return true;
++			}
++
++	return false;
++}
++
+ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 				const struct audioreach_module *module,
+ 				const struct audioreach_module_config *cfg)
+@@ -3285,6 +3428,8 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 		rc = audioreach_sal_set_media_format(graph, module, cfg);
+ 		if (!rc)
+ 			rc = audioreach_sal_limiter_enable(graph, module, true);
++		if (!rc)
++			rc = audioreach_module_blob_cfg(graph, module);
+ 		break;
+ 	case MODULE_ID_MSIIR: {
+ 		const struct audioreach_module *next = audioreach_only_successor(module);
+@@ -3296,6 +3441,14 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 		break;
+ 	}
+ 	case MODULE_ID_MFC:
++		/* The MFCs around SP RX fix the speaker order; no blob may remix them */
++		if (module->data && module->data->size &&
++		    audioreach_mfc_is_sp_rx_neighbour(module)) {
++			dev_err(graph->dev, "SP RX: MFC 0x%x next to SP carries a cfg blob; refusing\n",
++				module->instance_id);
++			rc = -EINVAL;
++			break;
++		}
+ 		if (audioreach_feeds_sp_rx(module)) {
+ 			struct audioreach_module_config sp_cfg;
+ 
+@@ -3305,6 +3458,12 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 			break;
+ 		}
+ 		rc = audioreach_mfc_set_media_format(graph, module, cfg);
++		if (!rc)
++			rc = audioreach_module_blob_cfg(graph, module);
++		break;
++	case MODULE_ID_CHMIXER:
++	case MODULE_ID_MSPP_V5:
++		rc = audioreach_module_blob_cfg(graph, module);
+ 		break;
+ 	case MODULE_ID_GAPLESS:
+ 		rc = audioreach_gapless_set_media_format(graph, module, cfg);
+diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
+index d80d52b902d3..02c04591be64 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.h
++++ b/sound/soc/qcom/qdsp6/audioreach.h
+@@ -40,6 +40,8 @@ struct thermal_zone_device;
+ #define MODULE_ID_OPUS_DEC		0x07001174
+ #define MODULE_ID_AUDIO_IF_SINK		0x0700117C
+ #define MODULE_ID_AUDIO_IF_SOURCE	0x0700117D
++#define MODULE_ID_CHMIXER		0x07001013
++#define MODULE_ID_MSPP_V5		0x0701000D
+ 
+ #define APM_CMD_GET_SPF_STATE		0x01001021
+ #define APM_CMD_RSP_GET_SPF_STATE	0x02001007
+@@ -806,6 +808,12 @@ struct param_id_sal_limiter_enable {
+ 	uint32_t enable_lim;
+ } __packed;
+ 
++#define PARAM_ID_SAL_LIMITER_STATIC_CFG		0x08001047
++#define PARAM_ID_CHMIXER_COEFF			0x0800101F
++#define PARAM_ID_CHMIXER_OUT_CH_CFG		0x0800103B
++#define PARAM_ID_SAL_LIMITER_CFG		0x08001050
++#define PARAM_ID_MSPP_CFG			0x0800137B
++
+ #define PARAM_ID_MFC_OUTPUT_MEDIA_FORMAT	0x08001024
+ #define PARAM_ID_EARLY_EOS_DELAY		0x0800114C
+ #define EARLY_EOS_DELAY_MS			150
+@@ -1074,6 +1082,8 @@ struct audioreach_module {
+ 	struct audioreach_container *container;
+ 	struct snd_soc_dapm_widget *widget;
+ 	struct audioreach_module_priv_data *data;
++	/* The topology had a cfg blob for the module that could not be loaded */
++	bool data_invalid;
+ };
+ 
+ struct audioreach_module_config {
+diff --git a/sound/soc/qcom/qdsp6/topology.c b/sound/soc/qcom/qdsp6/topology.c
+index aa27676bbe87..8c2b46fb0fa1 100644
+--- a/sound/soc/qcom/qdsp6/topology.c
++++ b/sound/soc/qcom/qdsp6/topology.c
+@@ -779,6 +779,7 @@ static int audioreach_widget_load_module_common(struct snd_soc_component *compon
+ 		int rc = PTR_ERR(mod->data);
+ 
+ 		mod->data = NULL;
++		mod->data_invalid = true;
+ 		return rc;
+ 	}
+ 
+From 71482e5392bac5a02a7cde5fdebaa93b9182d118 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 15:02:20 -0500
+Subject: [PATCH 3/3] ASoC: qcom: audioreach: add a dB volume control mirrored into
+ MSPP
+
+On Windows the speaker graph runs VOL_CTRL ahead of the MSPP
+post-processing module, and each volume change sets the VOL_CTRL gain
+and sends the same gain to MSPP as PARAM_ID_MSPP_VOLUME, which MSPP's
+tuning depends on.
+
+Add a topology control type, SND_SOC_AR_TPLG_VOL_DB_CTL, for the
+VOL_CTRL widget: -79..0 dB in 0.5 dB steps, -14.5 dB default, with the
+range and TLV enforced so userspace can use it as a hardware volume.
+
+A live write goes to VOL_CTRL and then to every MSPP of the graph and
+is only confirmed once all took it; otherwise the confirmed step is
+restored, then VOL_CTRL is muted, and if even that fails the graph is
+torn down with the new q6apm_graph_fault() so it never plays at
+mismatched gains. Prepare and POST_PMU replay the confirmed step. A
+graph with MSPP may hold only one such control, and MSPP_VOLUME is not
+sent unless the DSP echoes whole tokens.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ include/uapi/sound/snd_ar_tokens.h |   1 +
+ sound/soc/qcom/qdsp6/audioreach.c  | 285 +++++++++++++++++++++++++++++
+ sound/soc/qcom/qdsp6/audioreach.h  |  19 ++
+ sound/soc/qcom/qdsp6/q6apm.c       |  37 +++-
+ sound/soc/qcom/qdsp6/q6apm.h       |   5 +
+ sound/soc/qcom/qdsp6/topology.c    |  81 +++++++-
+ 6 files changed, 425 insertions(+), 3 deletions(-)
+
+diff --git a/include/uapi/sound/snd_ar_tokens.h b/include/uapi/sound/snd_ar_tokens.h
+index db62dc7f9c8a..c5334a222b62 100644
+--- a/include/uapi/sound/snd_ar_tokens.h
++++ b/include/uapi/sound/snd_ar_tokens.h
+@@ -59,6 +59,7 @@ enum ar_event_types {
+ #define SND_SOC_AR_TPLG_VOL_CTL			257
+ #define SND_SOC_AR_TPLG_SP_OP_MODE_CTL		258
+ #define SND_SOC_AR_TPLG_SP_R0T0_CTL		259
++#define SND_SOC_AR_TPLG_VOL_DB_CTL		260
+ 
+ /*
+  * %AR_TKN_U32_SUB_GRAPH_INSTANCE_ID:		Sub Graph Instance Id
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index ad5c564a4ddb..e4c963ac3deb 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -1552,6 +1552,291 @@ int audioreach_gain_set_vol_ctrl(struct q6apm *apm,
+ }
+ EXPORT_SYMBOL_GPL(audioreach_gain_set_vol_ctrl);
+ 
++/* 2^28 * 10^(dB / 20) for dB = -79 + 0.5 * step */
++static const u32 ar_vol_db_q28[AR_VOL_DB_STEPS + 1] = {
++	0x000075a7, 0x00007ca0, 0x00008402, 0x00008bd4, 0x0000941e, 0x00009ce4,
++	0x0000a630, 0x0000b009, 0x0000ba77, 0x0000c584, 0x0000d138, 0x0000dd9e,
++	0x0000eabf, 0x0000f8a8, 0x00010764, 0x000116ff, 0x00012787, 0x0001390a,
++	0x00014b97, 0x00015f3d, 0x0001740c, 0x00018a18, 0x0001a172, 0x0001ba2e,
++	0x0001d462, 0x0001f023, 0x00020d88, 0x00022cac, 0x00024da8, 0x00027099,
++	0x0002959b, 0x0002bccf, 0x0002e656, 0x00031252, 0x000340ea, 0x00037244,
++	0x0003a68b, 0x0003ddeb, 0x00041893, 0x000456b5, 0x00049886, 0x0004de3c,
++	0x00052814, 0x0005764c, 0x0005c927, 0x000620eb, 0x00067de2, 0x0006e05b,
++	0x000748a9, 0x0007b726, 0x00082c2f, 0x0008a827, 0x00092b78, 0x0009b691,
++	0x000a49e7, 0x000ae5f9, 0x000b8b4a, 0x000c3a67, 0x000cf3e3, 0x000db85e,
++	0x000e887d, 0x000f64f1, 0x00104e75, 0x001145cf, 0x00124bd1, 0x0013615a,
++	0x00148754, 0x0015beba, 0x00170894, 0x001865f8, 0x0019d811, 0x001b6018,
++	0x001cff59, 0x001eb736, 0x00208923, 0x002276ab, 0x00248172, 0x0026ab32,
++	0x0028f5c3, 0x002b6315, 0x002df537, 0x0030ae59, 0x003390ca, 0x00369efc,
++	0x0039db88, 0x003d492b, 0x0040eacf, 0x0044c389, 0x0048d69c, 0x004d277e,
++	0x0051b9d7, 0x0056918a, 0x005bb2b1, 0x006121a8, 0x0066e30a, 0x006cfbb9,
++	0x007370e3, 0x007a4801, 0x008186e2, 0x008933ac, 0x009154e1, 0x0099f169,
++	0x00a31090, 0x00acba15, 0x00b6f62b, 0x00c1cd81, 0x00cd494a, 0x00d97345,
++	0x00e655c3, 0x00f3fbb4, 0x010270ac, 0x0111c0f0, 0x0121f97f, 0x0133281b,
++	0x01455b5a, 0x0158a2ad, 0x016d0e6f, 0x0182aff5, 0x0199999a, 0x01b1dece,
++	0x01cb942a, 0x01e6cf7e, 0x0203a7e6, 0x022235db, 0x0242934c, 0x0264dbae,
++	0x02892c19, 0x02afa35c, 0x02d8621c, 0x03038aec, 0x0331426b, 0x0361af63,
++	0x0394faed, 0x03cb508e, 0x0404de62, 0x0441d53e, 0x048268df, 0x04c6d00e,
++	0x050f44d9, 0x055c04b8, 0x05ad50ce, 0x06036e15, 0x065ea5a0, 0x06bf44d5,
++	0x07259db2, 0x0792070e, 0x0804dce8, 0x087e80b0, 0x08ff599e, 0x0987d507,
++	0x0a1866ba, 0x0ab18964, 0x0b53bef5, 0x0bff9112, 0x0cb59186, 0x0d765ac1,
++	0x0e429058, 0x0f1adf94, 0x10000000,
++};
++
++static int audioreach_mspp_volume_set(struct q6apm *apm,
++				      const struct audioreach_module *mspp, u32 q28)
++{
++	struct apm_module_param_data *param_data;
++	struct param_id_mspp_volume *vol;
++	int size = APM_MODULE_PARAM_DATA_SIZE + sizeof(*vol);
++
++	struct gpr_pkt *pkt __free(kfree) = audioreach_alloc_apm_cmd_pkt(size, APM_CMD_SET_CFG, 0);
++	if (IS_ERR(pkt))
++		return PTR_ERR(pkt);
++
++	param_data = (void *)pkt + GPR_HDR_SIZE + APM_CMD_HDR_SIZE;
++	param_data->module_instance_id = mspp->instance_id;
++	param_data->error_code = 0;
++	param_data->param_id = PARAM_ID_MSPP_VOLUME;
++	param_data->param_size = sizeof(*vol);
++
++	vol = (void *)param_data + APM_MODULE_PARAM_DATA_SIZE;
++	vol->vol_lin_gain_q28 = q28;
++	vol->reserved = 0;
++
++	return q6apm_send_cmd_sync(apm, pkt, 0);
++}
++
++static struct audioreach_graph_info *
++audioreach_module_graph_info(const struct audioreach_module *module)
++{
++	if (!module->container || !module->container->sub_graph)
++		return NULL;
++	return module->container->sub_graph->info;
++}
++
++static unsigned int audioreach_graph_count_modules(const struct audioreach_graph_info *info,
++						   u32 module_id, bool vol_db_only)
++{
++	const struct audioreach_sub_graph *sg;
++	const struct audioreach_container *c;
++	const struct audioreach_module *m;
++	unsigned int n = 0;
++
++	list_for_each_entry(sg, &info->sg_list, node)
++		list_for_each_entry(c, &sg->container_list, node)
++			list_for_each_entry(m, &c->modules_list, node)
++				if (m->module_id == module_id && (!vol_db_only || m->vol_db))
++					n++;
++
++	return n;
++}
++
++/* VOL_CTRL first, then the same gain to each MSPP: the Windows driver order */
++static int audioreach_vol_db_send(struct q6apm *apm, const struct audioreach_module *vol,
++				  const struct audioreach_graph_info *info, u32 step)
++{
++	const struct audioreach_sub_graph *sg;
++	const struct audioreach_container *c;
++	const struct audioreach_module *m;
++	u32 q28 = ar_vol_db_q28[step];
++	int rc;
++
++	lockdep_assert_held(&apm->vol_lock);
++
++	rc = audioreach_gain_set_vol_ctrl(apm, vol, DIV_ROUND_CLOSEST(q28, 1U << 15));
++	if (rc) {
++		dev_err(apm->dev, "VOL_CTRL 0x%x: gain step %u failed: %d\n",
++			vol->instance_id, step, rc);
++		return rc;
++	}
++
++	/* Without whole tokens a late answer could confirm the wrong write */
++	if (apm->narrow_tokens)
++		return 0;
++
++	list_for_each_entry(sg, &info->sg_list, node)
++		list_for_each_entry(c, &sg->container_list, node)
++			list_for_each_entry(m, &c->modules_list, node) {
++				if (m->module_id != MODULE_ID_MSPP_V5)
++					continue;
++				rc = audioreach_mspp_volume_set(apm, m, q28);
++				if (rc) {
++					dev_err(apm->dev, "MSPP 0x%x: volume 0x%08x failed: %d\n",
++						m->instance_id, q28, rc);
++					return rc;
++				}
++			}
++
++	return 0;
++}
++
++static int audioreach_vol_db_send_all(struct q6apm *apm,
++				      const struct audioreach_graph_info *info)
++{
++	const struct audioreach_sub_graph *sg;
++	const struct audioreach_container *c;
++	const struct audioreach_module *m;
++	int rc;
++
++	list_for_each_entry(sg, &info->sg_list, node)
++		list_for_each_entry(c, &sg->container_list, node)
++			list_for_each_entry(m, &c->modules_list, node) {
++				if (m->module_id != MODULE_ID_VOL_CTRL || !m->vol_db)
++					continue;
++				rc = audioreach_vol_db_send(apm, m, info, m->vol_step);
++				if (rc)
++					return rc;
++			}
++
++	return 0;
++}
++
++/*
++ * Neither the requested nor the confirmed volume is known to be in place:
++ * mute VOL_CTRL until the next prepare. If the mute fails too, the volume is
++ * faulted and the returned graph (referenced) must be torn down outside
++ * vol_lock.
++ */
++static struct audioreach_graph *
++audioreach_vol_db_lost(struct q6apm *apm, struct audioreach_module *vol,
++		       struct audioreach_graph_info *info)
++{
++	int rc;
++
++	lockdep_assert_held(&apm->vol_lock);
++
++	info->vol_live = false;
++	rc = audioreach_gain_set_vol_ctrl(apm, vol, 0);
++	if (!rc) {
++		dev_err(apm->dev, "VOL_CTRL 0x%x: volume unknown, muted until the next prepare\n",
++			vol->instance_id);
++		return NULL;
++	}
++
++	info->vol_faulted = true;
++	dev_err(apm->dev, "VOL_CTRL 0x%x: volume unknown and mute failed (%d); stopping graph %u\n",
++		vol->instance_id, rc, info->id);
++
++	/* Live under vol_lock, so the instance in the DSP is the one written to */
++	return q6apm_graph_get_live(apm, info->id);
++}
++
++/**
++ * audioreach_vol_db_set() - request a dB volume step
++ * @apm: the APM
++ * @vol: VOL_CTRL module with the dB volume control
++ * @step: requested step
++ *
++ * @vol->vol_step is the confirmed step. While the graph is live, @step is
++ * confirmed only once VOL_CTRL and every MSPP took it; on failure the
++ * confirmed step is resent, then VOL_CTRL is muted, then the graph is torn
++ * down and writes are refused until the next prepare.
++ *
++ * Return: 1 if the confirmed step changed, 0 if not, or a negative error code.
++ */
++int audioreach_vol_db_set(struct q6apm *apm, struct audioreach_module *vol, u32 step)
++{
++	struct audioreach_graph_info *info = audioreach_module_graph_info(vol);
++	struct audioreach_graph *fault = NULL;
++	int rc;
++
++	if (step > AR_VOL_DB_STEPS)
++		return -EINVAL;
++
++	scoped_guard(mutex, &apm->vol_lock) {
++		if (info && info->vol_faulted)
++			return -EIO;
++
++		if (vol->vol_step == step)
++			return 0;
++
++		if (!info || !info->vol_live) {
++			vol->vol_step = step;
++			return 1;
++		}
++
++		rc = audioreach_vol_db_send(apm, vol, info, step);
++		if (!rc) {
++			vol->vol_step = step;
++			return 1;
++		}
++
++		if (audioreach_vol_db_send(apm, vol, info, vol->vol_step))
++			fault = audioreach_vol_db_lost(apm, vol, info);
++		else
++			dev_err(apm->dev, "VOL_CTRL 0x%x: step %u refused, kept step %u\n",
++				vol->instance_id, step, vol->vol_step);
++	}
++
++	if (fault)
++		q6apm_graph_fault(fault, "dB volume");
++
++	return rc;
++}
++EXPORT_SYMBOL_GPL(audioreach_vol_db_set);
++
++/* Send the stored dB volume step again, if the graph is open in the DSP */
++int audioreach_vol_db_replay(struct q6apm *apm, struct audioreach_module *vol)
++{
++	struct audioreach_graph_info *info = audioreach_module_graph_info(vol);
++	struct audioreach_graph *fault = NULL;
++	int rc;
++
++	scoped_guard(mutex, &apm->vol_lock) {
++		if (!info || !info->vol_live)
++			return 0;
++
++		rc = audioreach_vol_db_send(apm, vol, info, vol->vol_step);
++		if (rc)
++			fault = audioreach_vol_db_lost(apm, vol, info);
++	}
++
++	if (fault)
++		q6apm_graph_fault(fault, "dB volume");
++
++	return rc;
++}
++EXPORT_SYMBOL_GPL(audioreach_vol_db_replay);
++
++/* At graph prepare, after every module is configured: send the stored volume */
++int audioreach_vol_db_graph_apply(struct q6apm_graph *graph)
++{
++	struct audioreach_graph_info *info = graph->info;
++	struct q6apm *apm = graph->apm;
++	unsigned int n;
++	int rc;
++
++	guard(mutex)(&apm->vol_lock);
++
++	n = audioreach_graph_count_modules(info, MODULE_ID_VOL_CTRL, true);
++	if (!n)
++		return 0;
++	/* MSPP takes one volume */
++	if (n > 1 && audioreach_graph_count_modules(info, MODULE_ID_MSPP_V5, false)) {
++		dev_err(graph->dev, "graph %d: %u dB volume controls in a graph with MSPP; refusing\n",
++			info->id, n);
++		return -EINVAL;
++	}
++
++	info->vol_live = false;
++	rc = audioreach_vol_db_send_all(apm, info);
++	if (!rc) {
++		info->vol_live = true;
++		info->vol_faulted = false;
++	}
++
++	return rc;
++}
++EXPORT_SYMBOL_GPL(audioreach_vol_db_graph_apply);
++
++void audioreach_vol_db_graph_closed(struct q6apm *apm, struct audioreach_graph_info *info)
++{
++	guard(mutex)(&apm->vol_lock);
++	info->vol_live = false;
++}
++EXPORT_SYMBOL_GPL(audioreach_vol_db_graph_closed);
++
+ static int audioreach_gain_set(struct q6apm_graph *graph,
+ 			       const struct audioreach_module *module)
+ {
+diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
+index 02c04591be64..4385e6013fd0 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.h
++++ b/sound/soc/qcom/qdsp6/audioreach.h
+@@ -42,6 +42,7 @@ struct thermal_zone_device;
+ #define MODULE_ID_AUDIO_IF_SOURCE	0x0700117D
+ #define MODULE_ID_CHMIXER		0x07001013
+ #define MODULE_ID_MSPP_V5		0x0701000D
++#define MODULE_ID_VOL_CTRL		0x0700101B
+ 
+ #define APM_CMD_GET_SPF_STATE		0x01001021
+ #define APM_CMD_RSP_GET_SPF_STATE	0x02001007
+@@ -813,6 +814,11 @@ struct param_id_sal_limiter_enable {
+ #define PARAM_ID_CHMIXER_OUT_CH_CFG		0x0800103B
+ #define PARAM_ID_SAL_LIMITER_CFG		0x08001050
+ #define PARAM_ID_MSPP_CFG			0x0800137B
++#define PARAM_ID_MSPP_VOLUME			0x0800137C
++struct param_id_mspp_volume {
++	u32 vol_lin_gain_q28;
++	u32 reserved;
++} __packed;
+ 
+ #define PARAM_ID_MFC_OUTPUT_MEDIA_FORMAT	0x08001024
+ #define PARAM_ID_EARLY_EOS_DELAY		0x0800114C
+@@ -978,6 +984,10 @@ struct audioreach_graph_info {
+ 	uint32_t src_mod_op_port_id;
+ 	uint32_t dst_mod_inst_id;
+ 	uint32_t dst_mod_ip_port_id;
++	/* Graph open in the DSP with its dB volume applied, under q6apm vol_lock */
++	bool vol_live;
++	/* Volume unknown and not muted: writes refused until the next prepare */
++	bool vol_faulted;
+ };
+ 
+ #define MAX_INTENTS 4
+@@ -1071,6 +1081,9 @@ struct audioreach_module {
+ 
+ 	/* GAIN/Vol Control Module */
+ 	uint16_t gain;
++	/* dB volume control: step of 0.5 dB above -79 dB, under q6apm vol_lock */
++	bool vol_db;
++	u32 vol_step;
+ 
+ 	/* Logging */
+ 	uint32_t log_code;
+@@ -1141,6 +1154,12 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 				const struct audioreach_module *module,
+ 				const struct audioreach_module_config *cfg);
+ int audioreach_shared_memory_send_eos(struct q6apm_graph *graph);
++#define AR_VOL_DB_STEPS			158
++#define AR_VOL_DB_DEFAULT_STEP		129	/* -14.5 dB */
++int audioreach_vol_db_set(struct q6apm *apm, struct audioreach_module *vol, u32 step);
++int audioreach_vol_db_replay(struct q6apm *apm, struct audioreach_module *vol);
++int audioreach_vol_db_graph_apply(struct q6apm_graph *graph);
++void audioreach_vol_db_graph_closed(struct q6apm *apm, struct audioreach_graph_info *info);
+ int audioreach_gain_set_vol_ctrl(struct q6apm *apm,
+ 				 const struct audioreach_module *module, int vol);
+ int audioreach_send_u32_param(struct q6apm_graph *graph,
+diff --git a/sound/soc/qcom/qdsp6/q6apm.c b/sound/soc/qcom/qdsp6/q6apm.c
+index e154d4848dce..96649f7a70e7 100644
+--- a/sound/soc/qcom/qdsp6/q6apm.c
++++ b/sound/soc/qcom/qdsp6/q6apm.c
+@@ -474,6 +474,7 @@ static void q6apm_put_audioreach_graph(struct kref *ref)
+ 		return;
+ 	}
+ 
++	audioreach_vol_db_graph_closed(apm, graph->info);
+ 	rc = audioreach_graph_close_cmd(graph);
+ 	if (rc) {
+ 		q6apm_graph_mark_wedged(graph, rc);
+@@ -507,6 +508,7 @@ static void q6apm_graph_teardown(struct audioreach_graph *graph, const char *wha
+ 	graph->dead = true;
+ 	mutex_unlock(&apm->lock);
+ 	graph->start_count = 0;
++	audioreach_vol_db_graph_closed(apm, graph->info);
+ 
+ 	rc = audioreach_graph_mgmt_cmd(graph, APM_CMD_GRAPH_STOP);
+ 	if (rc)
+@@ -523,6 +525,36 @@ static void q6apm_graph_teardown(struct audioreach_graph *graph, const char *wha
+ 	mutex_unlock(&apm->lock);
+ }
+ 
++struct audioreach_graph *q6apm_graph_get_live(struct q6apm *apm, u32 graph_id)
++{
++	struct audioreach_graph *graph;
++
++	guard(mutex)(&apm->lock);
++	graph = idr_find(&apm->graph_idr, graph_id);
++	if (graph && (graph->dead || !kref_get_unless_zero(&graph->refcount)))
++		graph = NULL;
++
++	return graph;
++}
++EXPORT_SYMBOL_GPL(q6apm_graph_get_live);
++
++/**
++ * q6apm_graph_fault() - tear down a graph that must not keep playing
++ * @graph: a referenced graph; the reference is dropped
++ * @what: what went wrong, for the log
++ *
++ * Users see it dead and rebuild it at their next prepare; a replacement
++ * built meanwhile is left alone.
++ */
++void q6apm_graph_fault(struct audioreach_graph *graph, const char *what)
++{
++	scoped_guard(mutex, &graph->lock)
++		q6apm_graph_teardown(graph, what, -EIO);
++
++	kref_put(&graph->refcount, q6apm_put_audioreach_graph);
++}
++EXPORT_SYMBOL_GPL(q6apm_graph_fault);
++
+ /**
+  * q6apm_graph_is_dead() - was the graph torn down after a failure?
+  * @graph: the graph
+@@ -584,7 +616,7 @@ static void q6apm_check_token_echo(struct q6apm *apm)
+ 		dev_warn(apm->dev, "no answer to the token echo check (%d)\n",
+ 			 rc < 0 ? rc : -ETIMEDOUT);
+ 	else if (apm->narrow_tokens)
+-		dev_err(apm->dev, "DSP echoes token 0x%x as 0x%x: no out-of-band SET_CFG\n",
++		dev_err(apm->dev, "DSP echoes token 0x%x as 0x%x: no out-of-band SET_CFG or MSPP volume\n",
+ 			sent, echo);
+ }
+ 
+@@ -1279,7 +1311,7 @@ int q6apm_graph_media_format_pcm(struct q6apm_graph *graph, struct audioreach_mo
+ 		}
+ 	}
+ 
+-	return 0;
++	return audioreach_vol_db_graph_apply(graph);
+ 
+ }
+ EXPORT_SYMBOL_GPL(q6apm_graph_media_format_pcm);
+@@ -1781,6 +1813,7 @@ static int apm_probe(gpr_device_t *gdev)
+ 	mutex_init(&apm->cfg_lock);
+ 	scoped_guard(spinlock_irqsave, &q6apm_cfg_bufs_lock)
+ 		apm->cfg_gen = ++q6apm_cfg_gen;
++	mutex_init(&apm->vol_lock);
+ 	apm->dev = dev;
+ 	apm->gdev = gdev;
+ 	init_waitqueue_head(&apm->wait);
+diff --git a/sound/soc/qcom/qdsp6/q6apm.h b/sound/soc/qcom/qdsp6/q6apm.h
+index 076500247930..a27df900ed46 100644
+--- a/sound/soc/qcom/qdsp6/q6apm.h
++++ b/sound/soc/qcom/qdsp6/q6apm.h
+@@ -113,6 +113,9 @@ struct q6apm {
+ 	u16 cfg_seq;
+ 	/* DSP session, tagging the out-of-band buffers it mapped */
+ 	u32 cfg_gen;
++
++	/* Protects the dB volume steps and their push to the DSP */
++	struct mutex vol_lock;
+ };
+ 
+ struct audio_buffer {
+@@ -175,6 +178,8 @@ int q6apm_graph_start(struct q6apm_graph *graph);
+ int q6apm_graph_stop(struct q6apm_graph *graph);
+ int q6apm_graph_flush(struct q6apm_graph *graph);
+ bool q6apm_graph_is_dead(struct q6apm_graph *graph);
++struct audioreach_graph *q6apm_graph_get_live(struct q6apm *apm, u32 graph_id);
++void q6apm_graph_fault(struct audioreach_graph *graph, const char *what);
+ 
+ /* Media Format */
+ int q6apm_graph_media_format_pcm(struct q6apm_graph *graph,
+diff --git a/sound/soc/qcom/qdsp6/topology.c b/sound/soc/qcom/qdsp6/topology.c
+index 8c2b46fb0fa1..5627a398ae5a 100644
+--- a/sound/soc/qcom/qdsp6/topology.c
++++ b/sound/soc/qcom/qdsp6/topology.c
+@@ -9,6 +9,7 @@
+ #include <sound/asound.h>
+ #include <linux/firmware.h>
+ #include <sound/soc-topology.h>
++#include <sound/tlv.h>
+ #include <sound/soc-dpcm.h>
+ #include <uapi/sound/snd_ar_tokens.h>
+ #include <linux/kernel.h>
+@@ -1151,6 +1152,8 @@ static int audioreach_pga_event(struct snd_soc_dapm_widget *w,
+ 	switch (event) {
+ 	case SND_SOC_DAPM_POST_PMU:
+ 		/* apply gain after power up of widget */
++		if (mod->vol_db)
++			return audioreach_vol_db_replay(apm, mod);
+ 		audioreach_gain_set_vol_ctrl(apm, mod, mod->gain);
+ 		break;
+ 	default:
+@@ -1164,13 +1167,16 @@ static const struct snd_soc_tplg_widget_events audioreach_widget_ops[] = {
+ 	{ AR_PGA_DAPM_EVENT, audioreach_pga_event },
+ };
+ 
++static int audioreach_get_vol_db_mixer(struct snd_kcontrol *kcontrol,
++				       struct snd_ctl_elem_value *ucontrol);
++
+ static int audioreach_widget_load_pga(struct snd_soc_component *component,
+ 				      int index, struct snd_soc_dapm_widget *w,
+ 				      const struct snd_soc_tplg_dapm_widget *tplg_w)
+ {
+ 	struct audioreach_module *mod;
+ 	struct snd_soc_dobj *dobj;
+-	int ret;
++	int ret, i;
+ 
+ 	ret = audioreach_widget_load_module_common(component, index, w, tplg_w);
+ 	if (ret)
+@@ -1179,6 +1185,18 @@ static int audioreach_widget_load_pga(struct snd_soc_component *component,
+ 	dobj = &w->dobj;
+ 	mod = dobj->private;
+ 	mod->gain = VOL_CTRL_DEFAULT_GAIN;
++	mod->vol_step = AR_VOL_DB_DEFAULT_STEP;
++	for (i = 0; i < w->num_kcontrols; i++)
++		if (w->kcontrol_news[i].get == audioreach_get_vol_db_mixer)
++			mod->vol_db = true;
++	if (mod->vol_db && mod->module_id != MODULE_ID_VOL_CTRL) {
++		dev_err(component->dev, "dB volume control on module 0x%08x, not VOL_CTRL\n",
++			mod->module_id);
++		return -EINVAL;
++	}
++	/* User-facing volume: keep the topology's control name as is */
++	if (mod->vol_db)
++		w->no_wname_in_kcontrol_name = true;
+ 
+ 	ret = snd_soc_tplg_widget_bind_event(w, audioreach_widget_ops,
+ 					     ARRAY_SIZE(audioreach_widget_ops),
+@@ -1502,6 +1520,55 @@ static int audioreach_put_vol_ctrl_audio_mixer(struct snd_kcontrol *kcontrol,
+ 	return 1;
+ }
+ 
++static int audioreach_get_vol_db_mixer(struct snd_kcontrol *kcontrol,
++				       struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_dapm_widget *dw = snd_soc_dapm_kcontrol_to_widget(kcontrol);
++	struct audioreach_module *mod = dw->dobj.private;
++	struct snd_soc_component *c = snd_soc_dapm_to_component(dw->dapm);
++	struct q6apm *apm = dev_get_drvdata(c->dev);
++
++	guard(mutex)(&apm->vol_lock);
++	ucontrol->value.integer.value[0] = mod->vol_step;
++
++	return 0;
++}
++
++static int audioreach_put_vol_db_mixer(struct snd_kcontrol *kcontrol,
++				       struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_dapm_widget *dw = snd_soc_dapm_kcontrol_to_widget(kcontrol);
++	struct audioreach_module *mod = dw->dobj.private;
++	struct snd_soc_component *c = snd_soc_dapm_to_component(dw->dapm);
++	struct q6apm *apm = dev_get_drvdata(c->dev);
++	long step = ucontrol->value.integer.value[0];
++
++	if (step < 0 || step > AR_VOL_DB_STEPS)
++		return -EINVAL;
++
++	return audioreach_vol_db_set(apm, mod, step);
++}
++
++/* Require steps 0..AR_VOL_DB_STEPS and a dB scale TLV: -79 dB, 0.5 dB a step */
++static int audioreach_control_check_vol_db(struct snd_soc_component *scomp,
++					   const struct snd_soc_tplg_ctl_hdr *hdr)
++{
++	const struct snd_soc_tplg_mixer_control *mc =
++		container_of_const(hdr, struct snd_soc_tplg_mixer_control, hdr);
++
++	if (le32_to_cpu(mc->min) == 0 && le32_to_cpu(mc->max) == AR_VOL_DB_STEPS &&
++	    !le32_to_cpu(mc->invert) &&
++	    (le32_to_cpu(hdr->access) & SNDRV_CTL_ELEM_ACCESS_TLV_READ) &&
++	    le32_to_cpu(hdr->tlv.type) == SNDRV_CTL_TLVT_DB_SCALE &&
++	    (s32)le32_to_cpu(hdr->tlv.scale.min) == -7900 &&
++	    le32_to_cpu(hdr->tlv.scale.step) == 50)
++		return 0;
++
++	dev_err(scomp->dev, "dB volume control %s: needs 0..%d, TLV -79 dB in 0.5 dB steps\n",
++		hdr->name, AR_VOL_DB_STEPS);
++	return -EINVAL;
++}
++
+ static int audioreach_get_sp_op_mode(struct snd_kcontrol *kcontrol,
+ 				     struct snd_ctl_elem_value *ucontrol)
+ {
+@@ -1676,6 +1743,12 @@ static int audioreach_control_load(struct snd_soc_component *scomp, int index,
+ 	struct snd_soc_dobj *dobj;
+ 	int ret = 0;
+ 
++	if (le32_to_cpu(hdr->ops.get) == SND_SOC_AR_TPLG_VOL_DB_CTL) {
++		ret = audioreach_control_check_vol_db(scomp, hdr);
++		if (ret)
++			return ret;
++	}
++
+ 	scontrol = kzalloc_obj(*scontrol);
+ 	if (!scontrol)
+ 		return -ENOMEM;
+@@ -1692,6 +1765,10 @@ static int audioreach_control_load(struct snd_soc_component *scomp, int index,
+ 		sm = (struct soc_mixer_control *)kc->private_value;
+ 		dobj = &sm->dobj;
+ 		break;
++	case SND_SOC_AR_TPLG_VOL_DB_CTL:
++		sm = (struct soc_mixer_control *)kc->private_value;
++		dobj = &sm->dobj;
++		break;
+ 	case SND_SOC_AR_TPLG_SP_R0T0_CTL:
+ 		sm = (struct soc_mixer_control *)kc->private_value;
+ 		dobj = &sm->dobj;
+@@ -1730,6 +1807,8 @@ static const struct snd_soc_tplg_kcontrol_ops audioreach_io_ops[] = {
+ 		audioreach_put_sp_op_mode, snd_soc_info_enum_double},
+ 	{SND_SOC_AR_TPLG_SP_R0T0_CTL, audioreach_get_sp_r0t0,
+ 		audioreach_put_sp_r0t0, audioreach_info_sp_r0t0},
++	{SND_SOC_AR_TPLG_VOL_DB_CTL, audioreach_get_vol_db_mixer,
++		audioreach_put_vol_db_mixer, snd_soc_info_volsw},
+ };
+ 
+ static const struct snd_soc_tplg_ops audioreach_tplg_ops = {

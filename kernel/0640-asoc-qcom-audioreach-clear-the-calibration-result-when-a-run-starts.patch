@@ -1,0 +1,54 @@
+From b32665e17f5c4983d1d1fa5d5d5ab7c5883a4ffe Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Mon, 9 Nov 2026 20:02:27 -0500
+Subject: [PATCH] ASoC: qcom: audioreach: clear the calibration result when a
+ run starts
+
+"Speaker Protection Calibration State" kept the previous run's
+per-speaker states and R0 when a new run was armed, so it could show an
+earlier success while the current run had not reported, or never would.
+
+Clear the states and R0 when a run is armed, so the control only shows
+what the DSP reported for the current run, and log a run number to tie
+results to runs.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index 8d6e3d7ca3a6..4fb1ed80f564 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -1856,12 +1856,20 @@ static int audioreach_register_events(struct q6apm_graph *graph,
+ 	return rc;
+ }
+ 
+-static void audioreach_arm_vi_calibration(void)
++static void audioreach_arm_vi_calibration(struct device *dev)
+ {
++	static unsigned int run;
++
+ 	guard(mutex)(&sp_vi_r0_lock);
+ 
++	/* Calibration State shows only this run's result, 0 until it reports */
+ 	sp_vi_r0.armed = true;
++	sp_vi_r0.state = SP_VI_CALI_IDLE;
++	sp_vi_r0.num_ch = 0;
+ 	memset(sp_vi_r0.seen_states, 0, sizeof(sp_vi_r0.seen_states));
++	memset(sp_vi_r0.last_state, 0, sizeof(sp_vi_r0.last_state));
++	memset(sp_vi_r0.r0_cali_q24, 0, sizeof(sp_vi_r0.r0_cali_q24));
++	dev_info(dev, "VI calibration run %u armed\n", ++run);
+ }
+ 
+ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+@@ -1893,7 +1901,7 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 	}
+ 
+ 	if (mode == PARAM_ID_SP_VI_OP_MODE_CALIBRATION) {
+-		audioreach_arm_vi_calibration();
++		audioreach_arm_vi_calibration(graph->dev);
+ 
+ 		rc = audioreach_register_events(graph, module);
+ 		if (rc)

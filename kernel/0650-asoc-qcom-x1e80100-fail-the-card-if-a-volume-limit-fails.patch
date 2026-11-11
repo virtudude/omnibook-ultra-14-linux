@@ -1,0 +1,98 @@
+From 234c924e17e45be164323d2c721114ac296f3b7b Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Mon, 9 Nov 2026 20:02:27 -0500
+Subject: [PATCH] ASoC: qcom: x1e80100: fail the card if a speaker volume limit
+ cannot be applied
+
+The speaker volume limits also clamp the current values, which reset
+above them (WSA macro digital volume at 0 dB, wsa884x PA gain at code
+2). snd_soc_limit_volume() errors were ignored, so a limit that failed
+left the speakers at reset gain silently.
+
+Apply the limits from a table, skip controls a board does not have, and
+fail the card if one it has cannot be limited.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/x1e80100.c | 54 +++++++++++++++++++++++++++++++--------
+ 1 file changed, 44 insertions(+), 10 deletions(-)
+
+diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
+index 7a54f6d49f00..90a2f7164d3a 100644
+--- a/sound/soc/qcom/x1e80100.c
++++ b/sound/soc/qcom/x1e80100.c
+@@ -75,6 +75,46 @@ static void x1e80100_snd_exit(struct snd_soc_pcm_runtime *rtd)
+ 		audioreach_sp_register_speaker_map(NULL, 0);
+ }
+ 
++static const struct {
++	const char *name;
++	int max;
++} x1e80100_speaker_limits[] = {
++	{ "WSA WSA_RX0 Digital Volume", 81 },
++	{ "WSA WSA_RX1 Digital Volume", 81 },
++	{ "WSA2 WSA_RX0 Digital Volume", 81 },
++	{ "WSA2 WSA_RX1 Digital Volume", 81 },
++	{ "SpkrLeft PA Volume", 6 },
++	{ "SpkrRight PA Volume", 6 },
++	{ "WooferLeft PA Volume", 6 },
++	{ "TweeterLeft PA Volume", 6 },
++	{ "WooferRight PA Volume", 6 },
++	{ "TweeterRight PA Volume", 6 },
++};
++
++/*
++ * Also clamps the current values, which reset above the limits. A limit that
++ * cannot be applied to a control the board has fails the card.
++ */
++static int x1e80100_limit_speaker_volumes(struct snd_soc_card *card)
++{
++	int i, ret;
++
++	for (i = 0; i < ARRAY_SIZE(x1e80100_speaker_limits); i++) {
++		const char *name = x1e80100_speaker_limits[i].name;
++
++		if (!snd_soc_card_get_kcontrol(card, name))
++			continue;
++
++		ret = snd_soc_limit_volume(card, name, x1e80100_speaker_limits[i].max);
++		if (ret) {
++			dev_err(card->dev, "cannot limit '%s': %d\n", name, ret);
++			return ret;
++		}
++	}
++
++	return 0;
++}
++
+ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
+ {
+ 	struct x1e80100_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
+@@ -82,6 +122,7 @@ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
+ 	struct snd_soc_card *card = rtd->card;
+ 	struct snd_soc_jack *dp_jack = NULL;
+ 	int dp_pcm_id = 0;
++	int ret;
+ 
+ 	switch (cpu_dai->id) {
+ 	case WSA_CODEC_DMA_RX_0:
+@@ -94,16 +135,9 @@ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
+ 		 * reduce the risk of speaker damage until we have active
+ 		 * speaker protection in place.
+ 		 */
+-		snd_soc_limit_volume(card, "WSA WSA_RX0 Digital Volume", 81);
+-		snd_soc_limit_volume(card, "WSA WSA_RX1 Digital Volume", 81);
+-		snd_soc_limit_volume(card, "WSA2 WSA_RX0 Digital Volume", 81);
+-		snd_soc_limit_volume(card, "WSA2 WSA_RX1 Digital Volume", 81);
+-		snd_soc_limit_volume(card, "SpkrLeft PA Volume", 6);
+-		snd_soc_limit_volume(card, "SpkrRight PA Volume", 6);
+-		snd_soc_limit_volume(card, "WooferLeft PA Volume", 6);
+-		snd_soc_limit_volume(card, "TweeterLeft PA Volume", 6);
+-		snd_soc_limit_volume(card, "WooferRight PA Volume", 6);
+-		snd_soc_limit_volume(card, "TweeterRight PA Volume", 6);
++		ret = x1e80100_limit_speaker_volumes(card);
++		if (ret)
++			return ret;
+ 		break;
+ 	case DISPLAY_PORT_RX_0:
+ 		dp_pcm_id = 0;

@@ -1,0 +1,585 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/8] drm/msm: assorted a6xx/a8xx fixes
+
+The eight patches of the "assorted-fixes-oct" v1 series, queued in
+drm/msm msm-fixes.
+
+ 1/8 drm/msm/a6xx: Check BX dependency vote index
+     Author: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+     Message-ID: <20261024-assorted-fixes-oct-v1-1-2977f974ddb7@oss.qualcomm.com>
+ 2/8 drm/msm/a6xx: Fix GMU shutdown idle check
+     Author: Jie Zhang <jie.zhang@oss.qualcomm.com>
+     Message-ID: <20261024-assorted-fixes-oct-v1-2-2977f974ddb7@oss.qualcomm.com>
+ 3/8 drm/msm/a6xx: Fix stale boot up BW vote
+     Author: Jie Zhang <jie.zhang@oss.qualcomm.com>
+     Message-ID: <20261024-assorted-fixes-oct-v1-3-2977f974ddb7@oss.qualcomm.com>
+ 4/8 drm/msm/devfreq: Record idle_time at GPU idle onset
+     Author: Jie Zhang <jie.zhang@oss.qualcomm.com>
+     Message-ID: <20261024-assorted-fixes-oct-v1-4-2977f974ddb7@oss.qualcomm.com>
+ 5/8 drm/msm: Fix sched_prio inversion within a ring
+     Author: Jie Zhang <jie.zhang@oss.qualcomm.com>
+     Message-ID: <20261024-assorted-fixes-oct-v1-5-2977f974ddb7@oss.qualcomm.com>
+ 6/8 drm/msm/a6xx: Reset preemption records across suspend
+     Author: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+     Message-ID: <20261024-assorted-fixes-oct-v1-6-2977f974ddb7@oss.qualcomm.com>
+ 7/8 drm/msm/a6xx: Request CLX enable from secure world
+     Author: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+     Message-ID: <20261024-assorted-fixes-oct-v1-7-2977f974ddb7@oss.qualcomm.com>
+ 8/8 drm/msm/a8xx: Add AQE firmware to Adreno X2-90 GPU
+     Author: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+     Message-ID: <20261024-assorted-fixes-oct-v1-8-2977f974ddb7@oss.qualcomm.com>
+
+From d2b34fc610c896b8fe06d4bbb8ed0a2863554891 Mon Sep 17 00:00:00 2001
+From: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+Date: Sat, 24 Oct 2026 16:00:07 +0530
+Subject: [PATCH 1/8] drm/msm/a6xx: Check BX dependency vote index
+
+a6xx_gmu_rpmh_arc_index() returns a signed error value. Check the result
+before passing it to FIELD_MODIFY(), which rejects a compiler-propagated
+negative value as too large for the field.
+
+Fixes: 020b8eaa1db8 ("drm/msm/a6xx: Add BX rail support to GMU dependency votes")
+Cc: stable@vger.kernel.org
+Reported-by: kernel test robot <lkp@intel.com>
+Closes: https://lore.kernel.org/oe-kbuild-all/202610070334.bYvBJSpj-lkp@intel.com/
+Signed-off-by: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+Reviewed-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
+Patchwork: https://patchwork.freedesktop.org/patch/762791/
+Message-ID: <20261024-assorted-fixes-oct-v1-1-2977f974ddb7@oss.qualcomm.com>
+Signed-off-by: Rob Clark <robin.clark@oss.qualcomm.com>
+---
+ drivers/gpu/drm/msm/adreno/a6xx_gmu.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+index 662f09bec9d5..9e02d6f939af 100644
+--- a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+@@ -1867,6 +1867,9 @@ static int a6xx_gmu_rpmh_dep_votes_init(struct device *dev, u32 *votes,
+ 		 * back to the highest BX corner if none is high enough.
+ 		 */
+ 		bx = a6xx_gmu_rpmh_arc_index(dev, gbx, gbx_count, gx[index], true);
++		if (bx < 0)
++			return bx;
++
+ 		FIELD_MODIFY(GMU_BX_MASK, &votes[i], bx);
+ 	}
+ 
+From f9ab755db3f76d25ac2361ddc3d9418e70a2a655 Mon Sep 17 00:00:00 2001
+From: Jie Zhang <jie.zhang@oss.qualcomm.com>
+Date: Sat, 24 Oct 2026 16:00:08 +0530
+Subject: [PATCH 2/8] drm/msm/a6xx: Fix GMU shutdown idle check
+
+GPUBUSYIGNAHB only indicates GPU hardware busy status and does not cover
+the whole GPU subsystem. Use CXGXCPUBUSYIGNAHB instead so GMU shutdown
+waits until CX/GX/CPU busy activity is cleared.
+
+Also, increase the timeout to 100ms to match the downstream driver.
+
+Fixes: 4b565ca5a2cb ("drm/msm: Add A6XX device support")
+Cc: stable@vger.kernel.org
+Signed-off-by: Jie Zhang <jie.zhang@oss.qualcomm.com>
+Signed-off-by: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+Reviewed-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
+Patchwork: https://patchwork.freedesktop.org/patch/762793/
+Message-ID: <20261024-assorted-fixes-oct-v1-2-2977f974ddb7@oss.qualcomm.com>
+Signed-off-by: Rob Clark <robin.clark@oss.qualcomm.com>
+---
+ drivers/gpu/drm/msm/adreno/a6xx_gmu.c             | 4 ++--
+ drivers/gpu/drm/msm/registers/adreno/a6xx_gmu.xml | 1 +
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+index 9e02d6f939af..7e80670736a6 100644
+--- a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+@@ -1461,8 +1461,8 @@ static void a6xx_gmu_shutdown(struct a6xx_gmu *gmu)
+ 
+ 	ret = gmu_poll_timeout(gmu,
+ 		REG_A6XX_GPU_GMU_AO_GPU_CX_BUSY_STATUS, val,
+-		!(val & A6XX_GPU_GMU_AO_GPU_CX_BUSY_STATUS_GPUBUSYIGNAHB),
+-		100, 10000);
++		!(val & A6XX_GPU_GMU_AO_GPU_CX_BUSY_STATUS_CXGXCPUBUSYIGNAHB),
++		100, 100000);
+ 
+ 	/*
+ 	 * Let the user know we failed to slumber but don't worry too
+diff --git a/drivers/gpu/drm/msm/registers/adreno/a6xx_gmu.xml b/drivers/gpu/drm/msm/registers/adreno/a6xx_gmu.xml
+index b3082738c99d..786fd7d2f674 100644
+--- a/drivers/gpu/drm/msm/registers/adreno/a6xx_gmu.xml
++++ b/drivers/gpu/drm/msm/registers/adreno/a6xx_gmu.xml
+@@ -224,6 +224,7 @@ xsi:schemaLocation="https://gitlab.freedesktop.org/freedreno/ rules-fd.xsd">
+ 	<reg32 offset="0x23b0b" name="GPU_GMU_AO_GMU_CGC_HYST_CNTL"/>
+ 	<reg32 offset="0x23b0c" name="GPU_GMU_AO_GPU_CX_BUSY_STATUS">
+ 		<bitfield name = "GPUBUSYIGNAHB" pos="23" type="boolean"/>
++		<bitfield name = "CXGXCPUBUSYIGNAHB" pos="30" type="boolean"/>
+ 	</reg32>
+ 	<reg32 offset="0x23b0d" name="GPU_GMU_AO_GPU_CX_BUSY_STATUS2"/>
+ 	<reg32 offset="0x23b0e" name="GPU_GMU_AO_GPU_CX_BUSY_MASK"/>
+From 99b286b8ea9c72f2dd99db99e7290675fc57afc9 Mon Sep 17 00:00:00 2001
+From: Jie Zhang <jie.zhang@oss.qualcomm.com>
+Date: Sat, 24 Oct 2026 16:00:09 +0530
+Subject: [PATCH 3/8] drm/msm/a6xx: Fix stale boot up BW vote
+
+An initial bus bandwidth is voted during boot to bring up the GMU. In GPUs
+where the GMU drives bandwidth scaling, this boot-time BW vote is
+redundant and can be removed.
+
+Fixes: 7047e655a567 ("drm/msm: adreno: find bandwidth index of OPP and set it along freq index")
+Cc: stable@vger.kernel.org
+Signed-off-by: Jie Zhang <jie.zhang@oss.qualcomm.com>
+Signed-off-by: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+Acked-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
+Patchwork: https://patchwork.freedesktop.org/patch/762796/
+Message-ID: <20261024-assorted-fixes-oct-v1-3-2977f974ddb7@oss.qualcomm.com>
+Signed-off-by: Rob Clark <robin.clark@oss.qualcomm.com>
+---
+ drivers/gpu/drm/msm/adreno/a6xx_gmu.c | 16 +++++++++++++---
+ drivers/gpu/drm/msm/adreno/a6xx_gmu.h |  1 +
+ drivers/gpu/drm/msm/adreno/a6xx_hfi.c |  2 +-
+ 3 files changed, 15 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+index 7e80670736a6..991db3c9cd96 100644
+--- a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+@@ -76,6 +76,13 @@ static irqreturn_t a6xx_hfi_irq(int irq, void *data)
+ 	return IRQ_HANDLED;
+ }
+ 
++bool a6xx_gmu_scales_bw(struct a6xx_gmu *gmu)
++{
++	struct a6xx_gpu *a6xx_gpu = container_of(gmu, struct a6xx_gpu, gmu);
++
++	return a6xx_gpu->base.info->a6xx->bcms && gmu->nr_gpu_bws > 1;
++}
++
+ bool a6xx_gmu_sptprac_is_on(struct a6xx_gmu *gmu)
+ {
+ 	u32 val;
+@@ -169,7 +176,6 @@ void a6xx_gmu_set_freq(struct msm_gpu *gpu, struct dev_pm_opp *opp,
+ 		       bool suspended)
+ {
+ 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+-	const struct a6xx_info *info = adreno_gpu->info->a6xx;
+ 	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
+ 	struct a6xx_gmu *gmu = &a6xx_gpu->gmu;
+ 	u32 perf_index;
+@@ -187,7 +193,7 @@ void a6xx_gmu_set_freq(struct msm_gpu *gpu, struct dev_pm_opp *opp,
+ 			break;
+ 
+ 	/* If enabled, find the corresponding DDR bandwidth index */
+-	if (info->bcms && gmu->nr_gpu_bws > 1) {
++	if (a6xx_gmu_scales_bw(gmu)) {
+ 		unsigned int bw = dev_pm_opp_get_bw(opp, true, 0);
+ 
+ 		for (bw_index = 0; bw_index < gmu->nr_gpu_bws - 1; bw_index++) {
+@@ -1393,6 +1399,10 @@ int a6xx_gmu_resume(struct a6xx_gpu *a6xx_gpu)
+ 	/* Set the GPU to the current freq */
+ 	a6xx_gmu_set_initial_freq(gpu, gmu);
+ 
++	/* Clear the boot bus quota to allow GMU-driven BW scaling */
++	if (a6xx_gmu_scales_bw(gmu))
++		dev_pm_opp_set_opp(&gpu->pdev->dev, NULL);
++
+ 	return 0;
+ 
+ disable_irq:
+@@ -1913,7 +1923,7 @@ static int a6xx_gmu_rpmh_votes_init(struct a6xx_gmu *gmu)
+ 		gmu->gmu_freqs, gmu->nr_gmu_freqs, "cx.lvl", "mx.lvl");
+ 
+ 	/* Build the interconnect votes */
+-	if (info->bcms && gmu->nr_gpu_bws > 1)
++	if (a6xx_gmu_scales_bw(gmu))
+ 		ret |= a6xx_gmu_rpmh_bw_votes_init(adreno_gpu, info, gmu);
+ 
+ 	return ret;
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_gmu.h b/drivers/gpu/drm/msm/adreno/a6xx_gmu.h
+index d3f6cd8b9741..b9e966e602e2 100644
+--- a/drivers/gpu/drm/msm/adreno/a6xx_gmu.h
++++ b/drivers/gpu/drm/msm/adreno/a6xx_gmu.h
+@@ -239,6 +239,7 @@ bool a6xx_gmu_gx_is_on(struct adreno_gpu *adreno_gpu);
+ bool a7xx_gmu_gx_is_on(struct adreno_gpu *adreno_gpu);
+ bool a8xx_gmu_gx_is_on(struct adreno_gpu *adreno_gpu);
+ bool a6xx_gmu_sptprac_is_on(struct a6xx_gmu *gmu);
++bool a6xx_gmu_scales_bw(struct a6xx_gmu *gmu);
+ void a6xx_sptprac_disable(struct a6xx_gmu *gmu);
+ int a6xx_sptprac_enable(struct a6xx_gmu *gmu);
+ 
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_hfi.c b/drivers/gpu/drm/msm/adreno/a6xx_hfi.c
+index a9f9fa2adadf..5b4459826037 100644
+--- a/drivers/gpu/drm/msm/adreno/a6xx_hfi.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_hfi.c
+@@ -810,7 +810,7 @@ static int a6xx_hfi_send_bw_table(struct a6xx_gmu *gmu)
+ 	if (!msg)
+ 		return -ENOMEM;
+ 
+-	if (info->bcms && gmu->nr_gpu_bws > 1)
++	if (a6xx_gmu_scales_bw(gmu))
+ 		a6xx_generate_bw_table(info, gmu, msg);
+ 	else if (adreno_is_a618(adreno_gpu))
+ 		a618_build_bw_table(msg);
+From a9e03a11a8f834229206ed44e6d217589a224829 Mon Sep 17 00:00:00 2001
+From: Jie Zhang <jie.zhang@oss.qualcomm.com>
+Date: Sat, 24 Oct 2026 16:00:10 +0530
+Subject: [PATCH 4/8] drm/msm/devfreq: Record idle_time at GPU idle onset
+
+Setting df->idle_time in msm_devfreq_idle_work() means a cancelled
+idle_work leaves a stale timestamp, causing idle_time to accumulate
+across idle cycles and potentially trigger a spurious devfreq boost.
+
+Move the assignment to msm_devfreq_idle() so the timestamp always
+reflects the actual GPU idle onset.
+
+Fixes: 658f4c829688 ("drm/msm/devfreq: Add 1ms delay before clamping freq")
+Cc: stable@vger.kernel.org
+Signed-off-by: Jie Zhang <jie.zhang@oss.qualcomm.com>
+Signed-off-by: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+Reviewed-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
+Patchwork: https://patchwork.freedesktop.org/patch/762797/
+Message-ID: <20261024-assorted-fixes-oct-v1-4-2977f974ddb7@oss.qualcomm.com>
+Signed-off-by: Rob Clark <robin.clark@oss.qualcomm.com>
+---
+ drivers/gpu/drm/msm/msm_gpu_devfreq.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/msm/msm_gpu_devfreq.c b/drivers/gpu/drm/msm/msm_gpu_devfreq.c
+index 2e1d5c343272..f3c664b20a1b 100644
+--- a/drivers/gpu/drm/msm/msm_gpu_devfreq.c
++++ b/drivers/gpu/drm/msm/msm_gpu_devfreq.c
+@@ -357,7 +357,6 @@ static void msm_devfreq_idle_work(struct kthread_work *work)
+ 	if (priv->gpu_clamp_to_idle)
+ 		msm_devfreq_target(&gpu->pdev->dev, &target_freq, 0);
+ 
+-	df->idle_time = ktime_get();
+ 	df->idle_freq = idle_freq;
+ 
+ 	mutex_unlock(&df->devfreq->lock);
+@@ -370,6 +369,8 @@ void msm_devfreq_idle(struct msm_gpu *gpu)
+ 	if (!has_devfreq(gpu))
+ 		return;
+ 
++	df->idle_time = ktime_get();
++
+ 	msm_hrtimer_queue_work(&df->idle_work, ms_to_ktime(1),
+ 			       HRTIMER_MODE_REL);
+ }
+From 5954d49496ef9d5b697af91349bbb3f996badfc5 Mon Sep 17 00:00:00 2001
+From: Jie Zhang <jie.zhang@oss.qualcomm.com>
+Date: Sat, 24 Oct 2026 16:00:11 +0530
+Subject: [PATCH 5/8] drm/msm: Fix sched_prio inversion within a ring
+
+Commit 38f922a563aa ("drm/sched: Reverse run-queue priority enumeration")
+reversed the values of each sched priority. But it didn't update
+msm_gpu_convert_priority() to match the new order. This results in
+incorrect sched priorities within a ring.
+
+To fix this, remove the inversion logic and add an offset of
+DRM_SCHED_PRIORITY_HIGH to keep the range within [HIGH..LOW], reserving
+KERNEL for internal submissions.
+
+Fixes: 38f922a563aa ("drm/sched: Reverse run-queue priority enumeration")
+Cc: stable@vger.kernel.org
+Signed-off-by: Jie Zhang <jie.zhang@oss.qualcomm.com>
+Signed-off-by: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+Acked-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
+Patchwork: https://patchwork.freedesktop.org/patch/762800/
+Message-ID: <20261024-assorted-fixes-oct-v1-5-2977f974ddb7@oss.qualcomm.com>
+Signed-off-by: Rob Clark <robin.clark@oss.qualcomm.com>
+---
+ drivers/gpu/drm/msm/msm_gpu.h         | 24 ++++++++++--------------
+ drivers/gpu/drm/msm/msm_submitqueue.c |  2 +-
+ 2 files changed, 11 insertions(+), 15 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/msm_gpu.h b/drivers/gpu/drm/msm/msm_gpu.h
+index d27d54bdb7a7..bc5b31eb1eca 100644
+--- a/drivers/gpu/drm/msm/msm_gpu.h
++++ b/drivers/gpu/drm/msm/msm_gpu.h
+@@ -522,17 +522,18 @@ msm_context_is_vmbind(struct msm_context *ctx)
+  * @sched_prio: [out] the gpu scheduler priority level which the userspace
+  *              priority maps to
+  *
+- * With drm/scheduler providing it's own level of prioritization, our total
++ * With drm/scheduler providing its own level of prioritization, our total
+  * number of available priority levels is (nr_rings * NR_SCHED_PRIORITIES).
+- * Each ring is associated with it's own scheduler instance.  However, our
+- * UABI is that lower numerical values are higher priority.  So mapping the
+- * single userspace priority level into ring_nr and sched_prio takes some
+- * care.  The userspace provided priority (when a submitqueue is created)
+- * is mapped to ring nr and scheduler priority as such:
++ * Each ring is associated with its own scheduler instance.  Both the MSM
++ * UABI and drm/scheduler use lower-numeric = higher-priority, so the mapping
++ * from a single userspace priority level into ring_nr and sched_prio is:
+  *
+  *   ring_nr    = userspace_prio / NR_SCHED_PRIORITIES
+- *   sched_prio = NR_SCHED_PRIORITIES -
+- *                (userspace_prio % NR_SCHED_PRIORITIES) - 1
++ *   sched_prio = (userspace_prio % NR_SCHED_PRIORITIES) + DRM_SCHED_PRIORITY_HIGH
++ *
++ * The offset by DRM_SCHED_PRIORITY_HIGH keeps the range within [HIGH..LOW],
++ * intentionally excluding DRM_SCHED_PRIORITY_KERNEL which is reserved for
++ * kernel-internal submissions.
+  *
+  * This allows generations without preemption (nr_rings==1) to have some
+  * amount of prioritization, and provides more priority levels for gens
+@@ -547,16 +548,11 @@ static inline int msm_gpu_convert_priority(struct msm_gpu *gpu, int prio,
+ 
+ 	rn = div_u64_rem(prio, NR_SCHED_PRIORITIES, &sp);
+ 
+-	/* invert sched priority to map to higher-numeric-is-higher-
+-	 * priority convention
+-	 */
+-	sp = NR_SCHED_PRIORITIES - sp - 1;
+-
+ 	if (rn >= gpu->nr_rings)
+ 		return -EINVAL;
+ 
+ 	*ring_nr = rn;
+-	*sched_prio = sp;
++	*sched_prio = sp + DRM_SCHED_PRIORITY_HIGH;
+ 
+ 	return 0;
+ }
+diff --git a/drivers/gpu/drm/msm/msm_submitqueue.c b/drivers/gpu/drm/msm/msm_submitqueue.c
+index d307cdd17d90..8d550d281704 100644
+--- a/drivers/gpu/drm/msm/msm_submitqueue.c
++++ b/drivers/gpu/drm/msm/msm_submitqueue.c
+@@ -136,7 +136,7 @@ get_sched_entity(struct msm_context *ctx, struct msm_ringbuffer *ring,
+ 		 unsigned ring_nr, enum drm_sched_priority sched_prio)
+ {
+ 	static DEFINE_MUTEX(entity_lock);
+-	unsigned idx = (ring_nr * NR_SCHED_PRIORITIES) + sched_prio;
++	unsigned idx = (ring_nr * NR_SCHED_PRIORITIES) + (sched_prio - DRM_SCHED_PRIORITY_HIGH);
+ 
+ 	/* We should have already validated that the requested priority is
+ 	 * valid by the time we get here.
+From 323363a70f320a860896595e20ea6ba2de48bc7d Mon Sep 17 00:00:00 2001
+From: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+Date: Sat, 24 Oct 2026 16:00:12 +0530
+Subject: [PATCH 6/8] drm/msm/a6xx: Reset preemption records across suspend
+
+The preemption records are initialised only once at probe time. On every
+resume, a6xx_preempt_hw_init() and a8xx_preempt_hw_init() refresh only a
+subset of the fields (rptr, wptr, rptr_addr, info, data, rbase). Whatever
+else the CP wrote into the record before the GPU was power-collapsed
+is left in place and gets consumed again by the CP on the next preemption,
+now carrying stale context state.
+
+To fix this, zero the whole preemption record on suspend and fully
+initialise every field in the hw_init path.
+
+Fixes: e7ae83da4a28 ("drm/msm/a6xx: Implement preemption for a7xx targets")
+Cc: stable@vger.kernel.org
+Signed-off-by: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+Tested-by: Connor Abbott <cwabbott0@gmail.com>
+Patchwork: https://patchwork.freedesktop.org/patch/762801/
+Message-ID: <20261024-assorted-fixes-oct-v1-6-2977f974ddb7@oss.qualcomm.com>
+Signed-off-by: Rob Clark <robin.clark@oss.qualcomm.com>
+---
+ drivers/gpu/drm/msm/adreno/a6xx_gpu.c     |  2 ++
+ drivers/gpu/drm/msm/adreno/a6xx_gpu.h     |  1 +
+ drivers/gpu/drm/msm/adreno/a6xx_preempt.c | 37 +++++++++++++----------
+ drivers/gpu/drm/msm/adreno/a8xx_preempt.c | 11 +++++--
+ 4 files changed, 32 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_gpu.c b/drivers/gpu/drm/msm/adreno/a6xx_gpu.c
+index 92e8c8abb86d..3e4afaa5345f 100644
+--- a/drivers/gpu/drm/msm/adreno/a6xx_gpu.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_gpu.c
+@@ -2248,6 +2248,7 @@ static int a6xx_gmu_pm_suspend(struct msm_gpu *gpu)
+ 		for (i = 0; i < gpu->nr_rings; i++)
+ 			a6xx_gpu->shadow[i] = 0;
+ 
++	a6xx_preempt_record_reset(gpu);
+ 	gpu->suspend_count++;
+ 
+ 	return 0;
+@@ -2287,6 +2288,7 @@ static int a6xx_pm_suspend(struct msm_gpu *gpu)
+ 		for (i = 0; i < gpu->nr_rings; i++)
+ 			a6xx_gpu->shadow[i] = 0;
+ 
++	a6xx_preempt_record_reset(gpu);
+ 	gpu->suspend_count++;
+ 
+ 	return 0;
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_gpu.h b/drivers/gpu/drm/msm/adreno/a6xx_gpu.h
+index 79912a33e17c..62a19e22e230 100644
+--- a/drivers/gpu/drm/msm/adreno/a6xx_gpu.h
++++ b/drivers/gpu/drm/msm/adreno/a6xx_gpu.h
+@@ -305,6 +305,7 @@ void a6xx_preempt_hw_init(struct msm_gpu *gpu);
+ void a6xx_preempt_trigger(struct msm_gpu *gpu);
+ void a6xx_preempt_irq(struct msm_gpu *gpu);
+ void a6xx_preempt_fini(struct msm_gpu *gpu);
++void a6xx_preempt_record_reset(struct msm_gpu *gpu);
+ void a6xx_emit_set_pseudo_reg(struct msm_ringbuffer *ring,
+ 		struct a6xx_gpu *a6xx_gpu, struct msm_gpu_submitqueue *queue);
+ int a6xx_preempt_submitqueue_setup(struct msm_gpu *gpu,
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_preempt.c b/drivers/gpu/drm/msm/adreno/a6xx_preempt.c
+index 1e599d4ddea1..df8d4f3e8d4c 100644
+--- a/drivers/gpu/drm/msm/adreno/a6xx_preempt.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_preempt.c
+@@ -140,12 +140,17 @@ void a6xx_preempt_hw_init(struct msm_gpu *gpu)
+ 	for (i = 0; i < gpu->nr_rings; i++) {
+ 		struct a6xx_preempt_record *record_ptr = a6xx_gpu->preempt[i];
+ 
+-		record_ptr->wptr = 0;
+-		record_ptr->rptr = 0;
+-		record_ptr->rptr_addr = shadowptr(a6xx_gpu, gpu->rb[i]);
++		record_ptr->magic = A6XX_PREEMPT_RECORD_MAGIC;
+ 		record_ptr->info = 0;
++		record_ptr->errno = 0;
+ 		record_ptr->data = 0;
++		record_ptr->cntl = MSM_GPU_RB_CNTL_DEFAULT;
++		record_ptr->rptr = 0;
++		record_ptr->wptr = 0;
++		record_ptr->rptr_addr = shadowptr(a6xx_gpu, gpu->rb[i]);
+ 		record_ptr->rbase = gpu->rb[i]->iova;
++		record_ptr->counter = 0;
++		record_ptr->bv_rptr_addr = rbmemptr(gpu->rb[i], bv_rptr);
+ 	}
+ 
+ 	/* Write a 0 to signal that we aren't switching pagetables */
+@@ -163,6 +168,19 @@ void a6xx_preempt_hw_init(struct msm_gpu *gpu)
+ 	a6xx_gpu->cur_ring = gpu->rb[0];
+ }
+ 
++void a6xx_preempt_record_reset(struct msm_gpu *gpu)
++{
++	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
++	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
++	int i;
++
++	if (gpu->nr_rings == 1)
++		return;
++
++	for (i = 0; i < gpu->nr_rings; i++)
++		memset(a6xx_gpu->preempt[i], 0, a6xx_gpu->preempt_bo[i]->size);
++}
++
+ void a6xx_preempt_trigger(struct msm_gpu *gpu)
+ {
+ 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+@@ -302,8 +320,6 @@ static int preempt_init_ring(struct a6xx_gpu *a6xx_gpu,
+ 	a6xx_gpu->preempt_iova[ring->id] = iova;
+ 	a6xx_gpu->preempt[ring->id] = ptr;
+ 
+-	struct a6xx_preempt_record *record_ptr = ptr;
+-
+ 	ptr = msm_gem_kernel_new(gpu->dev,
+ 		PREEMPT_SMMU_INFO_SIZE,
+ 		MSM_BO_WC | MSM_BO_MAP_PRIV | MSM_BO_GPU_READONLY,
+@@ -329,17 +345,6 @@ static int preempt_init_ring(struct a6xx_gpu *a6xx_gpu,
+ 	smmu_info_ptr->asid = 0xdecafbad;
+ 	smmu_info_ptr->context_idr = 0;
+ 
+-	/* Set up the defaults on the preemption record */
+-	record_ptr->magic = A6XX_PREEMPT_RECORD_MAGIC;
+-	record_ptr->info = 0;
+-	record_ptr->data = 0;
+-	record_ptr->rptr = 0;
+-	record_ptr->wptr = 0;
+-	record_ptr->cntl = MSM_GPU_RB_CNTL_DEFAULT;
+-	record_ptr->rbase = ring->iova;
+-	record_ptr->counter = 0;
+-	record_ptr->bv_rptr_addr = rbmemptr(ring, bv_rptr);
+-
+ 	return 0;
+ }
+ 
+diff --git a/drivers/gpu/drm/msm/adreno/a8xx_preempt.c b/drivers/gpu/drm/msm/adreno/a8xx_preempt.c
+index 6cb53a071801..0e0503ed54a1 100644
+--- a/drivers/gpu/drm/msm/adreno/a8xx_preempt.c
++++ b/drivers/gpu/drm/msm/adreno/a8xx_preempt.c
+@@ -121,12 +121,17 @@ void a8xx_preempt_hw_init(struct msm_gpu *gpu)
+ 	for (i = 0; i < gpu->nr_rings; i++) {
+ 		struct a6xx_preempt_record *record_ptr = a6xx_gpu->preempt[i];
+ 
+-		record_ptr->wptr = 0;
+-		record_ptr->rptr = 0;
+-		record_ptr->rptr_addr = shadowptr(a6xx_gpu, gpu->rb[i]);
++		record_ptr->magic = A6XX_PREEMPT_RECORD_MAGIC;
+ 		record_ptr->info = 0;
++		record_ptr->errno = 0;
+ 		record_ptr->data = 0;
++		record_ptr->cntl = MSM_GPU_RB_CNTL_DEFAULT;
++		record_ptr->rptr = 0;
++		record_ptr->wptr = 0;
++		record_ptr->rptr_addr = shadowptr(a6xx_gpu, gpu->rb[i]);
+ 		record_ptr->rbase = gpu->rb[i]->iova;
++		record_ptr->counter = 0;
++		record_ptr->bv_rptr_addr = rbmemptr(gpu->rb[i], bv_rptr);
+ 	}
+ 
+ 	/* Write a 0 to signal that we aren't switching pagetables */
+From f3a6c76dcdf663c484bd57ac91b67b3dbc39ad19 Mon Sep 17 00:00:00 2001
+From: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+Date: Sat, 24 Oct 2026 16:00:13 +0530
+Subject: [PATCH 7/8] drm/msm/a6xx: Request CLX enable from secure world
+
+The CLX (Current Limit Extension) feature also requires the secure
+world to enable it via the GPU init regs SCM call. Without the
+QCOM_SCM_GPU_CLX_EN_REQ flag, the CLX tables sent to the GMU over HFI
+are not effective.
+
+Set QCOM_SCM_GPU_CLX_EN_REQ in the SCM request on GPUs that have a CLX
+table in their catalog entry.
+
+Fixes: 967e62fbeecc ("drm/msm/a6xx: Add HFI support for CLX feature")
+Signed-off-by: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+Reviewed-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
+Patchwork: https://patchwork.freedesktop.org/patch/762804/
+Message-ID: <20261024-assorted-fixes-oct-v1-7-2977f974ddb7@oss.qualcomm.com>
+Signed-off-by: Rob Clark <robin.clark@oss.qualcomm.com>
+---
+ drivers/gpu/drm/msm/adreno/a6xx_gmu.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+index 991db3c9cd96..a1561ca41a5b 100644
+--- a/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
++++ b/drivers/gpu/drm/msm/adreno/a6xx_gmu.c
+@@ -1247,8 +1247,12 @@ static int a6xx_gmu_secure_init(struct a6xx_gpu *a6xx_gpu)
+ 			goto done;
+ 		}
+ 
+-		ret = qcom_scm_gpu_init_regs(QCOM_SCM_GPU_ALWAYS_EN_REQ |
+-					     QCOM_SCM_GPU_TSENSE_EN_REQ);
++		u32 gpu_req = QCOM_SCM_GPU_ALWAYS_EN_REQ | QCOM_SCM_GPU_TSENSE_EN_REQ;
++
++		if (adreno_gpu->info->a6xx->clx_tbl)
++			gpu_req |= QCOM_SCM_GPU_CLX_EN_REQ;
++
++		ret = qcom_scm_gpu_init_regs(gpu_req);
+ 		if (ret) {
+ 			dev_warn_once(gpu->dev->dev,
+ 				"SCM call failed\n");
+From 97131f7b36b22a38df1ac74b6df49ceaedf2adca Mon Sep 17 00:00:00 2001
+From: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+Date: Sat, 24 Oct 2026 16:00:14 +0530
+Subject: [PATCH 8/8] drm/msm/a8xx: Add AQE firmware to Adreno X2-90 GPU
+
+Update the catalog to add AQE firmware to the Adreno X2-90 GPU.
+
+Signed-off-by: Akhil P Oommen <akhilpo@oss.qualcomm.com>
+Reviewed-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
+Patchwork: https://patchwork.freedesktop.org/patch/762805/
+Message-ID: <20261024-assorted-fixes-oct-v1-8-2977f974ddb7@oss.qualcomm.com>
+Signed-off-by: Rob Clark <robin.clark@oss.qualcomm.com>
+---
+ drivers/gpu/drm/msm/adreno/a8xx_catalog.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/gpu/drm/msm/adreno/a8xx_catalog.c b/drivers/gpu/drm/msm/adreno/a8xx_catalog.c
+index 55a805ab438c..775aca1964ee 100644
+--- a/drivers/gpu/drm/msm/adreno/a8xx_catalog.c
++++ b/drivers/gpu/drm/msm/adreno/a8xx_catalog.c
+@@ -1582,6 +1582,7 @@ static const struct adreno_info a8xx_gpus[] = {
+ 		.fw = {
+ 			[ADRENO_FW_SQE] = "gen80100_sqe.fw",
+ 			[ADRENO_FW_GMU] = "gen80100_gmu.bin",
++			[ADRENO_FW_AQE] = "gen80100_aqe.fw",
+ 		},
+ 		.gmem = 21 * SZ_1M,
+ 		.inactive_period = DRM_MSM_INACTIVE_PERIOD,

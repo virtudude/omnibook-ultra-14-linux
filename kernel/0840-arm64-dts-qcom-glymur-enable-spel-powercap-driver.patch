@@ -1,0 +1,38 @@
+From 9ce22a1555446b7540ba1b678db53960d012db8e Mon Sep 17 00:00:00 2001
+From: Manaf Meethalavalappu Pallikunhi <manaf.pallikunhi@oss.qualcomm.com>
+Date: Thu, 2 Jul 2026 22:52:57 +0530
+Subject: [PATCH] arm64: dts: qcom: glymur: Enable SPEL powercap driver
+
+The Qualcomm SoC Power and Electrical Limits (SPEL) provides hardware
+based power monitoring and limiting capabilities for various power
+domains including System, SoC, CPU clusters, GPU, and various other
+subsystems for glymur.
+
+Signed-off-by: Manaf Meethalavalappu Pallikunhi <manaf.pallikunhi@oss.qualcomm.com>
+Link: https://patch.msgid.link/20260702-qcom_spel_driver_upstream-v3-4-434d50f0c5b0@oss.qualcomm.com
+Signed-off-by: Abel Vesa <abel.vesa@oss.qualcomm.com>
+---
+ arch/arm64/boot/dts/qcom/glymur.dtsi | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/glymur.dtsi b/arch/arm64/boot/dts/qcom/glymur.dtsi
+index 8ab054cc60f1..d1a4a14c9ce3 100644
+--- a/arch/arm64/boot/dts/qcom/glymur.dtsi
++++ b/arch/arm64/boot/dts/qcom/glymur.dtsi
+@@ -6097,6 +6097,16 @@ spmi_bus2: spmi@c448000 {
+ 			};
+ 		};
+ 
++		power-limits@ef3b000 {
++			compatible = "qcom,glymur-spel";
++			reg = <0x0 0x0ef3b000 0x0 0x1000>,
++			      <0x0 0x0ef3d000 0x0 0x1000>,
++			      <0x0 0x0ef3e000 0x0 0x1000>;
++			reg-names = "config",
++				    "constraints",
++				    "nodes";
++		};
++
+ 		tlmm: pinctrl@f100000 {
+ 			compatible = "qcom,glymur-tlmm";
+ 			reg = <0x0 0x0f100000 0x0 0xf00000>;
