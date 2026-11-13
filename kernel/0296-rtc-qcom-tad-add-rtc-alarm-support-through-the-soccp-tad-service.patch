@@ -1,0 +1,740 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Thu, 12 Nov 2026 12:06:24 -0500
+Subject: [PATCH] rtc: qcom-tad: add RTC alarm support through the SoCCP TAD
+ service
+
+On Glymur laptops the PMIC RTC alarm interrupt belongs to the SoCCP
+battery-manager firmware, so rtc-pm8xxx cannot request it (-EPERM) and
+has no alarm. The firmware exposes the ACPI Time and Alarm Device
+service over pmic_glink instead, but on the HP OmniBook Ultra 14
+(SOCCP.FW.2.1) it answers only the legacy TAD opcodes 0x60-0x65 on the
+RTC owner (32784), not the 0x68/0x69 the proposed rtc-glink driver
+uses, so that driver times out at probe.
+
+Add a driver for the pmic_glink "rtc-glink" auxiliary device. It reads
+the time from the GIO service's TAD_RT block (owner 32785, 0x30200), as
+the Windows ACPI TAD methods do, with GIO alerts left off so the
+battery manager and UCSI notifications keep flowing. It arms both the
+AC and the DC TAD timer, as the firmware only wakes for the one
+matching the power source. On ALARM_EXPIRED (0x6a) it disarms both and
+reports the alarm, also as a hard wakeup event: the GLINK interrupt is
+IRQF_NO_SUSPEND but not a wakeup interrupt, so s2idle would otherwise
+go back to sleep.
+
+The firmware sometimes answers _STV with status 0x200 and keeps failing
+on an immediate resend, so, as a heuristic, such an _STV disables the
+timer and is retried after 50, 100 and 200 ms. There is no set_time, as
+writing TAD_RT updates the firmware's RTC bookkeeping.
+
+Tested on HP OmniBook Ultra 14: alarms up to 20 minutes resume from
+s2idle on battery.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ drivers/rtc/Kconfig        |  11 +
+ drivers/rtc/Makefile       |   1 +
+ drivers/rtc/rtc-qcom-tad.c | 660 +++++++++++++++++++++++++++++++++++++
+ 3 files changed, 672 insertions(+)
+ create mode 100644 drivers/rtc/rtc-qcom-tad.c
+
+diff --git a/drivers/rtc/Kconfig b/drivers/rtc/Kconfig
+index 73ec9230edfd..8a953c959d99 100644
+--- a/drivers/rtc/Kconfig
++++ b/drivers/rtc/Kconfig
+@@ -1863,6 +1863,17 @@ config RTC_DRV_PM8XXX
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called rtc-pm8xxx.
+ 
++config RTC_DRV_QCOM_TAD
++	tristate "Qualcomm SoCCP TAD RTC alarm"
++	depends on QCOM_PMIC_GLINK
++	help
++	  Say Y here to get RTC alarms, and wakeups from them, on Qualcomm
++	  Glymur laptops whose SoCCP battery-manager firmware owns the PMIC
++	  RTC alarm and implements the ACPI Time and Alarm Device service.
++
++	  To compile this driver as a module, choose M here: the module will
++	  be called rtc-qcom-tad.
++
+ config RTC_DRV_TEGRA
+ 	tristate "NVIDIA Tegra Internal RTC driver"
+ 	depends on ARCH_TEGRA || COMPILE_TEST
+diff --git a/drivers/rtc/Makefile b/drivers/rtc/Makefile
+index 46f1a0fc2416..ec0238c384d1 100644
+--- a/drivers/rtc/Makefile
++++ b/drivers/rtc/Makefile
+@@ -139,6 +139,7 @@ obj-$(CONFIG_RTC_DRV_PIC32)	+= rtc-pic32.o
+ obj-$(CONFIG_RTC_DRV_PL030)	+= rtc-pl030.o
+ obj-$(CONFIG_RTC_DRV_PL031)	+= rtc-pl031.o
+ obj-$(CONFIG_RTC_DRV_PM8XXX)	+= rtc-pm8xxx.o
++obj-$(CONFIG_RTC_DRV_QCOM_TAD)	+= rtc-qcom-tad.o
+ obj-$(CONFIG_RTC_DRV_POLARFIRE_SOC)	+= rtc-mpfs.o
+ obj-$(CONFIG_RTC_DRV_PS3)	+= rtc-ps3.o
+ obj-$(CONFIG_RTC_DRV_PXA)	+= rtc-pxa.o
+diff --git a/drivers/rtc/rtc-qcom-tad.c b/drivers/rtc/rtc-qcom-tad.c
+new file mode 100644
+index 000000000000..e7f11072a6ad
+--- /dev/null
++++ b/drivers/rtc/rtc-qcom-tad.c
+@@ -0,0 +1,660 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * RTC alarm through the SoCCP ACPI Time and Alarm Device service.
++ *
++ * On Glymur the PMIC RTC alarm interrupt is owned by the SoCCP battery
++ * manager, which implements the ACPI TAD methods for Windows. Its pmic_glink
++ * RTC owner answers the _STV/_TIV/_CWS requests and sends ALARM_EXPIRED when
++ * a timer fires, but has no real-time opcodes; the wall clock is read from the
++ * GIO TAD_RT block instead. TAD timers count down in seconds, so the alarm is
++ * armed relative to that clock.
++ */
++
++#include <linux/auxiliary_bus.h>
++#include <linux/bitfield.h>
++#include <linux/completion.h>
++#include <linux/delay.h>
++#include <linux/device.h>
++#include <linux/minmax.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/pm_wakeup.h>
++#include <linux/rtc.h>
++#include <linux/soc/qcom/pdr.h>
++#include <linux/soc/qcom/pmic_glink.h>
++#include <linux/spinlock.h>
++#include <linux/string.h>
++#include <linux/workqueue.h>
++
++#define PMIC_GLINK_OWNER_TAD		32784
++#define PMIC_GLINK_OWNER_GIO		32785
++
++#define TAD_CWS				0x61
++#define TAD_STV				0x63
++#define TAD_TIV				0x65
++#define TAD_ALARM_EXPIRED		0x6a
++
++#define TAD_TIMER_AC			0
++#define TAD_TIMER_DC			1
++#define TAD_TIMER_DISABLED		U32_MAX
++
++#define GIO_BLOCK_READ			0x90
++#define GIO_RW_BUFFER_SIZE		1024
++#define GIO_SVC_TAD_RT_ADDR		0x30200
++
++#define TAD_RT_YMD_DAY			GENMASK(31, 24)
++#define TAD_RT_YMD_MONTH		GENMASK(23, 16)
++#define TAD_RT_YMD_YEAR			GENMASK(15, 0)
++#define TAD_RT_HMS_SEC			GENMASK(23, 16)
++#define TAD_RT_HMS_MIN			GENMASK(15, 8)
++#define TAD_RT_HMS_HOUR			GENMASK(7, 0)
++
++#define QCOM_TAD_TIMEOUT		msecs_to_jiffies(2000)
++#define QCOM_TAD_TRIES			4
++#define QCOM_TAD_RETRY_MS		50
++/* Seconds a timer may have counted down when read back */
++#define QCOM_TAD_TIV_SLACK		5
++#define TAD_STV_BUSY			0x200
++
++struct tad_timer_req {
++	struct pmic_glink_hdr	hdr;
++	__le32			timer_id;
++} __packed;
++
++struct tad_timer_set_req {
++	struct pmic_glink_hdr	hdr;
++	__le32			timer_id;
++	__le32			value;
++} __packed;
++
++struct tad_resp {
++	struct pmic_glink_hdr	hdr;
++	__le32			value;
++} __packed;
++
++struct gio_read_req {
++	struct pmic_glink_hdr	hdr;
++	__le32			reserved;
++	__le32			offset;
++	__le32			length;
++} __packed;
++
++struct gio_read_resp {
++	struct pmic_glink_hdr	hdr;
++	u8			data[GIO_RW_BUFFER_SIZE];
++	__le32			ret_code;
++} __packed;
++
++struct tad_rt {
++	__le32			ymd;
++	__le32			hms;
++	__le32			ms_tz;
++	__le32			daylight;
++} __packed;
++
++struct qcom_tad_rtc {
++	struct device *dev;
++	struct rtc_device *rtc;
++	struct pmic_glink_client *tad_client;
++	struct pmic_glink_client *gio_client;
++	struct work_struct alarm_work;
++
++	/* serializes requests: the firmware answers one at a time */
++	struct mutex lock;
++	struct completion done;
++
++	/* protects the pending request and its response */
++	spinlock_t resp_lock;
++	bool pending;
++	u32 pending_owner;
++	u32 pending_opcode;
++	u32 resp_value;
++	void *resp_buf;
++	size_t resp_len;
++	int resp_err;
++
++	bool service_up;
++	/* _STV answers that asked for the request to be sent again */
++	unsigned int stv_busy;
++	time64_t alarm;
++	bool alarm_enabled;
++};
++
++static int qcom_tad_xfer(struct qcom_tad_rtc *t, struct pmic_glink_client *client,
++			 void *req, size_t len, void *buf, size_t buf_len, u32 *value)
++{
++	struct pmic_glink_hdr *hdr = req;
++	unsigned long left;
++	int ret;
++
++	lockdep_assert_held(&t->lock);
++
++	scoped_guard(spinlock_irqsave, &t->resp_lock) {
++		if (!t->service_up)
++			return -EAGAIN;
++
++		reinit_completion(&t->done);
++		t->pending = true;
++		t->pending_owner = le32_to_cpu(hdr->owner);
++		t->pending_opcode = le32_to_cpu(hdr->opcode);
++		t->resp_buf = buf;
++		t->resp_len = buf_len;
++		t->resp_err = 0;
++	}
++
++	/*
++	 * Responses carry no transaction id, so one that arrives after the
++	 * timeout is matched against the next request by owner and opcode only.
++	 */
++	ret = pmic_glink_send(client, req, len);
++	if (!ret) {
++		left = wait_for_completion_timeout(&t->done, QCOM_TAD_TIMEOUT);
++		if (!left)
++			ret = -ETIMEDOUT;
++	}
++
++	scoped_guard(spinlock_irqsave, &t->resp_lock) {
++		if (!ret)
++			ret = t->resp_err;
++		if (!ret && value)
++			*value = t->resp_value;
++		t->pending = false;
++		t->resp_buf = NULL;
++	}
++
++	return ret;
++}
++
++static int qcom_tad_cmd(struct qcom_tad_rtc *t, u32 opcode, u32 timer_id, u32 *value)
++{
++	struct tad_timer_req req = {
++		.hdr.owner = cpu_to_le32(PMIC_GLINK_OWNER_TAD),
++		.hdr.type = cpu_to_le32(PMIC_GLINK_REQ_RESP),
++		.hdr.opcode = cpu_to_le32(opcode),
++		.timer_id = cpu_to_le32(timer_id),
++	};
++
++	return qcom_tad_xfer(t, t->tad_client, &req, sizeof(req), NULL, 0, value);
++}
++
++/* _STV and _CWS return 0 on success and 1 on failure */
++static int qcom_tad_status(u32 status)
++{
++	return status ? -EIO : 0;
++}
++
++/*
++ * Now and then _STV answers TAD_STV_BUSY, neither success nor failure. Sent
++ * again at once it was seen to keep failing, and to succeed once the timers
++ * had been disabled and some time had passed. So, as a heuristic, the timer
++ * is disabled and the request sent again after 50, 100 and 200 ms, and the
++ * timer it programmed is read back.
++ */
++static int qcom_tad_set_timer(struct qcom_tad_rtc *t, u32 timer_id, u32 secs)
++{
++	struct tad_timer_set_req req = {
++		.hdr.owner = cpu_to_le32(PMIC_GLINK_OWNER_TAD),
++		.hdr.type = cpu_to_le32(PMIC_GLINK_REQ_RESP),
++		.hdr.opcode = cpu_to_le32(TAD_STV),
++		.timer_id = cpu_to_le32(timer_id),
++		.value = cpu_to_le32(secs),
++	};
++	struct tad_timer_set_req off = req;
++	u32 status, remaining;
++	int i, ret;
++
++	off.value = cpu_to_le32(TAD_TIMER_DISABLED);
++
++	for (i = 0; i < QCOM_TAD_TRIES; i++) {
++		if (i) {
++			if (secs != TAD_TIMER_DISABLED) {
++				ret = qcom_tad_xfer(t, t->tad_client, &off, sizeof(off), NULL, 0,
++						    &status);
++				if (ret)
++					return ret;
++				if (status && status != TAD_STV_BUSY) {
++					dev_err(t->dev, "timer %u: disabling failed: status %#x\n",
++						timer_id, status);
++					return -EIO;
++				}
++			}
++			msleep(QCOM_TAD_RETRY_MS << (i - 1));
++		}
++
++		ret = qcom_tad_xfer(t, t->tad_client, &req, sizeof(req), NULL, 0, &status);
++		if (ret)
++			return ret;
++		if (status != TAD_STV_BUSY)
++			break;
++
++		t->stv_busy++;
++		dev_dbg(t->dev, "timer %u: _STV busy, try %d (%u busy answers)\n",
++			timer_id, i + 1, t->stv_busy);
++	}
++
++	if (status) {
++		dev_err(t->dev, "timer %u: _STV failed: status %#x\n", timer_id, status);
++		return -EIO;
++	}
++	if (!i)
++		return 0;
++
++	ret = qcom_tad_cmd(t, TAD_TIV, timer_id, &remaining);
++	if (ret)
++		return ret;
++	/*
++	 * A short timer may already have expired and count on below zero, but
++	 * one that reads as disabled was not set.
++	 */
++	if (secs == TAD_TIMER_DISABLED ? remaining != TAD_TIMER_DISABLED :
++	    remaining == TAD_TIMER_DISABLED || (s32)remaining > (s64)secs ||
++	    (s64)secs - (s32)remaining > QCOM_TAD_TIV_SLACK) {
++		dev_err(t->dev, "timer %u: set to %u s after a busy _STV, reads %u s\n",
++			timer_id, secs, remaining);
++		return -EIO;
++	}
++
++	return 0;
++}
++
++static int qcom_tad_clear_wake(struct qcom_tad_rtc *t, u32 timer_id)
++{
++	u32 status;
++	int ret;
++
++	ret = qcom_tad_cmd(t, TAD_CWS, timer_id, &status);
++	if (ret)
++		return ret;
++
++	return qcom_tad_status(status);
++}
++
++static int qcom_tad_disarm(struct qcom_tad_rtc *t)
++{
++	int ret_ac, ret_dc;
++
++	ret_ac = qcom_tad_set_timer(t, TAD_TIMER_AC, TAD_TIMER_DISABLED);
++	ret_dc = qcom_tad_set_timer(t, TAD_TIMER_DC, TAD_TIMER_DISABLED);
++
++	return ret_ac ?: ret_dc;
++}
++
++/*
++ * Both timers are armed so the alarm fires on AC and on battery; the firmware
++ * only wakes for a timer that matches the current power source.
++ */
++static int qcom_tad_arm(struct qcom_tad_rtc *t, u32 secs)
++{
++	int ret;
++
++	ret = qcom_tad_set_timer(t, TAD_TIMER_AC, secs);
++	if (!ret)
++		ret = qcom_tad_set_timer(t, TAD_TIMER_DC, secs);
++	if (ret)
++		qcom_tad_disarm(t);
++
++	return ret;
++}
++
++static int qcom_tad_gio_read(struct qcom_tad_rtc *t, u32 addr, void *buf, size_t len)
++{
++	struct gio_read_req req = {
++		.hdr.owner = cpu_to_le32(PMIC_GLINK_OWNER_GIO),
++		.hdr.type = cpu_to_le32(PMIC_GLINK_REQ_RESP),
++		.hdr.opcode = cpu_to_le32(GIO_BLOCK_READ),
++		.offset = cpu_to_le32(addr),
++		.length = cpu_to_le32(len),
++	};
++
++	return qcom_tad_xfer(t, t->gio_client, &req, sizeof(req), buf, len, NULL);
++}
++
++static void qcom_tad_complete(struct qcom_tad_rtc *t, u32 owner, const void *data,
++			      size_t len)
++{
++	const struct pmic_glink_hdr *hdr = data;
++	const struct gio_read_resp *gio;
++	const struct tad_resp *tad;
++
++	guard(spinlock_irqsave)(&t->resp_lock);
++
++	if (!t->pending || t->pending_owner != owner ||
++	    t->pending_opcode != le32_to_cpu(hdr->opcode))
++		return;
++
++	if (owner == PMIC_GLINK_OWNER_GIO) {
++		gio = data;
++		if (len != sizeof(*gio))
++			t->resp_err = -EPROTO;
++		else if (le32_to_cpu(gio->ret_code))
++			t->resp_err = -EREMOTEIO;
++		else if (t->resp_buf)
++			memcpy(t->resp_buf, gio->data, t->resp_len);
++	} else {
++		tad = data;
++		if (len < sizeof(*tad))
++			t->resp_err = -EPROTO;
++		else
++			t->resp_value = le32_to_cpu(tad->value);
++	}
++
++	t->pending = false;
++	complete(&t->done);
++}
++
++static void qcom_tad_callback(const void *data, size_t len, void *priv)
++{
++	const struct pmic_glink_hdr *hdr = data;
++	struct qcom_tad_rtc *t = priv;
++
++	if (len < sizeof(*hdr))
++		return;
++
++	dev_dbg(t->dev, "rx type %u opcode %#x len %zu value %#x\n",
++		le32_to_cpu(hdr->type), le32_to_cpu(hdr->opcode), len,
++		len >= sizeof(struct tad_resp) ?
++		le32_to_cpu(((const struct tad_resp *)data)->value) : 0);
++
++	if (le32_to_cpu(hdr->type) == PMIC_GLINK_NOTIFY &&
++	    le32_to_cpu(hdr->opcode) == TAD_ALARM_EXPIRED) {
++		/* the GLINK interrupt is not a wake IRQ, so resume s2idle here */
++		pm_wakeup_dev_event(t->dev, 0, true);
++		schedule_work(&t->alarm_work);
++		return;
++	}
++
++	if (le32_to_cpu(hdr->type) != PMIC_GLINK_REQ_RESP)
++		return;
++
++	qcom_tad_complete(t, PMIC_GLINK_OWNER_TAD, data, len);
++}
++
++static void qcom_tad_gio_callback(const void *data, size_t len, void *priv)
++{
++	const struct pmic_glink_hdr *hdr = data;
++	struct qcom_tad_rtc *t = priv;
++
++	if (len < sizeof(*hdr) || le32_to_cpu(hdr->type) != PMIC_GLINK_REQ_RESP)
++		return;
++
++	qcom_tad_complete(t, PMIC_GLINK_OWNER_GIO, data, len);
++}
++
++static void qcom_tad_set_service(struct qcom_tad_rtc *t, bool up)
++{
++	guard(spinlock_irqsave)(&t->resp_lock);
++
++	t->service_up = up;
++	if (!up && t->pending) {
++		t->resp_err = -ENODEV;
++		t->pending = false;
++		complete(&t->done);
++	}
++}
++
++static void qcom_tad_pdr_notify(void *priv, int state)
++{
++	qcom_tad_set_service(priv, state == SERVREG_SERVICE_STATE_UP);
++}
++
++static int qcom_tad_now(struct qcom_tad_rtc *t, time64_t *now)
++{
++	struct rtc_time tm = {};
++	struct tad_rt rt;
++	u32 ymd, hms;
++	int ret;
++
++	ret = qcom_tad_gio_read(t, GIO_SVC_TAD_RT_ADDR, &rt, sizeof(rt));
++	if (ret)
++		return ret;
++
++	ymd = le32_to_cpu(rt.ymd);
++	hms = le32_to_cpu(rt.hms);
++	tm.tm_year = FIELD_GET(TAD_RT_YMD_YEAR, ymd) - 1900;
++	tm.tm_mon = FIELD_GET(TAD_RT_YMD_MONTH, ymd) - 1;
++	tm.tm_mday = FIELD_GET(TAD_RT_YMD_DAY, ymd);
++	tm.tm_hour = FIELD_GET(TAD_RT_HMS_HOUR, hms);
++	tm.tm_min = FIELD_GET(TAD_RT_HMS_MIN, hms);
++	tm.tm_sec = FIELD_GET(TAD_RT_HMS_SEC, hms);
++	if (rtc_valid_tm(&tm))
++		return -EPROTO;
++
++	*now = rtc_tm_to_time64(&tm);
++	return 0;
++}
++
++static int qcom_tad_read_time(struct device *dev, struct rtc_time *tm)
++{
++	struct qcom_tad_rtc *t = dev_get_drvdata(dev);
++	time64_t now;
++	int ret;
++
++	guard(mutex)(&t->lock);
++
++	ret = qcom_tad_now(t, &now);
++	if (ret)
++		return ret;
++
++	rtc_time64_to_tm(now, tm);
++	return 0;
++}
++
++static int qcom_tad_program(struct qcom_tad_rtc *t, time64_t alarm, bool enabled)
++{
++	time64_t now, delta;
++	int ret;
++
++	lockdep_assert_held(&t->lock);
++
++	if (!enabled) {
++		ret = qcom_tad_disarm(t);
++		if (ret)
++			return ret;
++
++		t->alarm = alarm;
++		t->alarm_enabled = false;
++		return 0;
++	}
++
++	ret = qcom_tad_now(t, &now);
++	if (ret)
++		return ret;
++
++	delta = alarm - now;
++	if (delta <= 0)
++		return -ETIME;
++	if (delta > S32_MAX)
++		return -ERANGE;
++
++	ret = qcom_tad_arm(t, delta);
++	if (ret)
++		return ret;
++
++	dev_dbg(t->dev, "armed both TAD timers for %llds\n", delta);
++
++	t->alarm = alarm;
++	t->alarm_enabled = true;
++	return 0;
++}
++
++static int qcom_tad_set_alarm(struct device *dev, struct rtc_wkalrm *alrm)
++{
++	struct qcom_tad_rtc *t = dev_get_drvdata(dev);
++
++	guard(mutex)(&t->lock);
++
++	return qcom_tad_program(t, rtc_tm_to_time64(&alrm->time), alrm->enabled);
++}
++
++/*
++ * A timer that expired without being cleared keeps counting down past zero,
++ * so a negative remaining time means expired, not an alarm decades away.
++ * Alarms are programmed at most S32_MAX seconds ahead to keep this unambiguous.
++ */
++static u32 qcom_tad_remaining(u32 val)
++{
++	return (s32)val < 0 ? TAD_TIMER_DISABLED : val;
++}
++
++static int qcom_tad_read_alarm(struct device *dev, struct rtc_wkalrm *alrm)
++{
++	struct qcom_tad_rtc *t = dev_get_drvdata(dev);
++	u32 remaining, remaining_dc;
++	time64_t now;
++	int ret;
++
++	guard(mutex)(&t->lock);
++
++	ret = qcom_tad_cmd(t, TAD_TIV, TAD_TIMER_AC, &remaining);
++	if (ret)
++		return ret;
++
++	ret = qcom_tad_cmd(t, TAD_TIV, TAD_TIMER_DC, &remaining_dc);
++	if (ret)
++		return ret;
++
++	remaining = min(qcom_tad_remaining(remaining),
++			qcom_tad_remaining(remaining_dc));
++
++	if (remaining == TAD_TIMER_DISABLED) {
++		alrm->enabled = 0;
++	} else {
++		/* a timer left armed by an earlier boot or binding */
++		if (!t->alarm_enabled) {
++			ret = qcom_tad_now(t, &now);
++			if (ret)
++				return ret;
++
++			t->alarm = now + remaining;
++			t->alarm_enabled = true;
++		}
++		alrm->enabled = 1;
++	}
++
++	rtc_time64_to_tm(t->alarm, &alrm->time);
++	alrm->pending = 0;
++	return 0;
++}
++
++static int qcom_tad_alarm_irq_enable(struct device *dev, unsigned int enabled)
++{
++	struct qcom_tad_rtc *t = dev_get_drvdata(dev);
++
++	guard(mutex)(&t->lock);
++
++	return qcom_tad_program(t, t->alarm, enabled);
++}
++
++static const struct rtc_class_ops qcom_tad_rtc_ops = {
++	.read_time = qcom_tad_read_time,
++	.set_alarm = qcom_tad_set_alarm,
++	.read_alarm = qcom_tad_read_alarm,
++	.alarm_irq_enable = qcom_tad_alarm_irq_enable,
++};
++
++static void qcom_tad_alarm_work(struct work_struct *work)
++{
++	struct qcom_tad_rtc *t = container_of(work, struct qcom_tad_rtc, alarm_work);
++	int ret, ret_ac, ret_dc;
++
++	scoped_guard(mutex, &t->lock) {
++		/* the other timer is still counting, and ACPI wants the wake status cleared */
++		ret = qcom_tad_disarm(t);
++		ret_ac = qcom_tad_clear_wake(t, TAD_TIMER_AC);
++		ret_dc = qcom_tad_clear_wake(t, TAD_TIMER_DC);
++		ret = ret ?: ret_ac ?: ret_dc;
++		if (ret)
++			dev_warn(t->dev, "failed to clear the expired TAD timers: %d\n", ret);
++		t->alarm_enabled = false;
++	}
++
++	rtc_update_irq(t->rtc, 1, RTC_IRQF | RTC_AF);
++}
++
++static void qcom_tad_teardown(void *data)
++{
++	struct qcom_tad_rtc *t = data;
++
++	pmic_glink_client_unregister(t->tad_client);
++	pmic_glink_client_unregister(t->gio_client);
++	qcom_tad_set_service(t, false);
++	cancel_work_sync(&t->alarm_work);
++}
++
++static int qcom_tad_probe(struct auxiliary_device *adev,
++			  const struct auxiliary_device_id *id)
++{
++	struct device *dev = &adev->dev;
++	struct qcom_tad_rtc *t;
++	int ret;
++
++	t = devm_kzalloc(dev, sizeof(*t), GFP_KERNEL);
++	if (!t)
++		return -ENOMEM;
++
++	t->dev = dev;
++	ret = devm_mutex_init(dev, &t->lock);
++	if (ret)
++		return ret;
++	spin_lock_init(&t->resp_lock);
++	init_completion(&t->done);
++	INIT_WORK(&t->alarm_work, qcom_tad_alarm_work);
++	dev_set_drvdata(dev, t);
++
++	t->rtc = devm_rtc_allocate_device(dev);
++	if (IS_ERR(t->rtc))
++		return PTR_ERR(t->rtc);
++
++	t->rtc->ops = &qcom_tad_rtc_ops;
++	t->rtc->range_min = RTC_TIMESTAMP_BEGIN_2000;
++	t->rtc->range_max = RTC_TIMESTAMP_END_2099;
++	clear_bit(RTC_FEATURE_UPDATE_INTERRUPT, t->rtc->features);
++
++	/* alarmtimer only picks an RTC whose parent can wake the system */
++	ret = devm_device_init_wakeup(dev);
++	if (ret)
++		return ret;
++
++	t->tad_client = devm_pmic_glink_client_alloc(dev, PMIC_GLINK_OWNER_TAD,
++						     qcom_tad_callback,
++						     qcom_tad_pdr_notify, t);
++	if (IS_ERR(t->tad_client))
++		return dev_err_probe(dev, PTR_ERR(t->tad_client),
++				     "failed to allocate the TAD client\n");
++
++	t->gio_client = devm_pmic_glink_client_alloc(dev, PMIC_GLINK_OWNER_GIO,
++						     qcom_tad_gio_callback,
++						     qcom_tad_pdr_notify, t);
++	if (IS_ERR(t->gio_client))
++		return dev_err_probe(dev, PTR_ERR(t->gio_client),
++				     "failed to allocate the GIO client\n");
++
++	pmic_glink_client_register(t->gio_client);
++	pmic_glink_client_register(t->tad_client);
++
++	/*
++	 * Detach from pmic_glink and flush the alarm work after the RTC is
++	 * unregistered but before the clients are freed.
++	 */
++	ret = devm_add_action_or_reset(dev, qcom_tad_teardown, t);
++	if (ret)
++		return ret;
++
++	return devm_rtc_register_device(t->rtc);
++}
++
++static const struct auxiliary_device_id qcom_tad_id_table[] = {
++	{ .name = "pmic_glink.rtc-glink" },
++	{}
++};
++MODULE_DEVICE_TABLE(auxiliary, qcom_tad_id_table);
++
++static struct auxiliary_driver qcom_tad_driver = {
++	.name = "qcom_rtc_tad",
++	.probe = qcom_tad_probe,
++	.id_table = qcom_tad_id_table,
++};
++module_auxiliary_driver(qcom_tad_driver);
++
++MODULE_DESCRIPTION("Qualcomm SoCCP TAD RTC alarm driver");
++MODULE_LICENSE("GPL");

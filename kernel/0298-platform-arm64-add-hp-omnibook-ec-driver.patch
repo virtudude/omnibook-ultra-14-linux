@@ -1,0 +1,779 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Fri, 13 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/2] platform: arm64: HP OmniBook (Snapdragon X2) EC driver
+
+The binding and the driver for the embedded controller of the HP
+OmniBook Ultra 14-kg0xxx: fan speed, EC thermistors, keyboard
+backlight level and timeout, mute LED states, function-key lock and
+the hotkeys only the EC reports. Based on Rahul Pon's HP OmniBook 5 16
+EC driver.
+
+ 1/2 dt-bindings: embedded-controller: add HP OmniBook Ultra 14 EC
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 2/2 platform: arm64: add HP OmniBook (Snapdragon X2) EC driver
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Thu, 12 Nov 2026 23:24:37 -0500
+Subject: [PATCH 1/2] dt-bindings: embedded-controller: add HP OmniBook Ultra 14 EC
+
+The Snapdragon X2-based HP OmniBook Ultra Laptop 14-kg0xxx has an
+embedded controller on I2C at address 0x76. It runs the fan and the
+keyboard backlight, drives the mute LEDs, reports hotkeys, and reports
+the fan speed and the temperatures of its thermistors, which can serve
+as thermal sensors. The interrupt is optional: the EC answers commands
+without it.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ .../hp,omnibook-ultra-kg0xxx-ec.yaml          | 55 +++++++++++++++++++
+ 1 file changed, 55 insertions(+)
+ create mode 100644 Documentation/devicetree/bindings/embedded-controller/hp,omnibook-ultra-kg0xxx-ec.yaml
+
+diff --git a/Documentation/devicetree/bindings/embedded-controller/hp,omnibook-ultra-kg0xxx-ec.yaml b/Documentation/devicetree/bindings/embedded-controller/hp,omnibook-ultra-kg0xxx-ec.yaml
+new file mode 100644
+index 000000000000..d8fe710070ef
+--- /dev/null
++++ b/Documentation/devicetree/bindings/embedded-controller/hp,omnibook-ultra-kg0xxx-ec.yaml
+@@ -0,0 +1,55 @@
++# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/embedded-controller/hp,omnibook-ultra-kg0xxx-ec.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: HP OmniBook Ultra 14 (Snapdragon X2) Embedded Controller
++
++maintainers:
++  - virtudude <virtudude@protonmail.com>
++
++description:
++  The embedded controller of the Snapdragon X2-based HP OmniBook Ultra
++  Laptop 14-kg0xxx, on an I2C bus. It runs the fan and the keyboard
++  backlight, drives the mute LEDs, reports hotkeys the keyboard does not
++  send itself, and reports the fan speed and its thermistor temperatures.
++  The thermistors can serve as thermal sensors, indexed from 0 in the
++  order of HP's EC thermal zones.
++
++properties:
++  compatible:
++    const: hp,omnibook-ultra-kg0xxx-ec
++
++  reg:
++    const: 0x76
++
++  interrupts:
++    description: The EC's event line, signalling hotkeys and status changes.
++    maxItems: 1
++
++  "#thermal-sensor-cells":
++    const: 1
++
++required:
++  - compatible
++  - reg
++
++additionalProperties: false
++
++examples:
++  - |
++    #include <dt-bindings/interrupt-controller/irq.h>
++
++    i2c {
++        #address-cells = <1>;
++        #size-cells = <0>;
++
++        embedded-controller@76 {
++            compatible = "hp,omnibook-ultra-kg0xxx-ec";
++            reg = <0x76>;
++            interrupts-extended = <&tlmm 66 IRQ_TYPE_EDGE_FALLING>;
++            #thermal-sensor-cells = <1>;
++        };
++    };
++...
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Fri, 13 Nov 2026 07:45:30 -0500
+Subject: [PATCH 2/2] platform: arm64: add HP OmniBook (Snapdragon X2) EC driver
+
+The EC of the HP OmniBook Ultra 14 (Snapdragon X2) sits on I2C at 0x76
+and takes commands through the mailbox HP's ACPI method HQEX drives
+(idle status 0xef, command 0xed, 32-byte reply 0xee); its interrupt
+signals events, read from register 0x00 and acknowledged by writing 0.
+Protocol and most codes match the HP OmniBook 5 16 EC, so the driver
+is based on Rahul Pon's driver for that laptop.
+
+Expose the fan speed and the thermistors of HP's three enabled EC
+thermal zones through hwmon; the keyboard backlight level (which HP's
+ACPI has no command to set) and the mute and mic mute LED states as
+LEDs without a set callback; the keyboard backlight timeout as a sysfs
+attribute, the only EC state the driver writes; the function-key lock
+as a read-only attribute; and the F9 (mic mute) and F11 hotkeys, which
+only the EC reports, as input events.
+
+The event line is edge-triggered, so every read drains up to 8 events,
+and the handler also runs at probe and resume for edges it missed. The
+interrupt is not a wakeup source, as fan and temperature events must
+not wake the laptop. The "S4 hot" events, on which HP's ACPI asks the
+OS to hibernate, are only logged.
+
+Tested on the OmniBook Ultra 14-kg0xxx; the hotkey and event handling
+has not been exercised with key presses.
+
+Link: https://github.com/theflyingrahul/linux-hp-omnibook-5-glymur
+Assisted-by: Claude:claude-opus-5-5
+---
+ .../ABI/testing/sysfs-driver-hp-omnibook-ec   |  25 +
+ MAINTAINERS                                   |   8 +
+ drivers/platform/arm64/Kconfig                |  19 +
+ drivers/platform/arm64/Makefile               |   1 +
+ drivers/platform/arm64/hp-omnibook-ec.c       | 543 ++++++++++++++++++
+ 5 files changed, 596 insertions(+)
+ create mode 100644 Documentation/ABI/testing/sysfs-driver-hp-omnibook-ec
+ create mode 100644 drivers/platform/arm64/hp-omnibook-ec.c
+
+diff --git a/Documentation/ABI/testing/sysfs-driver-hp-omnibook-ec b/Documentation/ABI/testing/sysfs-driver-hp-omnibook-ec
+new file mode 100644
+index 000000000000..d15054fe32de
+--- /dev/null
++++ b/Documentation/ABI/testing/sysfs-driver-hp-omnibook-ec
+@@ -0,0 +1,25 @@
++What:		/sys/bus/i2c/devices/<bus>-0076/fn_lock
++Date:		November 2026
++KernelVersion:	7.5
++Contact:	virtudude <virtudude@protonmail.com>
++Description:
++		(RO) The function-key lock of the HP OmniBook EC:
++
++			* 1 -> F1..F12 act as function keys, and their media
++			  functions need Fn
++			* 0 -> F1..F12 act as media keys (HP's "action keys
++			  mode"), and the function keys need Fn
++
++		Left Shift+Fn switches it inside the embedded controller;
++		the attribute is notified when it does.
++
++What:		/sys/bus/i2c/devices/<bus>-0076/kbd_backlight_timeout
++Date:		November 2026
++KernelVersion:	7.5
++Contact:	virtudude <virtudude@protonmail.com>
++Description:
++		(RW) How long the keyboard backlight stays on after the last
++		key press, as the embedded controller applies it: "30s",
++		"3min" or "always". The backlight key still switches between
++		off and the two levels. The attribute is notified on the EC's
++		keyboard backlight events.
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 222b7fc2c3aa..90d063393335 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -12259,6 +12259,14 @@ L:	platform-driver-x86@vger.kernel.org
+ S:	Orphan
+ F:	drivers/platform/x86/hp/tc1100-wmi.c
+ 
++HP OMNIBOOK EMBEDDED CONTROLLER DRIVER
++M:	virtudude <virtudude@protonmail.com>
++L:	platform-driver-x86@vger.kernel.org
++S:	Maintained
++F:	Documentation/ABI/testing/sysfs-driver-hp-omnibook-ec
++F:	Documentation/devicetree/bindings/embedded-controller/hp,omnibook-ultra-kg0xxx-ec.yaml
++F:	drivers/platform/arm64/hp-omnibook-ec.c
++
+ HP WMI HARDWARE MONITOR DRIVER
+ M:	James Seo <james@equiv.tech>
+ L:	linux-hwmon@vger.kernel.org
+diff --git a/drivers/platform/arm64/Kconfig b/drivers/platform/arm64/Kconfig
+index 3f879410b311..96ba20e6a027 100644
+--- a/drivers/platform/arm64/Kconfig
++++ b/drivers/platform/arm64/Kconfig
+@@ -48,6 +48,25 @@ config EC_ASUS_GLYMUR
+ 	  temperature sensors readout, fan monitoring, keyboard and EC event
+ 	  reporting.
+ 
++config EC_HP_OMNIBOOK
++	tristate "HP OmniBook (Snapdragon X2) Embedded Controller driver"
++	depends on ARCH_QCOM || COMPILE_TEST
++	depends on I2C
++	depends on HWMON
++	depends on INPUT
++	select INPUT_SPARSEKMAP
++	select LEDS_CLASS
++	select NEW_LEDS
++	help
++	  Driver for the Embedded Controller in the Snapdragon X2-based HP
++	  OmniBook Ultra 14. It reports the fan speed, the EC thermistor
++	  temperatures (also as thermal sensors), the keyboard backlight
++	  level, the mute LED states, the function-key lock and the hotkeys
++	  only the EC sees, and sets the keyboard backlight timeout.
++
++	  Say M or Y here to include this support. To compile this driver as
++	  a module, choose M here: the module will be called hp-omnibook-ec.
++
+ config EC_HUAWEI_GAOKUN
+ 	tristate "Huawei Matebook E Go Embedded Controller driver"
+ 	depends on ARCH_QCOM || COMPILE_TEST
+diff --git a/drivers/platform/arm64/Makefile b/drivers/platform/arm64/Makefile
+index 3bc3d4669c27..011726c1e7d8 100644
+--- a/drivers/platform/arm64/Makefile
++++ b/drivers/platform/arm64/Makefile
+@@ -7,6 +7,7 @@
+ 
+ obj-$(CONFIG_EC_ACER_ASPIRE1)	+= acer-aspire1-ec.o
+ obj-$(CONFIG_EC_ASUS_GLYMUR) += asus-glymur-ec.o
++obj-$(CONFIG_EC_HP_OMNIBOOK)	+= hp-omnibook-ec.o
+ obj-$(CONFIG_EC_HUAWEI_GAOKUN)	+= huawei-gaokun-ec.o
+ obj-$(CONFIG_EC_LENOVO_YOGA_C630) += lenovo-yoga-c630.o
+ obj-$(CONFIG_EC_LENOVO_THINKPAD_T14S) += lenovo-thinkpad-t14s.o
+diff --git a/drivers/platform/arm64/hp-omnibook-ec.c b/drivers/platform/arm64/hp-omnibook-ec.c
+new file mode 100644
+index 000000000000..e786f99589c3
+--- /dev/null
++++ b/drivers/platform/arm64/hp-omnibook-ec.c
+@@ -0,0 +1,543 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * HP OmniBook (Snapdragon X2) embedded controller
++ *
++ * Copyright (c) 2026 Rahul Pon
++ * Copyright (c) 2026 virtudude
++ *
++ * Based on Rahul Pon's HP OmniBook 5 16 EC driver: both laptops' ACPI
++ * tables drive the EC through the same mailbox (HP's HQEX method). Wait for
++ * an idle status, write the command and sub-command, wait for completion,
++ * then read the 32-byte reply. The EC's interrupt line signals events, read
++ * from register 0x00 and acknowledged by writing 0 back.
++ */
++
++#include <linux/bits.h>
++#include <linux/cleanup.h>
++#include <linux/delay.h>
++#include <linux/hwmon.h>
++#include <linux/i2c.h>
++#include <linux/input.h>
++#include <linux/input/sparse-keymap.h>
++#include <linux/interrupt.h>
++#include <linux/leds.h>
++#include <linux/mod_devicetable.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/pm.h>
++#include <linux/string.h>
++#include <linux/sysfs.h>
++#include <linux/unaligned.h>
++
++#define HPEC_EVENT		0x00
++#define HPEC_REQUEST		0xed
++#define HPEC_REPLY		0xee
++#define HPEC_STATUS		0xef
++#define HPEC_REPLY_LEN		32
++
++#define HPEC_STATUS_IDLE	0x00
++#define HPEC_STATUS_DONE	0xe0
++#define HPEC_POLL_TRIES		20
++#define HPEC_POLL_US		5000
++
++#define HPEC_KBD		0x05
++#define HPEC_KBD_TIMEOUT_GET	0xfe
++#define HPEC_KBD_LEVEL_GET	0xff
++#define HPEC_LED		0x06
++#define HPEC_LED_GET		0xff
++/* LED states in byte 1 of the HPEC_LED_GET reply, one bit per EC LED from LED 8 */
++#define HPEC_LED_STATE(n)	BIT((n) - 0x08)
++#define HPEC_THERMISTOR		0x26
++#define HPEC_THERMISTOR_INVALID	0xff
++#define HPEC_FAN		0xbc
++#define HPEC_FAN_RPM		0x03
++#define HPEC_FN_LOCK		0xbd
++#define HPEC_FN_LOCK_GET	0x01
++/* Reply byte 0 of HPEC_FN_LOCK_GET in action-keys mode (media keys first) */
++#define HPEC_FN_LOCK_ACTION_KEYS 0x01
++
++#define HPEC_EVENT_CPU_HOT	0x0b
++#define HPEC_EVENT_KBD		0x0d
++#define HPEC_EVENT_SKIN_HOT	0x10
++#define HPEC_EVENT_KBD_KEY	0x1d
++#define HPEC_EVENT_FAN_STATUS	0x30
++#define HPEC_EVENT_FAN_SPEED	0x32
++#define HPEC_EVENT_THERMISTOR	0x36
++#define HPEC_EVENT_FN_LOCK	0x88
++
++/* Events read per interrupt before giving up on draining the register */
++#define HPEC_MAX_EVENTS		8
++
++/* HP's WMI hotkey codes for these EC events are the ones hp-wmi maps */
++static const struct key_entry hpec_keymap[] = {
++	{ KE_KEY, 0x11, { KEY_MICMUTE } },	/* F9, WMI 0x270 */
++	{ KE_KEY, 0x1e, { KEY_PROG2 } },	/* F11, WMI 0x21a8 */
++	{ KE_END, 0 }
++};
++
++/* Keyboard backlight timeout, in EC value order */
++static const char * const hpec_kbd_timeouts[] = { "30s", "3min", "always" };
++
++/* EC LEDs 8 and 9, which HP's mute LED WMI methods drive */
++static const struct {
++	const char *name;
++	u8 index;
++} hpec_leds[] = {
++	{ "platform::mute", 0x08 },
++	{ "platform::micmute", 0x09 },
++};
++
++/* HP's TZ31..TZ33; TZ34..TZ37 (thermistors 0x06, 0x04, 0x02, 0x01) are disabled */
++static const u8 hpec_thermistors[] = { 0x00, 0x0a, 0x05 };
++
++struct hpec;
++
++struct hpec_led {
++	struct led_classdev cdev;
++	struct hpec *ec;
++	u8 index;
++};
++
++struct hpec {
++	struct i2c_client *client;
++	struct mutex lock;	/* serializes EC transfers */
++	struct device *hwmon;
++	struct hpec_led leds[ARRAY_SIZE(hpec_leds)];
++	struct led_classdev kbd_led;
++	struct input_dev *input;
++};
++
++static int hpec_wait(struct hpec *ec, u8 status)
++{
++	int i, ret;
++
++	for (i = 0; i < HPEC_POLL_TRIES; i++) {
++		ret = i2c_smbus_read_byte_data(ec->client, HPEC_STATUS);
++		if (ret < 0)
++			return ret;
++		if (ret == status)
++			return 0;
++		fsleep(HPEC_POLL_US);
++	}
++
++	return -ETIMEDOUT;
++}
++
++static int hpec_command(struct hpec *ec, u8 cmd, u8 sub, u8 reply[HPEC_REPLY_LEN])
++{
++	u8 request[] = { cmd, sub };
++	int ret;
++
++	guard(mutex)(&ec->lock);
++
++	ret = hpec_wait(ec, HPEC_STATUS_IDLE);
++	if (ret)
++		return ret;
++
++	ret = i2c_smbus_write_i2c_block_data(ec->client, HPEC_REQUEST,
++					     sizeof(request), request);
++	if (ret)
++		return ret;
++
++	/*
++	 * Commands without a reply end here: the EC returns to idle without
++	 * its reply buffer being read, and HP's ACPI does not read it either.
++	 */
++	ret = hpec_wait(ec, HPEC_STATUS_DONE);
++	if (ret || !reply)
++		return ret;
++
++	ret = i2c_smbus_read_i2c_block_data(ec->client, HPEC_REPLY,
++					    HPEC_REPLY_LEN, reply);
++	if (ret < 0)
++		return ret;
++
++	return ret == HPEC_REPLY_LEN ? 0 : -EIO;
++}
++
++static int hpec_hwmon_read(struct device *dev, enum hwmon_sensor_types type,
++			   u32 attr, int channel, long *val)
++{
++	struct hpec *ec = dev_get_drvdata(dev);
++	u8 reply[HPEC_REPLY_LEN];
++	int ret;
++
++	switch (type) {
++	case hwmon_fan:
++		ret = hpec_command(ec, HPEC_FAN, HPEC_FAN_RPM, reply);
++		if (ret)
++			return ret;
++		*val = get_unaligned_le16(reply);
++		return 0;
++	case hwmon_temp:
++		ret = hpec_command(ec, HPEC_THERMISTOR,
++				   hpec_thermistors[channel], reply);
++		if (ret)
++			return ret;
++		if (reply[0] == HPEC_THERMISTOR_INVALID)
++			return -ENODATA;
++		*val = reply[0] * 1000;
++		return 0;
++	default:
++		return -EOPNOTSUPP;
++	}
++}
++
++static const char * const hpec_thermistor_labels[] = {
++	"EC thermistor 1", "EC thermistor 2", "EC thermistor 3",
++};
++
++static int hpec_hwmon_read_string(struct device *dev, enum hwmon_sensor_types type,
++				  u32 attr, int channel, const char **str)
++{
++	*str = hpec_thermistor_labels[channel];
++	return 0;
++}
++
++static const struct hwmon_ops hpec_hwmon_ops = {
++	.visible = 0444,
++	.read = hpec_hwmon_read,
++	.read_string = hpec_hwmon_read_string,
++};
++
++static const struct hwmon_channel_info * const hpec_hwmon_info[] = {
++	HWMON_CHANNEL_INFO(chip, HWMON_C_REGISTER_TZ),
++	HWMON_CHANNEL_INFO(fan, HWMON_F_INPUT),
++	HWMON_CHANNEL_INFO(temp,
++			   HWMON_T_INPUT | HWMON_T_LABEL,
++			   HWMON_T_INPUT | HWMON_T_LABEL,
++			   HWMON_T_INPUT | HWMON_T_LABEL),
++	NULL
++};
++
++static const struct hwmon_chip_info hpec_hwmon_chip = {
++	.ops = &hpec_hwmon_ops,
++	.info = hpec_hwmon_info,
++};
++
++static enum led_brightness hpec_led_get(struct led_classdev *cdev)
++{
++	struct hpec_led *led = container_of(cdev, struct hpec_led, cdev);
++	u8 reply[HPEC_REPLY_LEN];
++
++	if (hpec_command(led->ec, HPEC_LED, HPEC_LED_GET, reply))
++		return cdev->brightness;
++
++	return reply[1] & HPEC_LED_STATE(led->index) ? LED_ON : LED_OFF;
++}
++
++/*
++ * Only the backlight key changes the level, inside the EC: HP's ACPI has
++ * no command that sets it, so the LED has no set callback.
++ */
++static int hpec_kbd_level(struct hpec *ec)
++{
++	u8 reply[HPEC_REPLY_LEN];
++	int ret;
++
++	ret = hpec_command(ec, HPEC_KBD, HPEC_KBD_LEVEL_GET, reply);
++	if (ret)
++		return ret;
++
++	return min_t(u8, reply[0], ec->kbd_led.max_brightness);
++}
++
++static enum led_brightness hpec_kbd_led_get(struct led_classdev *cdev)
++{
++	struct hpec *ec = container_of(cdev, struct hpec, kbd_led);
++	int level = hpec_kbd_level(ec);
++
++	return level < 0 ? cdev->brightness : level;
++}
++
++static void hpec_handle_event(struct hpec *ec, u8 event)
++{
++	struct device *dev = &ec->client->dev;
++	const struct key_entry *key;
++	int level;
++
++	switch (event) {
++	case HPEC_EVENT_KBD:
++	case HPEC_EVENT_KBD_KEY:
++		/* HP's ACPI reads both the level and the timeout on these */
++		level = hpec_kbd_level(ec);
++		if (level >= 0)
++			led_classdev_notify_brightness_hw_changed(&ec->kbd_led, level);
++		sysfs_notify(&dev->kobj, NULL, "kbd_backlight_timeout");
++		return;
++	case HPEC_EVENT_FN_LOCK:
++		sysfs_notify(&dev->kobj, NULL, "fn_lock");
++		return;
++	case HPEC_EVENT_CPU_HOT:
++	case HPEC_EVENT_SKIN_HOT:
++		/* HP's ACPI asks the OS to hibernate on these */
++		dev_crit_ratelimited(dev, "EC reports a critical temperature (event %#x)\n",
++				     event);
++		return;
++	case HPEC_EVENT_FAN_STATUS:
++	case HPEC_EVENT_FAN_SPEED:
++		hwmon_notify_event(ec->hwmon, hwmon_fan, hwmon_fan_input, 0);
++		return;
++	case HPEC_EVENT_THERMISTOR ... HPEC_EVENT_THERMISTOR + ARRAY_SIZE(hpec_thermistors) - 1:
++		hwmon_notify_event(ec->hwmon, hwmon_temp, hwmon_temp_input,
++				   event - HPEC_EVENT_THERMISTOR);
++		return;
++	}
++
++	key = sparse_keymap_entry_from_scancode(ec->input, event);
++	if (key)
++		sparse_keymap_report_entry(ec->input, key, 1, true);
++	else
++		dev_dbg(dev, "unhandled EC event %#x\n", event);
++}
++
++static int hpec_read_event(struct hpec *ec)
++{
++	int event, ret;
++
++	guard(mutex)(&ec->lock);
++
++	event = i2c_smbus_read_byte_data(ec->client, HPEC_EVENT);
++	if (event <= 0)
++		return event;
++
++	ret = i2c_smbus_write_byte_data(ec->client, HPEC_EVENT, 0);
++
++	return ret ?: event;
++}
++
++/*
++ * The line is edge-triggered, so read until the EC reports no pending
++ * event: one left behind would otherwise wait for the next edge.
++ */
++static irqreturn_t hpec_irq(int irq, void *data)
++{
++	struct hpec *ec = data;
++	struct device *dev = &ec->client->dev;
++	unsigned int i;
++	int event;
++
++	for (i = 0; i < HPEC_MAX_EVENTS; i++) {
++		event = hpec_read_event(ec);
++		if (event < 0) {
++			dev_err_ratelimited(dev, "cannot read or acknowledge EC event: %d\n",
++					    event);
++			break;
++		}
++		if (!event)
++			break;
++
++		dev_dbg(dev, "EC event %#x\n", event);
++		hpec_handle_event(ec, event);
++	}
++
++	return i ? IRQ_HANDLED : IRQ_NONE;
++}
++
++static ssize_t kbd_backlight_timeout_show(struct device *dev,
++					  struct device_attribute *attr, char *buf)
++{
++	struct hpec *ec = dev_get_drvdata(dev);
++	u8 reply[HPEC_REPLY_LEN];
++	int ret;
++
++	ret = hpec_command(ec, HPEC_KBD, HPEC_KBD_TIMEOUT_GET, reply);
++	if (ret)
++		return ret;
++
++	if (reply[0] >= ARRAY_SIZE(hpec_kbd_timeouts))
++		return sysfs_emit(buf, "%#x\n", reply[0]);
++
++	return sysfs_emit(buf, "%s\n", hpec_kbd_timeouts[reply[0]]);
++}
++
++static ssize_t kbd_backlight_timeout_store(struct device *dev,
++					   struct device_attribute *attr,
++					   const char *buf, size_t count)
++{
++	struct hpec *ec = dev_get_drvdata(dev);
++	int i, ret;
++
++	i = sysfs_match_string(hpec_kbd_timeouts, buf);
++	if (i < 0)
++		return i;
++
++	ret = hpec_command(ec, HPEC_KBD, i, NULL);
++
++	return ret ?: count;
++}
++static DEVICE_ATTR_RW(kbd_backlight_timeout);
++
++/* Left Shift+Fn switches the mode inside the EC; this reads it as HP's ACPI does */
++static ssize_t fn_lock_show(struct device *dev, struct device_attribute *attr,
++			    char *buf)
++{
++	struct hpec *ec = dev_get_drvdata(dev);
++	u8 reply[HPEC_REPLY_LEN];
++	int ret;
++
++	ret = hpec_command(ec, HPEC_FN_LOCK, HPEC_FN_LOCK_GET, reply);
++	if (ret)
++		return ret;
++
++	return sysfs_emit(buf, "%d\n", reply[0] != HPEC_FN_LOCK_ACTION_KEYS);
++}
++static DEVICE_ATTR_RO(fn_lock);
++
++static struct attribute *hpec_attrs[] = {
++	&dev_attr_fn_lock.attr,
++	&dev_attr_kbd_backlight_timeout.attr,
++	NULL
++};
++ATTRIBUTE_GROUPS(hpec);
++
++static int hpec_register_leds(struct hpec *ec)
++{
++	struct device *dev = &ec->client->dev;
++	unsigned int i;
++	int ret;
++
++	for (i = 0; i < ARRAY_SIZE(hpec_leds); i++) {
++		struct hpec_led *led = &ec->leds[i];
++
++		led->ec = ec;
++		led->index = hpec_leds[i].index;
++		led->cdev.name = hpec_leds[i].name;
++		led->cdev.max_brightness = 1;
++		led->cdev.brightness_get = hpec_led_get;
++
++		ret = devm_led_classdev_register(dev, &led->cdev);
++		if (ret)
++			return ret;
++	}
++
++	ec->kbd_led.name = "platform::kbd_backlight";
++	ec->kbd_led.max_brightness = 2;
++	ec->kbd_led.flags = LED_BRIGHT_HW_CHANGED;
++	ec->kbd_led.brightness_get = hpec_kbd_led_get;
++
++	return devm_led_classdev_register(dev, &ec->kbd_led);
++}
++
++static int hpec_register_input(struct hpec *ec)
++{
++	struct device *dev = &ec->client->dev;
++	int ret;
++
++	ec->input = devm_input_allocate_device(dev);
++	if (!ec->input)
++		return -ENOMEM;
++
++	ec->input->name = "HP OmniBook EC hotkeys";
++	ec->input->phys = "hp-omnibook-ec/input0";
++	ec->input->id.bustype = BUS_I2C;
++
++	ret = sparse_keymap_setup(ec->input, hpec_keymap, NULL);
++	if (ret)
++		return ret;
++
++	return input_register_device(ec->input);
++}
++
++static int hpec_probe(struct i2c_client *client)
++{
++	struct device *dev = &client->dev;
++	u8 reply[HPEC_REPLY_LEN];
++	struct hpec *ec;
++	int ret;
++
++	if (!i2c_check_functionality(client->adapter, I2C_FUNC_SMBUS_BYTE_DATA |
++						      I2C_FUNC_SMBUS_I2C_BLOCK))
++		return -ENODEV;
++
++	ec = devm_kzalloc(dev, sizeof(*ec), GFP_KERNEL);
++	if (!ec)
++		return -ENOMEM;
++
++	ec->client = client;
++	i2c_set_clientdata(client, ec);
++
++	ret = devm_mutex_init(dev, &ec->lock);
++	if (ret)
++		return ret;
++
++	ret = hpec_command(ec, HPEC_FAN, HPEC_FAN_RPM, reply);
++	if (ret)
++		return dev_err_probe(dev, ret, "EC does not answer\n");
++
++	ec->hwmon = devm_hwmon_device_register_with_info(dev, "hp_omnibook_ec", ec,
++							 &hpec_hwmon_chip, NULL);
++	if (IS_ERR(ec->hwmon))
++		return PTR_ERR(ec->hwmon);
++
++	ret = hpec_register_leds(ec);
++	if (ret)
++		return ret;
++
++	if (client->irq <= 0)
++		return 0;
++
++	ret = hpec_register_input(ec);
++	if (ret)
++		return ret;
++
++	ret = devm_request_threaded_irq(dev, client->irq, NULL, hpec_irq,
++					IRQF_ONESHOT, "hp-omnibook-ec", ec);
++	if (ret)
++		return ret;
++
++	/* An event raised before the handler was installed has no edge left */
++	irq_wake_thread(client->irq, ec);
++
++	return 0;
++}
++
++/*
++ * The EC's events are not wakeup events: the lid and the keyboard wake the
++ * laptop, and fan and temperature changes must not. The line is masked
++ * while it is disabled, so events raised in suspend are read on resume.
++ */
++static int hpec_suspend(struct device *dev)
++{
++	struct hpec *ec = dev_get_drvdata(dev);
++
++	if (ec->client->irq > 0)
++		disable_irq(ec->client->irq);
++
++	return 0;
++}
++
++static int hpec_resume(struct device *dev)
++{
++	struct hpec *ec = dev_get_drvdata(dev);
++
++	if (ec->client->irq > 0) {
++		enable_irq(ec->client->irq);
++		irq_wake_thread(ec->client->irq, ec);
++	}
++
++	return 0;
++}
++
++static DEFINE_SIMPLE_DEV_PM_OPS(hpec_pm_ops, hpec_suspend, hpec_resume);
++
++static const struct of_device_id hpec_of_match[] = {
++	{ .compatible = "hp,omnibook-ultra-kg0xxx-ec" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, hpec_of_match);
++
++static struct i2c_driver hpec_driver = {
++	.driver = {
++		.name = "hp-omnibook-ec",
++		.of_match_table = hpec_of_match,
++		.dev_groups = hpec_groups,
++		.pm = pm_sleep_ptr(&hpec_pm_ops),
++	},
++	.probe = hpec_probe,
++};
++module_i2c_driver(hpec_driver);
++
++MODULE_AUTHOR("virtudude <virtudude@protonmail.com>");
++MODULE_DESCRIPTION("HP OmniBook (Snapdragon X2) embedded controller");
++MODULE_LICENSE("GPL");

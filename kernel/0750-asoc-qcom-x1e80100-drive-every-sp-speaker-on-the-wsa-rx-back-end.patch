@@ -1,4 +1,4 @@
-From f7017a2b573dfe9f5cbdede00958300f76e89f0a Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Wed, 11 Nov 2026 15:02:20 -0500
 Subject: [PATCH] ASoC: qcom: x1e80100: drive every SP speaker on the WSA RX
@@ -20,10 +20,10 @@ Assisted-by: Claude:claude-opus-5-5
  3 files changed, 19 insertions(+), 1 deletion(-)
 
 diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
-index e4c963ac3deb..b28456adbf24 100644
+index 4d714169e837..2f14ae333cef 100644
 --- a/sound/soc/qcom/qdsp6/audioreach.c
 +++ b/sound/soc/qcom/qdsp6/audioreach.c
-@@ -1973,6 +1973,13 @@ int audioreach_sp_register_speaker_map(struct thermal_zone_device * const *tzs,
+@@ -1834,6 +1834,13 @@ int audioreach_sp_register_speaker_map(struct thermal_zone_device * const *tzs,
  }
  EXPORT_SYMBOL_GPL(audioreach_sp_register_speaker_map);
  
@@ -34,26 +34,26 @@ index e4c963ac3deb..b28456adbf24 100644
 +}
 +EXPORT_SYMBOL_GPL(audioreach_sp_num_speakers);
 +
- /*
-  * SP runs only on a speaker map registered with explicit lanes for exactly
-  * @num speakers; anything else would guess the speaker order.
+ /* SP runs only on @num speakers registered in lane order */
+ static bool audioreach_sp_speakers_match(unsigned int num)
+ {
 diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
-index 4385e6013fd0..592ff35ef130 100644
+index 023c120754ea..3eb1f8760e04 100644
 --- a/sound/soc/qcom/qdsp6/audioreach.h
 +++ b/sound/soc/qcom/qdsp6/audioreach.h
-@@ -1176,6 +1176,7 @@ int audioreach_get_sp_vi_t0(long *vals, unsigned int count);
+@@ -1183,6 +1183,7 @@ int audioreach_get_sp_vi_t0(long *vals, unsigned int count);
  void audioreach_sp_set_required(bool required);
  void audioreach_sp_set_r0t0_from_uefi(bool enable, u32 r0_min_uohm, u32 r0_max_uohm);
  bool audioreach_sp_required(void);
 +unsigned int audioreach_sp_num_speakers(void);
  void audioreach_sp_set_hpf_speakers(u32 speakers);
- void audioreach_sp_session_begin(void);
- int audioreach_sp_session_end(struct device *dev);
+ int audioreach_sp_session_begin(struct q6apm_graph *graph);
+ int audioreach_sp_session_end(struct q6apm_graph *graph, int rc);
 diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
-index fa802d2e2ce7..109b74692924 100644
+index 6bdc65a7b8b1..cefac8b97ad5 100644
 --- a/sound/soc/qcom/x1e80100.c
 +++ b/sound/soc/qcom/x1e80100.c
-@@ -259,6 +259,13 @@ static int x1e80100_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
+@@ -241,6 +241,13 @@ static int x1e80100_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
  
  	rate->min = rate->max = 48000;
  	switch (cpu_dai->id) {
@@ -64,10 +64,10 @@ index fa802d2e2ce7..109b74692924 100644
 +			channels->max = audioreach_sp_num_speakers();
 +		}
 +		break;
- 	case WSA_CODEC_DMA_TX_0:
- 		/* V/I sense: 8 kHz, one S32 word per speaker */
- 		rate->min = 8000;
-@@ -354,7 +361,10 @@ static int x1e80100_snd_prepare(struct snd_pcm_substream *substream)
+ 	case TX_CODEC_DMA_TX_0:
+ 	case TX_CODEC_DMA_TX_1:
+ 	case TX_CODEC_DMA_TX_2:
+@@ -328,7 +335,10 @@ static int x1e80100_snd_prepare(struct snd_pcm_substream *substream)
  	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
  	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
  	struct x1e80100_snd_data *data = snd_soc_card_get_drvdata(rtd->card);

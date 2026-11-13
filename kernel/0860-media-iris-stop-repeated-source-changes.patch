@@ -1,0 +1,72 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Fri, 13 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/2] media: iris: stop repeated source changes
+
+Two fixes by Diogo Trindade, taken from armada. Without them the
+firmware raises the same source change on every bitstream port
+restart.
+
+ 1/2 media: iris: send the stream's POC type to the firmware
+     Author: Diogo Trindade <diogotr7@gmail.com>
+     Taken from: https://github.com/armada-os/armada/blob/b031deef99a095104ef234c5a0705850152dffe1/packages/kernel/patches/1030-media-iris-send-the-stream-POC-type.patch
+ 2/2 media: iris: stop the AV1 tier overwriting the HEVC tier
+     Author: Diogo Trindade <diogotr7@gmail.com>
+     Taken from: https://github.com/armada-os/armada/blob/b031deef99a095104ef234c5a0705850152dffe1/packages/kernel/patches/1031-media-iris-stop-AV1-tier-overwriting-HEVC-tier.patch
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Diogo Trindade <diogotr7@gmail.com>
+Date: Sun, 11 Oct 2026 23:18:05 +0100
+Subject: [PATCH 1/2] media: iris: send the stream's POC type to the firmware
+
+The firmware raises a source change when a stream property differs from
+what the driver set. HFI_PROP_PIC_ORDER_CNT_TYPE is always set to 0, so
+an H.264 stream of another type raises the same change again every time
+the bitstream port is restarted. Set the type the firmware reported.
+
+Link: https://github.com/armada-os/armada/blob/b031deef99a095104ef234c5a0705850152dffe1/packages/kernel/patches/1030-media-iris-send-the-stream-POC-type.patch
+---
+ drivers/media/platform/qcom/iris/iris_hfi_gen2_command.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/qcom/iris/iris_hfi_gen2_command.c b/drivers/media/platform/qcom/iris/iris_hfi_gen2_command.c
+index b071980ddd27..5901fbaffb8e 100644
+--- a/drivers/media/platform/qcom/iris/iris_hfi_gen2_command.c
++++ b/drivers/media/platform/qcom/iris/iris_hfi_gen2_command.c
+@@ -339,7 +339,7 @@ static int iris_hfi_gen2_set_picture_order_count(struct iris_inst *inst, u32 pla
+ {
+ 	struct iris_inst_hfi_gen2 *inst_hfi_gen2 = to_iris_inst_hfi_gen2(inst);
+ 	u32 port = iris_hfi_gen2_get_port(inst, plane);
+-	u32 poc = 0;
++	u32 poc = inst->fw_caps[POC].value;
+ 
+ 	inst_hfi_gen2->src_subcr_params.pic_order_cnt = poc;
+ 
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Diogo Trindade <diogotr7@gmail.com>
+Date: Sun, 11 Oct 2026 23:18:05 +0100
+Subject: [PATCH 2/2] media: iris: stop the AV1 tier overwriting the HEVC tier
+
+The TIER_AV1 capability has a setter that runs for every codec and
+writes HFI_PROP_TIER to the bitstream port after
+iris_hfi_gen2_set_tier(), so a High tier HEVC stream never matches and
+raises the same source change on every restart. Drop the setter:
+iris_hfi_gen2_set_tier() already sets the AV1 tier.
+
+Link: https://github.com/armada-os/armada/blob/b031deef99a095104ef234c5a0705850152dffe1/packages/kernel/patches/1031-media-iris-stop-AV1-tier-overwriting-HEVC-tier.patch
+---
+ drivers/media/platform/qcom/iris/iris_hfi_gen2.c | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/drivers/media/platform/qcom/iris/iris_hfi_gen2.c b/drivers/media/platform/qcom/iris/iris_hfi_gen2.c
+index 79bbd06ef8d2..dedb744f9a1f 100644
+--- a/drivers/media/platform/qcom/iris/iris_hfi_gen2.c
++++ b/drivers/media/platform/qcom/iris/iris_hfi_gen2.c
+@@ -1007,7 +1007,6 @@ static const struct platform_inst_fw_cap inst_fw_cap_sm8550_dec[] = {
+ 		.value = 0,
+ 		.hfi_id = HFI_PROP_TIER,
+ 		.flags = CAP_FLAG_INPUT_PORT,
+-		.set = iris_set_u32,
+ 	},
+ 	{
+ 		.cap_id = DRAP,

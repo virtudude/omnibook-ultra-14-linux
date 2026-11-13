@@ -1,0 +1,505 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Fri, 13 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/4] soundwire, ASoC: runtime PM on the speaker buses
+
+Reliable runtime PM for the WSA buses and amplifiers: the v3.1 buses
+resume through a full reset and re-enumeration, the amplifiers wait
+for their reinitialisation and are held in reset while all are
+suspended, and their regmap stays off the SoundWire core registers.
+
+ 1/4 ASoC: codecs: wsa884x: keep the SoundWire core registers out of the regmap
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 2/4 soundwire: qcom: re-enumerate v3.1 buses on runtime resume
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 3/4 ASoC: codecs: wsa884x: wait for the reinitialisation on runtime resume
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 4/4 ASoC: codecs: wsa884x: hold the amplifier in reset while runtime suspended
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Thu, 12 Nov 2026 17:23:41 -0500
+Subject: [PATCH 1/4] ASoC: codecs: wsa884x: keep the SoundWire core registers out
+ of the regmap
+
+The regmap spans every address from 0, so the SoundWire SCP and data
+port registers below WSA884X_BASE are readable and cacheable through
+it. Reading the debugfs register dump of an active amplifier caches
+them, SCP_DevNumber included, and the next regcache_sync() after a
+detach writes them all back: thousands of writes that take seconds and
+reprogram the device number and data ports behind the SoundWire core's
+back.
+
+The driver only accesses its own registers through the regmap, so make
+nothing below WSA884X_BASE readable or writeable.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/codecs/wsa884x.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/sound/soc/codecs/wsa884x.c b/sound/soc/codecs/wsa884x.c
+index 4a397b1a2b17..e1f1b8da7cb1 100644
+--- a/sound/soc/codecs/wsa884x.c
++++ b/sound/soc/codecs/wsa884x.c
+@@ -1388,9 +1388,15 @@ static bool wsa884x_readonly_register(struct device *dev, unsigned int reg)
+ 	return false;
+ }
+ 
++/* Below WSA884X_BASE are the SoundWire core's SCP and data port registers */
++static bool wsa884x_readable_register(struct device *dev, unsigned int reg)
++{
++	return reg >= WSA884X_BASE;
++}
++
+ static bool wsa884x_writeable_register(struct device *dev, unsigned int reg)
+ {
+-	return !wsa884x_readonly_register(dev, reg);
++	return reg >= WSA884X_BASE && !wsa884x_readonly_register(dev, reg);
+ }
+ 
+ static bool wsa884x_volatile_register(struct device *dev, unsigned int reg)
+@@ -1411,6 +1417,7 @@ static const struct regmap_config wsa884x_regmap_config = {
+ 	.max_register = WSA884X_MAX_REGISTER,
+ 	.num_reg_defaults = ARRAY_SIZE(wsa884x_defaults),
+ 	.volatile_reg = wsa884x_volatile_register,
++	.readable_reg = wsa884x_readable_register,
+ 	.writeable_reg = wsa884x_writeable_register,
+ 	.reg_format_endian = REGMAP_ENDIAN_NATIVE,
+ 	.val_format_endian = REGMAP_ENDIAN_NATIVE,
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Thu, 12 Nov 2026 09:33:42 -0500
+Subject: [PATCH 2/4] soundwire: qcom: re-enumerate v3.1 buses on runtime resume
+
+On Glymur the two WSA buses, the only v3.1 controllers, exit runtime
+clock stop unreliably: in 11 of 20 idle/resume cycles WSA884x
+amplifiers came back unattached, raised bus clashes, or resumed without
+V/I feedback. Forbidding runtime PM instead keeps the LPASS clocks and
+the ADSP's votes up, so the SoC never reaches CX power collapse in
+s2idle.
+
+Mark clock stop as unsupported on v3.1.x controllers, so runtime resume
+soft-resets the controller and waits for enumeration, as at probe.
+Mark the peripherals unattached before the reset, as the AMD and Intel
+managers do; otherwise the core sees no status change and never
+reinitialises them.
+
+Based on a patch by David Heinemeier Hansson for the ASUS Zenbook A16.
+
+Link: https://github.com/omacom/omarchy-pkgs/pull/1842
+Assisted-by: Claude:claude-opus-5-5
+---
+ drivers/soundwire/qcom.c | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/soundwire/qcom.c b/drivers/soundwire/qcom.c
+index 30e2e76a25e5..2c37391b464e 100644
+--- a/drivers/soundwire/qcom.c
++++ b/drivers/soundwire/qcom.c
+@@ -225,6 +225,7 @@ struct qcom_swrm_ctrl {
+ 	u32 slave_status;
+ 	u32 wr_fifo_depth;
+ 	bool clock_stop_not_supported;
++	bool clock_stop_unreliable;
+ 	/* Per-Slave SCP_ADDRPAGE1/2 shadow; -1 = unknown. */
+ 	s16 page1_cache[SDW_MAX_DEVICES + 1];
+ 	s16 page2_cache[SDW_MAX_DEVICES + 1];
+@@ -723,7 +724,7 @@ static int qcom_swrm_enumerate(struct sdw_bus *bus)
+ 
+ 		sdw_extract_slave_id(bus, addr, &id);
+ 		found = false;
+-		ctrl->clock_stop_not_supported = false;
++		ctrl->clock_stop_not_supported = ctrl->clock_stop_unreliable;
+ 		/* Now compare with entries */
+ 		list_for_each_entry_safe(slave, _s, &bus->slaves, node) {
+ 			if (sdw_compare_devid(slave, id) == 0) {
+@@ -1714,6 +1715,13 @@ static int qcom_swrm_probe(struct platform_device *pdev)
+ 	prop->default_row = data->default_rows;
+ 
+ 	ctrl->reg_read(ctrl, SWRM_COMP_HW_VERSION, &ctrl->version);
++	/*
++	 * Peripherals on v3.1 buses often fail to come back from a clock
++	 * stop. Resume through a full reset and re-enumeration instead.
++	 */
++	ctrl->clock_stop_unreliable =
++		(ctrl->version & GENMASK(31, 16)) == SWRM_VERSION_3_1_0;
++	ctrl->clock_stop_not_supported = ctrl->clock_stop_unreliable;
+ 	qcom_swrm_set_ee_register_layout(ctrl, data);
+ 
+ 	ret = devm_request_threaded_irq(dev, ctrl->irq, NULL,
+@@ -1807,6 +1815,8 @@ static int __maybe_unused swrm_runtime_resume(struct device *dev)
+ 	enable_irq(ctrl->irq);
+ 
+ 	if (ctrl->clock_stop_not_supported) {
++		/* The reset detaches every peripheral: report them unattached */
++		sdw_clear_slave_status(&ctrl->bus, SDW_UNATTACH_REQUEST_MASTER_RESET);
+ 		reinit_completion(&ctrl->enumeration);
+ 		ctrl->reg_write(ctrl, SWRM_COMP_SW_RESET, 0x01);
+ 		usleep_range(100, 105);
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Fri, 13 Nov 2026 08:58:25 -0500
+Subject: [PATCH 3/4] ASoC: codecs: wsa884x: wait for the reinitialisation on
+ runtime resume
+
+An amplifier that detaches while runtime suspended, as when its bus
+resumes through a full reset, is initialised again from the bus status
+handler once it reattaches. Runtime resume does not wait for that and
+syncs the register cache at once, possibly before the initialisation or
+after a failed one, and a cache sync cannot replace it, as
+ANA_WO_CTL_0 is volatile.
+
+Have runtime resume wait for the bus to initialise an uninitialised
+amplifier, and fail unless the driver's initialisation succeeded too,
+since the bus signals completion either way. Change the cache mode only
+under a lock the initialisation holds, so a suspend or failed resume
+cannot turn its writes into cache-only no-ops while it counts as done.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/codecs/wsa884x.c | 58 +++++++++++++++++++++++++++-----------
+ 1 file changed, 42 insertions(+), 16 deletions(-)
+
+diff --git a/sound/soc/codecs/wsa884x.c b/sound/soc/codecs/wsa884x.c
+index e1f1b8da7cb1..6b4221b8901e 100644
+--- a/sound/soc/codecs/wsa884x.c
++++ b/sound/soc/codecs/wsa884x.c
+@@ -752,6 +752,8 @@ struct wsa884x_priv {
+ 	int active_ports;
+ 	int dev_mode;
+ 	bool hw_init;
++	/* Orders the register cache mode with the initialisation's writes */
++	struct mutex cache_lock;
+ 	/*
+ 	 * Protects temperature reading code (related to speaker protection) and
+ 	 * fields: temperature and pa_on.
+@@ -778,6 +780,7 @@ struct wsa884x_priv {
+ };
+ 
+ #define WSA884X_VI_OFF_RETRY_MS	20
++#define WSA884X_INIT_TIMEOUT_MS	1000
+ 
+ enum {
+ 	COMP_OFFSET0,
+@@ -1675,7 +1678,7 @@ static int wsa884x_init(struct wsa884x_priv *wsa884x)
+ 
+ 	wsa884x_set_gain_parameters(wsa884x);
+ 
+-	wsa884x->hw_init = true;
++	WRITE_ONCE(wsa884x->hw_init, true);
+ 
+ 	return 0;
+ }
+@@ -1687,9 +1690,11 @@ static int wsa884x_update_status(struct sdw_slave *slave,
+ 	int ret;
+ 
+ 	if (status == SDW_SLAVE_UNATTACHED) {
+-		wsa884x->hw_init = false;
+-		regcache_cache_only(wsa884x->regmap, true);
+-		regcache_mark_dirty(wsa884x->regmap);
++		scoped_guard(mutex, &wsa884x->cache_lock) {
++			WRITE_ONCE(wsa884x->hw_init, false);
++			regcache_cache_only(wsa884x->regmap, true);
++			regcache_mark_dirty(wsa884x->regmap);
++		}
+ 		if (wsa884x->vi_guard) {
+ 			guard(mutex)(&wsa884x->vi_guard_lock);
+ 
+@@ -1712,6 +1717,8 @@ static int wsa884x_update_status(struct sdw_slave *slave,
+ 	if (wsa884x->hw_init || status != SDW_SLAVE_ATTACHED)
+ 		return 0;
+ 
++	guard(mutex)(&wsa884x->cache_lock);
++
+ 	regcache_cache_only(wsa884x->regmap, false);
+ 	ret = regcache_sync(wsa884x->regmap);
+ 	if (ret < 0) {
+@@ -2506,6 +2513,7 @@ static int wsa884x_probe(struct sdw_slave *pdev,
+ 		return -ENOMEM;
+ 
+ 	mutex_init(&wsa884x->sp_lock);
++	mutex_init(&wsa884x->cache_lock);
+ 
+ 	for (i = 0; i < WSA884X_SUPPLIES_NUM; i++)
+ 		wsa884x->supplies[i].supply = wsa884x_supply_name[i];
+@@ -2638,28 +2646,46 @@ static int wsa884x_probe(struct sdw_slave *pdev,
+ 
+ static int wsa884x_runtime_suspend(struct device *dev)
+ {
+-	struct regmap *regmap = dev_get_regmap(dev, NULL);
++	struct wsa884x_priv *wsa884x = dev_get_drvdata(dev);
+ 
+-	regcache_cache_only(regmap, true);
+-	regcache_mark_dirty(regmap);
++	guard(mutex)(&wsa884x->cache_lock);
++	regcache_cache_only(wsa884x->regmap, true);
++	regcache_mark_dirty(wsa884x->regmap);
+ 
+ 	return 0;
+ }
+ 
+ static int wsa884x_runtime_resume(struct device *dev)
+ {
+-	struct regmap *regmap = dev_get_regmap(dev, NULL);
+-	int ret;
++	struct wsa884x_priv *wsa884x = dev_get_drvdata(dev);
++	int ret = 0;
+ 
+-	regcache_cache_only(regmap, false);
+-	ret = regcache_sync(regmap);
+-	if (ret) {
+-		regcache_cache_only(regmap, true);
+-		regcache_mark_dirty(regmap);
+-		return ret;
++	/*
++	 * Detached while suspended: the reattach initialises the amplifier,
++	 * whose volatile registers a cache sync does not restore. The bus
++	 * completes the initialisation even if that failed, so check hw_init.
++	 */
++	if (!READ_ONCE(wsa884x->hw_init)) {
++		ret = sdw_slave_wait_for_init(wsa884x->slave, WSA884X_INIT_TIMEOUT_MS);
++		if (!ret && !READ_ONCE(wsa884x->hw_init))
++			ret = -EIO;
+ 	}
+ 
+-	return 0;
++	if (!ret) {
++		guard(mutex)(&wsa884x->cache_lock);
++		regcache_cache_only(wsa884x->regmap, false);
++		ret = regcache_sync(wsa884x->regmap);
++	}
++	if (!ret)
++		return 0;
++
++	dev_err(dev, "resume failed: %d\n", ret);
++	scoped_guard(mutex, &wsa884x->cache_lock) {
++		regcache_cache_only(wsa884x->regmap, true);
++		regcache_mark_dirty(wsa884x->regmap);
++	}
++
++	return ret;
+ }
+ 
+ static const struct dev_pm_ops wsa884x_pm_ops = {
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Fri, 13 Nov 2026 08:59:41 -0500
+Subject: [PATCH 4/4] ASoC: codecs: wsa884x: hold the amplifier in reset while
+ runtime suspended
+
+When the SoundWire controller resumes through a full reset, the
+amplifiers still carry their link state from before the suspend, and
+re-synchronisation fails in 4 of 20 idle/resume cycles on Glymur
+(parity errors, bus clashes, or V/I feedback that does not stream).
+
+When the shutdown line is a shared reset control, assert it in runtime
+suspend and release it in runtime resume, so the amplifiers come back
+from power-on reset as at probe. Amplifiers with a private powerdown
+GPIO are unchanged.
+
+The reset core does not serialise its shared count with the GPIO
+write, so the line is taken and dropped under a driver-wide lock; it
+asserts only once every amplifier on it is suspended. It is released
+only once every peripheral on the bus reads unattached: released
+earlier, the amplifiers re-enumerate at their old device numbers with
+no status change and are never initialised again. A line must serve
+the amplifiers of one bus.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/codecs/wsa884x.c | 114 ++++++++++++++++++++++++++++++++++---
+ 1 file changed, 105 insertions(+), 9 deletions(-)
+
+diff --git a/sound/soc/codecs/wsa884x.c b/sound/soc/codecs/wsa884x.c
+index 6b4221b8901e..bef08000aebb 100644
+--- a/sound/soc/codecs/wsa884x.c
++++ b/sound/soc/codecs/wsa884x.c
+@@ -10,6 +10,7 @@
+ #include <linux/gpio/consumer.h>
+ #include <linux/hwmon.h>
+ #include <linux/init.h>
++#include <linux/iopoll.h>
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
+@@ -747,6 +748,8 @@ struct wsa884x_priv {
+ 	struct sdw_port_config vi_port_config;
+ 	struct gpio_desc *sd_n;
+ 	struct reset_control *sd_reset;
++	/* This amplifier holds sd_reset deasserted */
++	bool sd_held;
+ 	bool port_prepared[WSA884X_MAX_SWR_PORTS];
+ 	bool port_enable[WSA884X_MAX_SWR_PORTS];
+ 	int active_ports;
+@@ -2427,22 +2430,93 @@ static void wsa884x_tz_unregister(void *data)
+ 	thermal_zone_device_unregister(data);
+ }
+ 
++/*
++ * The reset core does not order its shared deassert count with the line's
++ * GPIO write: a release racing the last hold's drop can leave the line
++ * asserted under an amplifier that counts as running.
++ */
++static DEFINE_MUTEX(wsa884x_sd_lock);
++
++/* A shutdown line serves the amplifiers on one bus */
++static bool wsa884x_bus_detached(struct wsa884x_priv *wsa884x)
++{
++	struct sdw_bus *bus = wsa884x->slave->bus;
++	struct sdw_slave *slave;
++
++	guard(mutex)(&bus->bus_lock);
++	list_for_each_entry(slave, &bus->slaves, node)
++		if (READ_ONCE(slave->status) != SDW_SLAVE_UNATTACHED)
++			return false;
++
++	return true;
++}
++
++static int wsa884x_sd_get(struct wsa884x_priv *wsa884x)
++{
++	bool detached;
++	int ret;
++
++	guard(mutex)(&wsa884x_sd_lock);
++
++	if (wsa884x->sd_held)
++		return 0;
++
++	/*
++	 * Released before the bus saw the amplifiers detach, they can
++	 * re-enumerate unnoticed and are then never initialised again.
++	 */
++	if (reset_control_status(wsa884x->sd_reset) > 0) {
++		ret = read_poll_timeout(wsa884x_bus_detached, detached, detached,
++					USEC_PER_MSEC, WSA884X_INIT_TIMEOUT_MS * USEC_PER_MSEC,
++					false, wsa884x);
++		if (ret)
++			return ret;
++	}
++
++	ret = reset_control_deassert(wsa884x->sd_reset);
++	if (ret) {
++		/* Give the reset core its count back */
++		reset_control_assert(wsa884x->sd_reset);
++		return ret;
++	}
++	wsa884x->sd_held = true;
++
++	return 0;
++}
++
++static void wsa884x_sd_put(struct wsa884x_priv *wsa884x)
++{
++	int ret;
++
++	guard(mutex)(&wsa884x_sd_lock);
++
++	if (!wsa884x->sd_held)
++		return;
++
++	/* The reset core drops the count even when the line write fails */
++	wsa884x->sd_held = false;
++	ret = reset_control_assert(wsa884x->sd_reset);
++	if (ret)
++		dev_err(wsa884x->dev, "shutdown line assert failed: %d\n", ret);
++}
++
+ static void wsa884x_reset_powerdown(void *data)
+ {
+ 	struct wsa884x_priv *wsa884x = data;
+ 
+ 	if (wsa884x->sd_reset)
+-		reset_control_assert(wsa884x->sd_reset);
++		wsa884x_sd_put(wsa884x);
+ 	else
+ 		gpiod_direction_output(wsa884x->sd_n, 1);
+ }
+ 
+-static void wsa884x_reset_deassert(struct wsa884x_priv *wsa884x)
++static int wsa884x_reset_deassert(struct wsa884x_priv *wsa884x)
+ {
+ 	if (wsa884x->sd_reset)
+-		reset_control_deassert(wsa884x->sd_reset);
+-	else
+-		gpiod_direction_output(wsa884x->sd_n, 0);
++		return wsa884x_sd_get(wsa884x);
++
++	gpiod_direction_output(wsa884x->sd_n, 0);
++	return 0;
+ }
+ 
+ static void wsa884x_regulator_disable(void *data)
+@@ -2568,7 +2642,9 @@ static int wsa884x_probe(struct sdw_slave *pdev,
+ 	if (ret)
+ 		return ret;
+ 
+-	wsa884x_reset_deassert(wsa884x);
++	ret = wsa884x_reset_deassert(wsa884x);
++	if (ret)
++		return dev_err_probe(dev, ret, "Failed to release the shutdown line\n");
+ 	ret = devm_add_action_or_reset(dev, wsa884x_reset_powerdown, wsa884x);
+ 	if (ret)
+ 		return ret;
+@@ -2644,13 +2720,24 @@ static int wsa884x_probe(struct sdw_slave *pdev,
+ 					       ARRAY_SIZE(wsa884x_dais));
+ }
+ 
++/*
++ * With a shared shutdown line, hold the amplifier in reset while runtime
++ * suspended. The line only asserts once every amplifier on it is suspended,
++ * which lets the bus controller suspend too, and after the controller's
++ * reset the amplifiers come back from power-on reset instead of carrying
++ * stale link state.
++ */
+ static int wsa884x_runtime_suspend(struct device *dev)
+ {
+ 	struct wsa884x_priv *wsa884x = dev_get_drvdata(dev);
+ 
+-	guard(mutex)(&wsa884x->cache_lock);
+-	regcache_cache_only(wsa884x->regmap, true);
+-	regcache_mark_dirty(wsa884x->regmap);
++	scoped_guard(mutex, &wsa884x->cache_lock) {
++		regcache_cache_only(wsa884x->regmap, true);
++		regcache_mark_dirty(wsa884x->regmap);
++	}
++
++	if (wsa884x->sd_reset)
++		wsa884x_sd_put(wsa884x);
+ 
+ 	return 0;
+ }
+@@ -2660,6 +2747,12 @@ static int wsa884x_runtime_resume(struct device *dev)
+ 	struct wsa884x_priv *wsa884x = dev_get_drvdata(dev);
+ 	int ret = 0;
+ 
++	if (wsa884x->sd_reset) {
++		ret = wsa884x_sd_get(wsa884x);
++		if (ret)
++			goto err;
++	}
++
+ 	/*
+ 	 * Detached while suspended: the reattach initialises the amplifier,
+ 	 * whose volatile registers a cache sync does not restore. The bus
+@@ -2679,11 +2772,14 @@ static int wsa884x_runtime_resume(struct device *dev)
+ 	if (!ret)
+ 		return 0;
+ 
++err:
+ 	dev_err(dev, "resume failed: %d\n", ret);
+ 	scoped_guard(mutex, &wsa884x->cache_lock) {
+ 		regcache_cache_only(wsa884x->regmap, true);
+ 		regcache_mark_dirty(wsa884x->regmap);
+ 	}
++	if (wsa884x->sd_reset)
++		wsa884x_sd_put(wsa884x);
+ 
+ 	return ret;
+ }

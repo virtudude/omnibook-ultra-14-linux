@@ -1,18 +1,17 @@
-From 6cf12d417b533f2073cb1d46855e8d19b39fc1a6 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Wed, 11 Nov 2026 13:47:52 -0500
-Subject: [PATCH] arm64: dts: qcom: glymur-hp-omnibook-ultra-kg0xxx: Poll for
+Subject: [PATCH] arm64: dts: qcom: glymur-hp-omnibook-ultra-kg0xxx: poll for
  SCMI completions
 
 With the CPUCP mailbox built as a module, the SCMI performance protocol
-on this board times out at boot (error -110) and cpufreq never comes
-up. Building the mailbox in avoids the timeout but makes the board
-reset silently some minutes after boot.
+times out at boot (-110) and cpufreq never comes up. Built in, it
+avoids the timeout but the board resets silently minutes after boot.
 
-Set arm,no-completion-irq on the SCMI node so the transport polls for
-completions instead of depending on the mailbox interrupt being ready
-when scmi-cpufreq probes. A glymur-wide version was proposed in [1];
-this can go once the CPUCP mailbox/SCMI probe ordering is fixed.
+Set arm,no-completion-irq so the SCMI transport polls for completions
+instead of waiting for the mailbox interrupt. Why the completions go
+missing is not known. A glymur-wide version was proposed in [1]; drop
+this once the cause is fixed.
 
 Link: https://lore.kernel.org/r/20260808172211.137577-1-jesse.casco@gmail.com [1]
 Assisted-by: Claude:claude-opus-5-5

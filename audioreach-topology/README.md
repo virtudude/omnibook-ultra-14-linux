@@ -27,13 +27,13 @@ The tools needed are `python3`, `m4`, `alsatplg` (alsa-utils) and `git`.
 
 The output is `OUTDIR/GLYMUR-HP-OmniBook-Ultra-14-kg0xxx-tplg.bin` (`OUTDIR` defaults to `./out`). Install it as `/lib/firmware/qcom/glymur/GLYMUR-HP-OmniBook-Ultra-14-kg0xxx-tplg.bin`. The `.bin` contains HP's tuning data: keep it local.
 
-Built from the sp174082 ACDB, the output's sha256 is `bb0fb3e0fbdbc1c26962f9214fe40b044d89d1148d79ebfb273552b8428432d0`.
+Built from the sp174082 ACDB, the output's sha256 is `02dfe9e6be0be2fc13a844d2cafaf926335931deadf7728ecd77ec7809878a9a`.
 
 ## Fixed parameters
 
 These are in `tools/gen_m4.py`:
 - **Thermal targets:** 90 °C for the woofers and 80 °C for the tweeters. HP uses 100 °C and 90 °C.
-- **Speaker full scale:** 3.246, 3.387, 3.283 and 3.234 V, in the order woofer left, tweeter left, woofer right, tweeter right. These values must match `qcom,speaker-full-scale-microvolt` in the device tree. The kernel refuses the graph if any speaker differs by more than 1 %.
+- **Speaker full scale:** 5.449, 5.686, 5.511 and 5.429 V, in the order woofer left, tweeter left, woofer right, tweeter right. These values must match `qcom,speaker-full-scale-microvolt` in the device tree. The kernel refuses the graph if any speaker differs by more than 1 %.
 - **Changes to HP's records:** the tuning-mode flags are off, and SP records 0x08001AEB and 0x08001AEC are left out.
 
 The topology needs HP's DSP modules `spv5_module.so.1`, `msppv5_module.so.1` and `SAPlusCmnModule.so.1` in `/usr/lib/dsp/adsp/`. They come from the same driver pack, folder `qcsubsys_ext_adsp8480_fix_listen_WHQL/ADSP`.

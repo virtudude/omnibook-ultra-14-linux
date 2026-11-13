@@ -1,27 +1,32 @@
-From 234c924e17e45be164323d2c721114ac296f3b7b Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Mon, 9 Nov 2026 20:02:27 -0500
 Subject: [PATCH] ASoC: qcom: x1e80100: fail the card if a speaker volume limit
- cannot be applied
+ fails
 
 The speaker volume limits also clamp the current values, which reset
-above them (WSA macro digital volume at 0 dB, wsa884x PA gain at code
-2). snd_soc_limit_volume() errors were ignored, so a limit that failed
-left the speakers at reset gain silently.
+above them. snd_soc_limit_volume() errors were ignored, so a failed
+limit silently left the speakers at reset gain.
 
-Apply the limits from a table, skip controls a board does not have, and
-fail the card if one it has cannot be limited.
+Apply the limits from a table, skip controls the board does not have,
+and fail the card if one it has cannot be limited. ASoC calls a link's
+.exit only after its .init succeeded, so undo the WSA RX 0 speaker
+registration when the limits or the jack setup fail.
 
+Also limit "WSA_RXn_MIX Digital Volume", which resets to 0 dB as well
+and would let a stream on the mix input bypass the main gain's limit.
+
+Fixes: 0a5ee0e520ef ("ASoC: qcom: x1e80100: limit speaker volumes")
 Assisted-by: Claude:claude-opus-5-5
 ---
- sound/soc/qcom/x1e80100.c | 54 +++++++++++++++++++++++++++++++--------
- 1 file changed, 44 insertions(+), 10 deletions(-)
+ sound/soc/qcom/x1e80100.c | 69 ++++++++++++++++++++++++++++++++-------
+ 1 file changed, 58 insertions(+), 11 deletions(-)
 
 diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
-index 7a54f6d49f00..90a2f7164d3a 100644
+index 7a54f6d49f00..3b52151c41aa 100644
 --- a/sound/soc/qcom/x1e80100.c
 +++ b/sound/soc/qcom/x1e80100.c
-@@ -75,6 +75,46 @@ static void x1e80100_snd_exit(struct snd_soc_pcm_runtime *rtd)
+@@ -75,6 +75,50 @@ static void x1e80100_snd_exit(struct snd_soc_pcm_runtime *rtd)
  		audioreach_sp_register_speaker_map(NULL, 0);
  }
  
@@ -33,6 +38,10 @@ index 7a54f6d49f00..90a2f7164d3a 100644
 +	{ "WSA WSA_RX1 Digital Volume", 81 },
 +	{ "WSA2 WSA_RX0 Digital Volume", 81 },
 +	{ "WSA2 WSA_RX1 Digital Volume", 81 },
++	{ "WSA WSA_RX0_MIX Digital Volume", 81 },
++	{ "WSA WSA_RX1_MIX Digital Volume", 81 },
++	{ "WSA2 WSA_RX0_MIX Digital Volume", 81 },
++	{ "WSA2 WSA_RX1_MIX Digital Volume", 81 },
 +	{ "SpkrLeft PA Volume", 6 },
 +	{ "SpkrRight PA Volume", 6 },
 +	{ "WooferLeft PA Volume", 6 },
@@ -68,7 +77,7 @@ index 7a54f6d49f00..90a2f7164d3a 100644
  static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
  {
  	struct x1e80100_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
-@@ -82,6 +122,7 @@ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
+@@ -82,6 +126,7 @@ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
  	struct snd_soc_card *card = rtd->card;
  	struct snd_soc_jack *dp_jack = NULL;
  	int dp_pcm_id = 0;
@@ -76,7 +85,7 @@ index 7a54f6d49f00..90a2f7164d3a 100644
  
  	switch (cpu_dai->id) {
  	case WSA_CODEC_DMA_RX_0:
-@@ -94,16 +135,9 @@ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
+@@ -94,16 +139,9 @@ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
  		 * reduce the risk of speaker damage until we have active
  		 * speaker protection in place.
  		 */
@@ -92,7 +101,25 @@ index 7a54f6d49f00..90a2f7164d3a 100644
 -		snd_soc_limit_volume(card, "TweeterRight PA Volume", 6);
 +		ret = x1e80100_limit_speaker_volumes(card);
 +		if (ret)
-+			return ret;
++			goto err_exit;
  		break;
  	case DISPLAY_PORT_RX_0:
  		dp_pcm_id = 0;
+@@ -120,7 +158,16 @@ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
+ 	if (dp_jack)
+ 		return qcom_snd_dp_jack_setup(rtd, dp_jack, dp_pcm_id);
+ 
+-	return qcom_snd_wcd_jack_setup(rtd, &data->jack, &data->jack_setup);
++	ret = qcom_snd_wcd_jack_setup(rtd, &data->jack, &data->jack_setup);
++	if (ret)
++		goto err_exit;
++
++	return 0;
++
++err_exit:
++	/* ASoC only calls .exit for a runtime whose .init succeeded */
++	x1e80100_snd_exit(rtd);
++	return ret;
+ }
+ 
+ /* VI codec DAIs on the WSA playback link run at 8 kHz, S32_LE */

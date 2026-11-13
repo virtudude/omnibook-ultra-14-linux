@@ -1,0 +1,113 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Thu, 12 Nov 2026 23:24:37 -0500
+Subject: [PATCH] arm64: dts: qcom: glymur-hp-omnibook-ultra-kg0xxx: add the EC
+
+Enable the EC's I2C bus (i2c@a84000) and describe the EC at 0x76 with
+its event line on GPIO 66: HP's ECGE GpioInt names PDC pin 768, which
+the Glymur CRD and HP OmniBook 5 16 use as GPIO 66, falling edge with
+the SoC pull-up.
+
+Add thermal zones for the three EC thermistors HP's ACPI enables, with
+HP's passive trip points and no cooling device.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ .../qcom/glymur-hp-omnibook-ultra-kg0xxx.dts  | 63 +++++++++++++++++++
+ 1 file changed, 63 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/glymur-hp-omnibook-ultra-kg0xxx.dts b/arch/arm64/boot/dts/qcom/glymur-hp-omnibook-ultra-kg0xxx.dts
+index 0b9621387765..62ef5a64272a 100644
+--- a/arch/arm64/boot/dts/qcom/glymur-hp-omnibook-ultra-kg0xxx.dts
++++ b/arch/arm64/boot/dts/qcom/glymur-hp-omnibook-ultra-kg0xxx.dts
+@@ -28,6 +28,7 @@ aliases {
+ 		i2c0 = &i2c0;
+ 		i2c4 = &i2c4;
+ 		i2c8 = &i2c8;
++		i2c9 = &i2c9;
+ 
+ 		serial0 = &uart21;
+ 		serial1 = &uart14;
+@@ -281,6 +282,44 @@ platform {
+ 		};
+ 	};
+ 
++	thermal-zones {
++		ec-therm1-thermal {
++			thermal-sensors = <&hp_ec 0>;
++
++			trips {
++				trip-point0 {
++					temperature = <90000>;
++					hysteresis = <2000>;
++					type = "passive";
++				};
++			};
++		};
++
++		ec-therm2-thermal {
++			thermal-sensors = <&hp_ec 1>;
++
++			trips {
++				trip-point0 {
++					temperature = <53000>;
++					hysteresis = <2000>;
++					type = "passive";
++				};
++			};
++		};
++
++		ec-therm3-thermal {
++			thermal-sensors = <&hp_ec 2>;
++
++			trips {
++				trip-point0 {
++					temperature = <46000>;
++					hysteresis = <2000>;
++					type = "passive";
++				};
++			};
++		};
++	};
++
+ 	wcn7850-pmu {
+ 		compatible = "qcom,wcn7850-pmu";
+ 		vdd-supply = <&vreg_wcn_0p95>;
+@@ -542,6 +581,24 @@ touchscreen@10 {
+ 	};
+ };
+ 
++&i2c9 {
++	clock-frequency = <400000>;
++
++	status = "okay";
++
++	hp_ec: embedded-controller@76 {
++		compatible = "hp,omnibook-ultra-kg0xxx-ec";
++		reg = <0x76>;
++
++		interrupts-extended = <&tlmm 66 IRQ_TYPE_EDGE_FALLING>;
++
++		pinctrl-0 = <&ec_int_n_default>;
++		pinctrl-names = "default";
++
++		#thermal-sensor-cells = <1>;
++	};
++};
++
+ &iris {
+ 	firmware-name = "qcom/glymur/hp/omnibook-ultra-14-kg0xxx/qcvss8480.mbn";
+ 
+@@ -837,6 +894,12 @@ &tlmm {
+ 			       <44 4>,	/* TPM SPI */
+ 			       <65 1>;	/* EC_RESET */
+ 
++	ec_int_n_default: ec-int-n-state {
++		pins = "gpio66";
++		function = "gpio";
++		bias-pull-up;
++	};
++
+ 	edp_pwr_en: edp-pwr-en-state {
+ 		pins = "gpio70";
+ 		function = "gpio";

@@ -1,4 +1,4 @@
-From 9ade8830b06ff4fa1a636258beae93a16946b982 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
 Date: Mon, 2 Nov 2026 14:58:36 +0100
 Subject: [PATCH] phy: qcom: qmp-combo: Update Glymur USB3 settings
@@ -8,6 +8,7 @@ Update the settings to match the latest hardware reference guide.
 Signed-off-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
 Reviewed-by: Abel Vesa <abel.vesa@oss.qualcomm.com>
 Tested-by: Burke Cates <burke.cates@gmail.com> # ASUS Zenbook A16 (UX3607OA)
+Link: https://lore.kernel.org/r/20261102-topic-usb3_sequence-v1-1-5b144f5e6865@oss.qualcomm.com
 ---
  drivers/phy/qualcomm/phy-qcom-qmp-combo.c | 54 +++++++++++------------
  1 file changed, 27 insertions(+), 27 deletions(-)

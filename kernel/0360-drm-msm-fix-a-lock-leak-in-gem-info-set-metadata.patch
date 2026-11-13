@@ -1,4 +1,4 @@
-From 84ead8103cc7221ebee548638167d83484b59bb2 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Bart Van Assche <bvanassche@acm.org>
 Date: Mon, 26 Oct 2026 12:58:08 -0700
 Subject: [PATCH] drm/msm: Fix a lock leak in msm_ioctl_gem_info_set_metadata()

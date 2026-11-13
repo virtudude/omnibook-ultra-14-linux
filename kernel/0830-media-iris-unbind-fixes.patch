@@ -1,0 +1,85 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Fri, 13 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/2] media: iris: runtime PM and removal fixes
+
+Patches 1 and 2 of the three-patch "iris-handle-unbind" v1 series by
+Vishnu Reddy.
+
+ 1/2 media: iris: Fix runtime PM reference imbalance on failed resume
+     Author: Vishnu Reddy <busanna.reddy@oss.qualcomm.com>
+     Message-ID: <20261017-iris-handle-unbind-v1-1-7809148eb90f@oss.qualcomm.com>
+ 2/2 media: iris: Disable the system error work on removal
+     Author: Vishnu Reddy <busanna.reddy@oss.qualcomm.com>
+     Message-ID: <20261017-iris-handle-unbind-v1-2-7809148eb90f@oss.qualcomm.com>
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Vishnu Reddy <busanna.reddy@oss.qualcomm.com>
+Date: Sat, 17 Oct 2026 08:46:17 +0530
+Subject: [PATCH 1/2] media: iris: Fix runtime PM reference imbalance on failed
+ resume
+
+pm_runtime_resume_and_get() drops its usage count when the resume
+fails. iris_hfi_queue_cmd_write() dropped it a second time on that
+path, resulting in a runtime PM usage count underflow warning:
+
+  qcom-iris aa00000.video-codec: Runtime PM usage count underflow!
+
+Fixes: bb8a95aa038e ("media: iris: implement power management")
+Cc: stable@vger.kernel.org
+Signed-off-by: Vishnu Reddy <busanna.reddy@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261017-iris-handle-unbind-v1-1-7809148eb90f@oss.qualcomm.com
+---
+ drivers/media/platform/qcom/iris/iris_hfi_queue.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/qcom/iris/iris_hfi_queue.c b/drivers/media/platform/qcom/iris/iris_hfi_queue.c
+index ce6a682b0f9a..aa5d05a1d910 100644
+--- a/drivers/media/platform/qcom/iris/iris_hfi_queue.c
++++ b/drivers/media/platform/qcom/iris/iris_hfi_queue.c
+@@ -132,7 +132,7 @@ int iris_hfi_queue_cmd_write(struct iris_core *core, void *pkt, u32 pkt_size)
+ 
+ 	ret = pm_runtime_resume_and_get(core->dev);
+ 	if (ret < 0)
+-		goto exit;
++		return ret;
+ 
+ 	mutex_lock(&core->lock);
+ 	ret = iris_hfi_queue_cmd_write_locked(core, pkt, pkt_size);
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Vishnu Reddy <busanna.reddy@oss.qualcomm.com>
+Date: Sat, 17 Oct 2026 08:46:18 +0530
+Subject: [PATCH 2/2] media: iris: Disable the system error work on removal
+
+iris_remove() calls cancel_delayed_work_sync() to stop the system error
+work. This cancels a pending work and waits for a running one. It does
+not stop the work from being queued again afterwards.
+
+A system error interrupt can still arrive after that call. The
+interrupt handler queues the work again. The work then runs after the
+removal and uses resources that are already freed.
+
+Use disable_delayed_work_sync() instead. Once it returns no new work
+can be queued. The work cannot run again during or after the removal.
+
+Fixes: 452480931648 ("media: iris: cancel sys error work on driver removal")
+Cc: stable@vger.kernel.org
+Signed-off-by: Vishnu Reddy <busanna.reddy@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261017-iris-handle-unbind-v1-2-7809148eb90f@oss.qualcomm.com
+---
+ drivers/media/platform/qcom/iris/iris_probe.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/qcom/iris/iris_probe.c b/drivers/media/platform/qcom/iris/iris_probe.c
+index 4e802f0d1b27..194bb85decf4 100644
+--- a/drivers/media/platform/qcom/iris/iris_probe.c
++++ b/drivers/media/platform/qcom/iris/iris_probe.c
+@@ -438,7 +438,7 @@ static void iris_remove(struct platform_device *pdev)
+ 	if (!core)
+ 		return;
+ 
+-	cancel_delayed_work_sync(&core->sys_error_handler);
++	disable_delayed_work_sync(&core->sys_error_handler);
+ 
+ 	iris_core_deinit(core);
+ 

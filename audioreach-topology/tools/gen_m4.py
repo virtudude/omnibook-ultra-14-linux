@@ -37,7 +37,7 @@ TEMP_TARGET_C = (90, 80, 90, 80)
 # Delivered full scale (V peak at 0 dBFS), lane order. Must equal the device
 # tree's qcom,speaker-full-scale-microvolt: the kernel refuses the graph if a
 # speaker differs by more than 1 %. HP's ACDB has 13-15 V, the Windows gain.
-FULL_SCALE_V = (3.246, 3.387, 3.283, 3.234)
+FULL_SCALE_V = (5.449, 5.686, 5.511, 5.429)
 
 PID_SP_STATIC = 0x080011E8
 PID_SP_DYNAMIC = 0x08001532  # param_id_sp_dynamic_cfg_t, spf/api/modules/sp_rx.h

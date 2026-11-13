@@ -1,4 +1,4 @@
-From e439766986e086a35ba3dd943daeb53fd0f8b752 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Oleg Keri <okerixx@gmail.com>
 Date: Wed, 21 Oct 2026 10:05:17 +0200
 Subject: [PATCH] pmdomain: qcom: rpmhpd: don't clamp gfx and gmxc before

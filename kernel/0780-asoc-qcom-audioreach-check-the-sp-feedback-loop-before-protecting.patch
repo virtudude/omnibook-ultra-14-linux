@@ -1,0 +1,157 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Fri, 13 Nov 2026 09:17:21 -0500
+Subject: [PATCH] ASoC: qcom: audioreach: check the SP feedback loop before
+ protecting
+
+A WSA RX graph counts as protected once SP RX and SP VI took their
+configuration, which proves neither half of the feedback loop: without
+the RX <-> VI control link, or with SP VI fed from another source, SP
+RX runs on its defaults without thermal feedback.
+
+Refuse the graph unless every control link of either SP module joins
+the two on the SP control ports with the SP intent, there is at least
+one, and SP VI is fed only by the WSA V/I codec DMA source, through
+logging modules at most.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/qdsp6/audioreach.c | 104 ++++++++++++++++++++++++++++--
+ 1 file changed, 100 insertions(+), 4 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index ae855fe342df..05e000bb7024 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -2986,6 +2986,7 @@ audioreach_only_successor(const struct audioreach_module *module)
+ 
+ #define AR_LPAIF_INTF_TYPE_WSA	2
+ #define AR_CODEC_INTF_IDX_RX0	1
++#define AR_CODEC_INTF_IDX_TX0	1
+ 
+ /* Is @sink the graph's only codec DMA sink, and the WSA RX0 (speaker) one? */
+ static bool audioreach_is_only_speaker_sink(const struct audioreach_module *sink)
+@@ -3066,6 +3067,99 @@ audioreach_sp_rx_chain(const struct audioreach_module *sp)
+ 	return ERR_PTR(-EINVAL);
+ }
+ 
++/* SP VI hands its thermal estimates to SP RX over this control link */
++#define AR_SP_CTRL_LINK_INTENT		0x08001204
++#define AR_SP_CTRL_LINK_PORT		0x80000000
++
++static bool audioreach_sp_ctrl_link_ok(const struct audioreach_control_link *l,
++				       u32 rx_iid, u32 vi_iid)
++{
++	unsigned int i, n = 0;
++
++	if (!((l->peer1_mod_inst_id == rx_iid && l->peer2_mod_inst_id == vi_iid) ||
++	      (l->peer1_mod_inst_id == vi_iid && l->peer2_mod_inst_id == rx_iid)))
++		return false;
++	if (l->peer1_mod_port_id != AR_SP_CTRL_LINK_PORT ||
++	    l->peer2_mod_port_id != AR_SP_CTRL_LINK_PORT)
++		return false;
++
++	for (i = 0; i < MAX_INTENTS; i++) {
++		if (!l->intent[i])
++			continue;
++		if (l->intent[i] != AR_SP_CTRL_LINK_INTENT)
++			return false;
++		n++;
++	}
++
++	return n;
++}
++
++static bool audioreach_ctrl_link_has(const struct audioreach_control_link *l, u32 iid)
++{
++	return l->peer1_mod_inst_id == iid || l->peer2_mod_inst_id == iid;
++}
++
++/*
++ * Protection is a loop: SP VI measures the amplifiers and feeds SP RX over
++ * their control link. Both modules configuring fine proves neither the link
++ * nor the measurement, so check the graph: every control link of either
++ * module joins the two with the SP intent on the SP ports, and SP VI is fed
++ * only by the WSA V/I codec DMA source, through logging at most.
++ */
++static int audioreach_sp_check_loop(struct device *dev,
++				    const struct audioreach_graph_info *info,
++				    const struct audioreach_module *rx,
++				    const struct audioreach_module *vi)
++{
++	u32 rx_iid = rx->instance_id, vi_iid = vi->instance_id;
++	const struct audioreach_control_link *l;
++	const struct audioreach_sub_graph *sg;
++	const struct audioreach_module *m, *f;
++	unsigned int links = 0;
++	int hops;
++
++	list_for_each_entry(sg, &info->sg_list, node) {
++		list_for_each_entry(l, &sg->control_link_list, node) {
++			if (!audioreach_ctrl_link_has(l, rx_iid) &&
++			    !audioreach_ctrl_link_has(l, vi_iid))
++				continue;
++			if (!audioreach_sp_ctrl_link_ok(l, rx_iid, vi_iid)) {
++				dev_err(dev, "SP: control link 0x%x (0x%x:0x%x <-> 0x%x:0x%x) is not the SP RX <-> SP VI link; refusing\n",
++					l->id, l->peer1_mod_inst_id, l->peer1_mod_port_id,
++					l->peer2_mod_inst_id, l->peer2_mod_port_id);
++				return -EPERM;
++			}
++			links++;
++		}
++	}
++
++	if (!links) {
++		dev_err(dev, "SP: no control link between SP RX 0x%x and SP VI 0x%x; refusing\n",
++			rx_iid, vi_iid);
++		return -EPERM;
++	}
++
++	/* One input port each, in VI's subgraph: no other graph can feed in */
++	for (m = vi, hops = 0; hops < 8; hops++, m = f) {
++		if (m->max_ip_port != 1 || audioreach_graph_feeders(m, &f) != 1 || !f ||
++		    audioreach_only_successor(f) != m ||
++		    f->container->sub_graph != vi->container->sub_graph)
++			break;
++		if (f->module_id == MODULE_ID_CODEC_DMA_SOURCE) {
++			if (f->hw_interface_type == AR_LPAIF_INTF_TYPE_WSA &&
++			    f->hw_interface_idx == AR_CODEC_INTF_IDX_TX0)
++				return 0;
++			break;
++		}
++		if (f->module_id != MODULE_ID_DATA_LOGGING)
++			break;
++	}
++
++	dev_err(dev, "SP: SP VI 0x%x is not fed by the WSA V/I codec DMA source alone, in its subgraph; refusing\n",
++		vi_iid);
++	return -EPERM;
++}
++
+ #define PARAM_ID_MSIIR_TUNING_FILTER_ENABLE		0x08001020
+ #define PARAM_ID_MSIIR_TUNING_FILTER_CONFIG_PARAMS	0x08001022
+ 
+@@ -3192,9 +3286,9 @@ static int audioreach_sp_rx_hpf(struct q6apm_graph *graph,
+ 
+ /*
+  * One SP RX and one SP VI; SP RX in its chain, behind the qualified
+- * high-pass where speakers need one; and, at the speaker operating point,
+- * SP VI modelling its full scale. None of this changes until the topology
+- * is loaded again, so a graph passes it once.
++ * high-pass where speakers need one; the loop between them closed; and, at
++ * the speaker operating point, SP VI modelling its full scale. None of this
++ * changes until the topology is loaded again, so a graph passes it once.
+  */
+ static int audioreach_sp_check_graph(struct q6apm_graph *graph)
+ {
+@@ -3243,7 +3337,9 @@ static int audioreach_sp_check_graph(struct q6apm_graph *graph)
+ 			return -EPERM;
+ 		}
+ 
+-		rc = audioreach_sp_vi_check_full_scale(dev, vi);
++		rc = audioreach_sp_check_loop(dev, info, rx, vi);
++		if (!rc)
++			rc = audioreach_sp_vi_check_full_scale(dev, vi);
+ 		if (rc)
+ 			return rc;
+ 	}

@@ -1,0 +1,59 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Thu, 12 Nov 2026 18:04:13 -0500
+Subject: [PATCH] irqchip/qcom-pdc: map qcom,pdc-ranges beyond the SPI range to
+ ESPIs
+
+qcom,pdc-ranges gives the GIC interrupt of each PDC pin as an SPI
+number (INTID - 32), and qcom_pdc_alloc() always hands it to the GIC as
+an SPI. On Glymur, whose last range <171 4104 36> lies past the SPIs,
+the GIC still ends up on the right INTID but warns:
+
+  GICv3: SPI 4115 out of range (use ESPI?)
+
+Convert past the SPI range: INTIDs from 4096 are extended SPIs, so SPI
+number n maps to ESPI n + 32 - 4096. On the HP OmniBook Ultra 14 this
+puts the lid switch (PDC pin 182) on INTID 4147, as the ACPI tables
+list it.
+
+Based on a patch by Konrad Dybcio, whose offset of 4096 lands these
+pins 32 extended SPIs too low.
+
+Link: https://lore.kernel.org/r/20261102-topic-pdc_map_espi-v2-1-64431c8f8ac3@oss.qualcomm.com
+Assisted-by: Claude:claude-opus-5-5
+---
+ drivers/irqchip/qcom-pdc.c | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/irqchip/qcom-pdc.c b/drivers/irqchip/qcom-pdc.c
+index 82f146d7c1bc..ee8b5a9e3b1c 100644
+--- a/drivers/irqchip/qcom-pdc.c
++++ b/drivers/irqchip/qcom-pdc.c
+@@ -21,6 +21,7 @@
+ #include <linux/slab.h>
+ #include <linux/types.h>
+ #include <linux/firmware/qcom/qcom_scm.h>
++#include <dt-bindings/interrupt-controller/arm-gic.h>
+ 
+ #define PDC_MAX_IRQS			256
+ #define IRQ_ENABLE_BANK_MAX		BITS_TO_BYTES(PDC_MAX_IRQS)
+@@ -597,8 +598,17 @@ static int qcom_pdc_alloc(struct irq_domain *domain, unsigned int virq,
+ 
+ 	parent_fwspec.fwnode      = domain->parent->fwnode;
+ 	parent_fwspec.param_count = 3;
+-	parent_fwspec.param[0]    = 0;
+-	parent_fwspec.param[1]    = pin_to_hwirq(region, hwirq);
++	/*
++	 * qcom,pdc-ranges numbers GIC interrupts as SPI numbers (INTID - 32),
++	 * also past the SPI range: INTID 4096 onwards are extended SPIs.
++	 */
++	if (pin_to_hwirq(region, hwirq) >= 4096 - 32) {
++		parent_fwspec.param[0] = GIC_ESPI;
++		parent_fwspec.param[1] = pin_to_hwirq(region, hwirq) + 32 - 4096;
++	} else {
++		parent_fwspec.param[0] = GIC_SPI;
++		parent_fwspec.param[1] = pin_to_hwirq(region, hwirq);
++	}
+ 	parent_fwspec.param[2]    = type;
+ 
+ 	return irq_domain_alloc_irqs_parent(domain, virq, nr_irqs, &parent_fwspec);

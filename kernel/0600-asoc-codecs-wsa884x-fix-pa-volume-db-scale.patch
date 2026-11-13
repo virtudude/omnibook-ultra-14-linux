@@ -1,21 +1,20 @@
-From 5e19ac5a0c0d0ae544af28db150942612a96b669 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Tue, 10 Nov 2026 23:08:33 -0500
 Subject: [PATCH] ASoC: codecs: wsa884x: fix PA Volume dB scale
 
-The PA Volume TLV claims -9 dB at control 0 rising in 1.5 dB steps to
+The PA Volume TLV claims -9 dB at control 0, rising 1.5 dB per step to
 +37.5 dB. The control writes the gain code inverted (code = 31 -
 control), and per enum wsa884x_gain code 0 is +21 dB, each code 1.5 dB
-less. Codes 21..31 are undocumented.
+less; codes 21..31 are undocumented. On WSA8845, controls 0..17 all
+give the same output, as commit b53cc6144a3f ("ASoC: codecs: wsa883x:
+fix PA volume control") found for wsa883x, and control 18 is 4.5 dB
+above it.
 
-On WSA8845, controls 0..17 (codes 31..14) all deliver the same full
-scale, as commit b53cc6144a3f ("ASoC: codecs: wsa883x: fix PA volume
-control") found for wsa883x, and control 18 is 4.5 dB above it. So the
-documented values hold from code 13 (+1.5 dB) up and the floor is -3 dB.
+Describe -3 dB for controls 0..17, then +1.5 dB per step to +21 dB at
+31. Register values are unchanged; fix the x1e80100 limit comment.
 
-Describe that: -3 dB for controls 0..17, then +1.5 dB per step to +21 dB
-at 31. Register values are unchanged; fix the x1e80100 limit comment.
-
+Fixes: aa21a7d4f68a ("ASoC: codecs: wsa884x: Add WSA884x family of speakers")
 Assisted-by: Claude:claude-opus-5-5
 ---
  sound/soc/codecs/wsa884x.c | 10 +++++++++-

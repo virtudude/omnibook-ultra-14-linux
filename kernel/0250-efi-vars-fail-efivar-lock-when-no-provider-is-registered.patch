@@ -1,4 +1,4 @@
-From a9749c95e597301c7c0277fd3b7aed947dc0296a Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Tue, 10 Nov 2026 23:30:49 -0500
 Subject: [PATCH] efi: vars: fail efivar_lock() when no provider is registered
@@ -9,6 +9,7 @@ that unregisters in between (uefisecapp can be unbound) leaves
 efivar_lock() dereferencing NULL. efivars_unregister() clears __efivars
 under the same semaphore, so check it there and fail with -ENODEV.
 
+Fixes: 472831d4c4b2 ("efi: vars: Add thin wrapper around EFI get/set variable interface")
 Assisted-by: Claude:claude-opus-5-5
 ---
  drivers/firmware/efi/vars.c | 2 +-

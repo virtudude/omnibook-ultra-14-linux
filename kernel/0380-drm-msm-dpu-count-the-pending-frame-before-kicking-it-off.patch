@@ -1,4 +1,4 @@
-From 80cce0ab5853f66c9223819857189bba7330fe8e Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Michael Burch <me@michaelburch.net>
 Date: Tue, 13 Oct 2026 12:27:00 -0500
 Subject: [PATCH] drm/msm/dpu: count the pending frame before kicking it off
@@ -37,6 +37,7 @@ Fixes: ad06972d5365 ("drm/msm/dpu: Reorder encoder kickoff for CWB")
 Cc: stable@vger.kernel.org
 Assisted-by: Copilot:claude-opus-5.5
 Signed-off-by: Michael Burch <me@michaelburch.net>
+Link: https://lore.kernel.org/r/20261013172703.12273-1-me@michaelburch.net
 ---
  drivers/gpu/drm/msm/disp/dpu1/dpu_crtc.c | 23 +++++++++++++++++------
  1 file changed, 17 insertions(+), 6 deletions(-)

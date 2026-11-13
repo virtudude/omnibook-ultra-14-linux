@@ -1,0 +1,479 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Fri, 13 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/2] ASoC: qcom: switch the speakers off on a protection fault
+
+Latches a speaker protection fault when a dB volume write fails, and
+has the x1e80100 card switch the amplifiers off and stop the streams
+without the DSP.
+
+ 1/2 ASoC: qcom: audioreach: latch a speaker protection fault
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 2/2 ASoC: qcom: x1e80100: switch the speakers off on a protection fault
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Fri, 13 Nov 2026 09:17:47 -0500
+Subject: [PATCH 1/2] ASoC: qcom: audioreach: latch a speaker protection fault
+
+A failed dB volume write leaves VOL_CTRL and MSPP at unknown, possibly
+mismatched gains while the graph keeps playing, and nothing outside the
+DSP stops the amplifiers.
+
+Raise a protection fault there: bump a fault generation and call a
+notifier chain so the machine driver switches the amplifiers off and
+stops the streams without the DSP. The fault stays pending until the
+driver reports that done, or is cleared at once if no handler takes
+it. A fault during a WSA RX graph's setup fails
+it, and while SP is required the WSA RX graph cannot start with a fault
+pending, or unless its last setup configured both SP modules with no
+fault since. Failing the CPU DAI trigger keeps the link's codec DAIs
+muted.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/qdsp6/audioreach.c       | 105 +++++++++++++++++++++++-
+ sound/soc/qcom/qdsp6/audioreach.h       |  11 +++
+ sound/soc/qcom/qdsp6/q6apm-lpass-dais.c |   6 ++
+ 3 files changed, 119 insertions(+), 3 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
+index 05e000bb7024..c0f5059d77b2 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.c
++++ b/sound/soc/qcom/qdsp6/audioreach.c
+@@ -4,6 +4,7 @@
+ #include <linux/efi.h>
+ #include <linux/kernel.h>
+ #include <linux/mutex.h>
++#include <linux/notifier.h>
+ #include <linux/slab.h>
+ #include <linux/soc/qcom/apr.h>
+ #include <linux/thermal.h>
+@@ -68,6 +69,14 @@ static bool sp_required;
+ /* Speakers (speaker map order) whose SP RX input must be high-passed */
+ static u32 sp_hpf_speakers;
+ 
++/* Protects sp_fault_gen and sp_fault_pending */
++static DEFINE_MUTEX(sp_fault_lock);
++/* Bumped by every protection fault */
++static unsigned int sp_fault_gen;
++/* The machine driver has not yet switched the speakers off */
++static bool sp_fault_pending;
++static BLOCKING_NOTIFIER_HEAD(sp_fault_chain);
++
+ /* SubGraph Config */
+ struct apm_sub_graph_data {
+ 	struct apm_sub_graph_cfg sub_graph_cfg;
+@@ -1640,8 +1649,8 @@ static int audioreach_vol_db_send(struct q6apm *apm, const struct audioreach_mod
+  *
+  * While the graph is open in the DSP, the step is sent to VOL_CTRL and every
+  * MSPP of the graph and kept only if all took it. A failed write leaves the
+- * gains unknown: the graph takes no more writes until its next setup, which
+- * sends the kept step again.
++ * gains unknown: it raises a protection fault, and the graph takes no more
++ * writes until its next setup, which sends the kept step again.
+  *
+  * Return: 1 if the step changed, 0 if not, or a negative error code.
+  */
+@@ -1665,6 +1674,9 @@ int audioreach_vol_db_set(struct q6apm *apm, struct audioreach_module *vol, u32
+ 		info->vol_live = false;
+ 	}
+ 
++	/* The speakers may play at mismatched gains: off until a new setup */
++	audioreach_sp_fault(apm->dev, "dB volume");
++
+ 	return rc;
+ }
+ EXPORT_SYMBOL_GPL(audioreach_vol_db_set);
+@@ -1930,8 +1942,10 @@ static int audioreach_sp_check_graph(struct q6apm_graph *graph);
+  */
+ int audioreach_sp_session_begin(struct q6apm_graph *graph)
+ {
+-	int rc = audioreach_sp_check_graph(graph);
++	int rc;
+ 
++	graph->sp.protected = false;
++	rc = audioreach_sp_check_graph(graph);
+ 	if (rc)
+ 		return rc;
+ 
+@@ -1939,11 +1953,88 @@ int audioreach_sp_session_begin(struct q6apm_graph *graph)
+ 		.active = true,
+ 		.mode = READ_ONCE(sp_operation_mode),
+ 	};
++	scoped_guard(mutex, &sp_fault_lock)
++		graph->sp.fault_gen = sp_fault_gen;
+ 
+ 	return 0;
+ }
+ EXPORT_SYMBOL_GPL(audioreach_sp_session_begin);
+ 
++/**
++ * audioreach_sp_fault() - a live graph failed, the speakers are unprotected
++ * @dev: device for the log
++ * @what: what failed
++ *
++ * The DSP state is unknown, so no WSA RX graph set up before now counts as
++ * protected, and the fault notifier chain is called, for the machine driver
++ * to switch the amplifiers off and stop the streams, then call
++ * audioreach_sp_fault_done(). Until then the WSA RX graph cannot start.
++ * Process context.
++ */
++void audioreach_sp_fault(struct device *dev, const char *what)
++{
++	unsigned int gen;
++
++	scoped_guard(mutex, &sp_fault_lock) {
++		gen = ++sp_fault_gen;
++		sp_fault_pending = true;
++	}
++
++	dev_err(dev, "SP: protection fault (%s): speakers off until a checked WSA RX graph is set up\n",
++		what);
++	if (blocking_notifier_call_chain(&sp_fault_chain, 0, NULL) == NOTIFY_DONE)
++		audioreach_sp_fault_done(gen);
++}
++EXPORT_SYMBOL_GPL(audioreach_sp_fault);
++
++/* Is a fault pending? @gen gets the latest one's generation */
++bool audioreach_sp_fault_pending(unsigned int *gen)
++{
++	guard(mutex)(&sp_fault_lock);
++
++	*gen = sp_fault_gen;
++	return sp_fault_pending;
++}
++EXPORT_SYMBOL_GPL(audioreach_sp_fault_pending);
++
++/* The speakers are off after fault @gen; a newer fault stays pending */
++void audioreach_sp_fault_done(unsigned int gen)
++{
++	guard(mutex)(&sp_fault_lock);
++
++	if (gen == sp_fault_gen)
++		sp_fault_pending = false;
++}
++EXPORT_SYMBOL_GPL(audioreach_sp_fault_done);
++
++int audioreach_sp_register_fault_notifier(struct notifier_block *nb)
++{
++	return blocking_notifier_chain_register(&sp_fault_chain, nb);
++}
++EXPORT_SYMBOL_GPL(audioreach_sp_register_fault_notifier);
++
++void audioreach_sp_unregister_fault_notifier(struct notifier_block *nb)
++{
++	blocking_notifier_chain_unregister(&sp_fault_chain, nb);
++}
++EXPORT_SYMBOL_GPL(audioreach_sp_unregister_fault_notifier);
++
++/**
++ * audioreach_sp_rx_may_start() - may the WSA RX graph start?
++ * @graph: the graph
++ *
++ * With speaker protection required, only if its last setup configured both
++ * SP modules and no protection fault came since.
++ */
++bool audioreach_sp_rx_may_start(struct q6apm_graph *graph)
++{
++	guard(mutex)(&sp_fault_lock);
++
++	return !READ_ONCE(sp_required) ||
++	       (graph->sp.protected && graph->sp.fault_gen == sp_fault_gen && !sp_fault_pending);
++}
++EXPORT_SYMBOL_GPL(audioreach_sp_rx_may_start);
++
+ /**
+  * audioreach_sp_session_end() - finish the SP setup of a WSA RX graph
+  * @graph: the graph
+@@ -1972,6 +2063,14 @@ int audioreach_sp_session_end(struct q6apm_graph *graph, int rc)
+ 		dev_err(dev, "SP: speaker protection is required and this graph has no SP RX/VI; refusing\n");
+ 		return -EPERM;
+ 	}
++
++	guard(mutex)(&sp_fault_lock);
++	if (sp_fault_gen != sp->fault_gen) {
++		dev_err(dev, "SP: protection fault during setup; refusing\n");
++		return -EPERM;
++	}
++	sp->protected = sp->rx_ok;
++
+ 	return 0;
+ }
+ EXPORT_SYMBOL_GPL(audioreach_sp_session_end);
+diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
+index 0625e1b6ad9d..6a0817175aa0 100644
+--- a/sound/soc/qcom/qdsp6/audioreach.h
++++ b/sound/soc/qcom/qdsp6/audioreach.h
+@@ -8,6 +8,7 @@
+ #include <sound/soc.h>
+ struct q6apm;
+ struct q6apm_graph;
++struct notifier_block;
+ struct thermal_zone_device;
+ 
+ /* Module IDs */
+@@ -996,6 +997,10 @@ struct audioreach_sp_pass {
+ 	u32 mode;
+ 	bool rx_ok;
+ 	bool vi_ok;
++	/* Protection faults seen when the setup began */
++	unsigned int fault_gen;
++	/* The setup configured SP RX and SP VI */
++	bool protected;
+ };
+ 
+ #define MAX_INTENTS 4
+@@ -1188,6 +1193,12 @@ void audioreach_sp_set_hpf_speakers(u32 speakers);
+ void audioreach_sp_set_full_scale(const u32 *uv, unsigned int num);
+ int audioreach_sp_session_begin(struct q6apm_graph *graph);
+ int audioreach_sp_session_end(struct q6apm_graph *graph, int rc);
++void audioreach_sp_fault(struct device *dev, const char *what);
++bool audioreach_sp_fault_pending(unsigned int *gen);
++void audioreach_sp_fault_done(unsigned int gen);
++int audioreach_sp_register_fault_notifier(struct notifier_block *nb);
++void audioreach_sp_unregister_fault_notifier(struct notifier_block *nb);
++bool audioreach_sp_rx_may_start(struct q6apm_graph *graph);
+ int audioreach_get_sp_vi_cal_state(long *vals, unsigned int count);
+ int audioreach_add_sp_telemetry_controls(struct snd_soc_component *component);
+ void audioreach_vi_calibration_event(struct device *dev,
+diff --git a/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c b/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
+index 8d7b6c668934..ed1f92749d41 100644
+--- a/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
++++ b/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
+@@ -282,6 +282,12 @@ static int q6apm_lpass_dai_trigger(struct snd_pcm_substream *substream, int cmd,
+ 			if (ret)
+ 				return ret;
+ 		}
++		/* Failing here also keeps the codecs after us on the link muted */
++		if (dai->id == WSA_CODEC_DMA_RX_0 &&
++		    !audioreach_sp_rx_may_start(dai_data->graph[dai->id])) {
++			dev_err(dai->dev, "SP: WSA RX graph not protected since the last fault; refusing to start\n");
++			return -EPERM;
++		}
+ 		if (!dai_data->is_port_started[dai->id]) {
+ 			ret = q6apm_graph_start(dai_data->graph[dai->id]);
+ 			if (ret < 0)
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 23:20:56 -0500
+Subject: [PATCH 2/2] ASoC: qcom: x1e80100: switch the speakers off on a protection
+ fault
+
+After a speaker protection fault the DSP state is unknown, so it cannot
+be trusted to silence the speakers, and the prepared SoundWire V/I
+ports keep the amplifiers' V/I guards satisfied.
+
+With SP required, handle the fault notifier from a work item: mute
+every speaker amplifier DAI, then, under the card's PCM mutex, stop the
+PCM front ends feeding the WSA RX back end with an XRUN and mute again
+under the back end's stream lock, which also silences a compressed
+front end and any start that passed its check just before the fault,
+and report the fault handled. The PCM
+mutex keeps a recovering prepare from running before the last mute.
+The amplifiers come back only through a WSA RX prepare that passes the
+protection checks.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/x1e80100.c | 139 +++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 137 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
+index 9163c9563cfb..62e1016cd9bf 100644
+--- a/sound/soc/qcom/x1e80100.c
++++ b/sound/soc/qcom/x1e80100.c
+@@ -7,11 +7,13 @@
+ #include <linux/platform_device.h>
+ #include <linux/soundwire/sdw.h>
+ #include <linux/thermal.h>
++#include <linux/workqueue.h>
+ #include <sound/pcm.h>
+ #include <sound/pcm_params.h>
+ #include <sound/jack.h>
+ #include <sound/soc.h>
+ #include <sound/soc-dapm.h>
++#include <sound/soc-dpcm.h>
+ 
+ #include "common.h"
+ #include "qdsp6/audioreach.h"
+@@ -40,6 +42,11 @@ struct x1e80100_snd_data {
+ 	struct x1e80100_sp_link sp;
+ 	/* The speakers run at their DT operating point */
+ 	bool op_point;
++	/* Speaker protection faults: amplifiers off, streams stopped */
++	struct snd_soc_pcm_runtime *sp_rtd;
++	struct notifier_block sp_fault_nb;
++	struct work_struct sp_fault_work;
++	bool sp_fault_registered;
+ };
+ 
+ /*
+@@ -126,11 +133,136 @@ static int x1e80100_register_sp_speakers(struct snd_soc_pcm_runtime *rtd)
+ 	return audioreach_sp_register_speaker_map(tzs, names, num, lane_order);
+ }
+ 
++/*
++ * Switch every speaker amplifier's PA off through its DAI mute, which needs
++ * no DSP. A V/I guarded WSA884x reads the PA enable back and fails if it is
++ * still set, and retries the PA off write until it succeeds.
++ */
++static int x1e80100_sp_amps_off(struct x1e80100_snd_data *data)
++{
++	struct snd_soc_pcm_runtime *rtd = data->sp_rtd;
++	struct snd_soc_dai *dai;
++	unsigned int k;
++	int i, ret, err = 0;
++
++	for_each_rtd_codec_dais(rtd, i, dai) {
++		if (!snd_soc_dai_get_pcm_stream(dai, SNDRV_PCM_STREAM_PLAYBACK)->channels_min)
++			continue;
++		for (k = 0; k < data->sp.num_amps; k++)
++			if (dai->component == data->sp.amp[k])
++				break;
++		if (k == data->sp.num_amps)
++			continue;
++
++		ret = snd_soc_dai_digital_mute(dai, 1, SNDRV_PCM_STREAM_PLAYBACK);
++		if (ret) {
++			dev_err(rtd->dev, "SP fault: %s PA off not confirmed: %d\n",
++				dai->component->name_prefix ?: dev_name(dai->dev), ret);
++			err = ret;
++		}
++	}
++
++	return err;
++}
++
++static void x1e80100_sp_fault_work(struct work_struct *work)
++{
++	struct x1e80100_snd_data *data = container_of(work, struct x1e80100_snd_data,
++						      sp_fault_work);
++	struct snd_soc_pcm_runtime *rtd = data->sp_rtd;
++	struct snd_pcm_substream *be = snd_soc_dpcm_get_substream(rtd, SNDRV_PCM_STREAM_PLAYBACK);
++	struct snd_soc_dpcm *dpcm;
++	unsigned int gen;
++	int ret;
++
++	/* Handled by an earlier run, and maybe recovered since */
++	if (!audioreach_sp_fault_pending(&gen))
++		return;
++
++	/* The amplifiers first: a stream lock may be held across a DSP command */
++	x1e80100_sp_amps_off(data);
++
++	/* Held to the end, so that no recovering prepare runs before the last mute */
++	snd_soc_dpcm_mutex_lock(rtd);
++	for_each_dpcm_fe(rtd, SNDRV_PCM_STREAM_PLAYBACK, dpcm)
++		snd_pcm_stop_xrun(snd_soc_dpcm_get_substream(dpcm->fe,
++							     SNDRV_PCM_STREAM_PLAYBACK));
++
++	/*
++	 * Again, behind any BE start that passed its check before the fault,
++	 * whatever its front end (a compressed one is not stopped above). Only
++	 * a nonatomic front end can start this BE, which makes it nonatomic.
++	 */
++	if (be->pcm->nonatomic) {
++		guard(pcm_stream_lock_irq)(be);
++		ret = x1e80100_sp_amps_off(data);
++	} else {
++		ret = x1e80100_sp_amps_off(data);
++	}
++	audioreach_sp_fault_done(gen);
++	snd_soc_dpcm_mutex_unlock(rtd);
++
++	if (!ret)
++		dev_warn(rtd->dev, "SP fault: speaker PAs off, streams stopped\n");
++}
++
++static int x1e80100_sp_fault_notify(struct notifier_block *nb, unsigned long action,
++				    void *unused)
++{
++	struct x1e80100_snd_data *data = container_of(nb, struct x1e80100_snd_data,
++						      sp_fault_nb);
++
++	queue_work(system_highpri_wq, &data->sp_fault_work);
++
++	return NOTIFY_OK;
++}
++
++static int x1e80100_sp_fault_register(struct snd_soc_card *card)
++{
++	struct x1e80100_snd_data *data = snd_soc_card_get_drvdata(card);
++	unsigned int k;
++	int ret;
++
++	if (data->sp_fault_registered || !data->sp_rtd || !data->sp.num_amps ||
++	    !audioreach_sp_required())
++		return 0;
++
++	for (k = 0; k < data->sp.num_amps; k++)
++		if (!of_property_read_bool(data->sp.amp[k]->dev->of_node, "qcom,vi-guard"))
++			dev_warn(card->dev, "%s has no V/I guard: its PA off on a protection fault is not read back\n",
++				 dev_name(data->sp.amp[k]->dev));
++
++	data->sp_fault_nb.notifier_call = x1e80100_sp_fault_notify;
++	ret = audioreach_sp_register_fault_notifier(&data->sp_fault_nb);
++	if (ret)
++		return ret;
++	data->sp_fault_registered = true;
++
++	return 0;
++}
++
++static void x1e80100_sp_fault_unregister(struct x1e80100_snd_data *data)
++{
++	unsigned int gen;
++
++	if (!data->sp_fault_registered)
++		return;
++
++	audioreach_sp_unregister_fault_notifier(&data->sp_fault_nb);
++	cancel_work_sync(&data->sp_fault_work);
++	/* Torn down with the card, which powered the speakers down */
++	if (audioreach_sp_fault_pending(&gen))
++		audioreach_sp_fault_done(gen);
++	data->sp_fault_registered = false;
++}
++
+ static void x1e80100_snd_exit(struct snd_soc_pcm_runtime *rtd)
+ {
+ 	struct x1e80100_snd_data *data = snd_soc_card_get_drvdata(rtd->card);
+ 
+ 	if (snd_soc_rtd_to_cpu(rtd, 0)->id == WSA_CODEC_DMA_RX_0) {
++		x1e80100_sp_fault_unregister(data);
++		data->sp_rtd = NULL;
+ 		audioreach_sp_register_speaker_map(NULL, NULL, 0, false);
+ 		audioreach_sp_set_hpf_speakers(0);
+ 		audioreach_sp_set_full_scale(NULL, 0);
+@@ -325,8 +457,9 @@ static int x1e80100_snd_late_probe(struct snd_soc_card *card)
+ 	struct x1e80100_snd_data *data = snd_soc_card_get_drvdata(card);
+ 	int ret;
+ 
+-	if (!data->op_point)
+-		return 0;
++	ret = x1e80100_sp_fault_register(card);
++	if (ret || !data->op_point)
++		return ret;
+ 
+ 	/* The DAPM mux controls only exist once the widgets do */
+ 	ret = snd_soc_dapm_new_widgets(card);
+@@ -359,6 +492,7 @@ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
+ 		ret = x1e80100_register_sp_speakers(rtd);
+ 		if (ret)
+ 			return ret;
++		data->sp_rtd = rtd;
+ 		data->op_point = x1e80100_op_wanted(data);
+ 		fallthrough;
+ 	case WSA_CODEC_DMA_RX_1:
+@@ -614,6 +748,7 @@ static int x1e80100_platform_probe(struct platform_device *pdev)
+ 	if (!data)
+ 		return -ENOMEM;
+ 
++	INIT_WORK(&data->sp_fault_work, x1e80100_sp_fault_work);
+ 	card->owner = THIS_MODULE;
+ 	card->dev = dev;
+ 	dev_set_drvdata(dev, card);

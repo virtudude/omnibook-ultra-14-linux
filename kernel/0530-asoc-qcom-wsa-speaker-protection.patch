@@ -78,7 +78,7 @@ remains one unit.
      Author: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
      Message-ID: <20261023171433.820092-24-srinivas.kandagatla@oss.qualcomm.com>
 
-From af0750f8be2ae6c6f30519e43d68ab5839d9161a Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:11 +0100
 Subject: [PATCH 1/23] ASoC: soc-core: allow default ch_maps on links with more than
@@ -93,6 +93,7 @@ Keep the static arrays for links that fit, and allocate a per-link map
 with the same 1:1, 1:N or N:1 layout for those that do not.
 
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-2-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/soc-core.c | 46 +++++++++++++++++++++++++++++++-------------
  1 file changed, 33 insertions(+), 13 deletions(-)
@@ -155,7 +156,7 @@ index 2492ecc1beeb..eb878528fd2c 100644
  
  sanity_check:
  	dev_dbg(card->dev, "dai_link %s\n", dai_link->stream_name);
-From 04e36ffd72364b252242a1b848efae82d8b13eb9 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:12 +0100
 Subject: [PATCH 2/23] ASoC: soc-pcm: add multi_direction_codecs link flag
@@ -176,6 +177,7 @@ flag are unchanged.
 Document the flag in Documentation/sound/soc/multi-direction-codecs.rst.
 
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-3-srinivas.kandagatla@oss.qualcomm.com
 ---
  Documentation/sound/soc/index.rst             |   1 +
  .../sound/soc/multi-direction-codecs.rst      | 135 ++++++++++++++++++
@@ -541,7 +543,7 @@ index ef8ccf52798e..5dbd0a78933a 100644
  	}
  
  	for_each_rtd_cpu_dais(rtd, i, cpu_dai) {
-From 458cbbcc7e12a06b3d1e0129b25b42cf010f4f01 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:13 +0100
 Subject: [PATCH 3/23] ASoC: qcom: sdw: add per-direction stream runtimes for
@@ -554,6 +556,7 @@ Split startup, prepare, hw_free and shutdown into per-direction helpers
 and run them for both directions on such links.
 
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-4-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/qcom/sdw.c | 236 +++++++++++++++++++++++++++++++++----------
  1 file changed, 183 insertions(+), 53 deletions(-)
@@ -903,7 +906,7 @@ index 6576b47a4c8c..e72424ce5cb0 100644
  	return 0;
  }
  EXPORT_SYMBOL_GPL(qcom_snd_sdw_hw_free);
-From 1c7539940dbfbdaca576353d1ac0a8b33ec8efd3 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:14 +0100
 Subject: [PATCH 4/23] ASoC: dt-bindings: qcom,wsa8840: allow one sound DAI cell
@@ -915,6 +918,7 @@ boards which only use playback.
 
 Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-5-srinivas.kandagatla@oss.qualcomm.com
 ---
  Documentation/devicetree/bindings/sound/qcom,wsa8840.yaml | 5 ++++-
  1 file changed, 4 insertions(+), 1 deletion(-)
@@ -935,7 +939,7 @@ index 866c5e780fb0..42ae6d60a874 100644
  
    vdd-1p8-supply: true
    vdd-io-supply: true
-From ad3e4ded4c9bdee98ab4852f493ebbf37d954cdb Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:15 +0100
 Subject: [PATCH 5/23] ASoC: codecs: wsa884x: add VI sense capture DAI
@@ -951,6 +955,7 @@ now that VI sense is no longer in it.
 
 Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-6-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/codecs/wsa884x.c | 90 +++++++++++++++++++++++++++++++-------
  1 file changed, 74 insertions(+), 16 deletions(-)
@@ -1156,7 +1161,7 @@ index f58ce92c46d4..534e8c4231b0 100644
  	pdev->prop.scp_int1_mask = SDW_SCP_INT1_BUS_CLASH | SDW_SCP_INT1_PARITY;
  
  	wsa884x_reset_deassert(wsa884x);
-From 186567f823a129b03c646175edfbd6bb4c26801b Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:16 +0100
 Subject: [PATCH 6/23] ASoC: codecs: wsa884x: register the die temperature as a
@@ -1175,6 +1180,7 @@ of a plausible looking zero. -EAGAIN would make the thermal core re-read
 the zone every 250 ms and keep the codec awake.
 
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-7-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/codecs/wsa884x.c | 70 +++++++++++++++++++++++++++++++++++++-
  1 file changed, 69 insertions(+), 1 deletion(-)
@@ -1282,7 +1288,7 @@ index 534e8c4231b0..c8d3c353ec34 100644
  	return devm_snd_soc_register_component(dev,
  					       &wsa884x_component_drv,
  					       wsa884x_dais,
-From 627b6ec7b31cb1383071e41d0f5ae9c4d8d52627 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:17 +0100
 Subject: [PATCH 7/23] ASoC: qcom: audioreach: add control link support to graphs
@@ -1296,6 +1302,7 @@ GRAPH_OPEN. Both subgraphs of a link usually declare it and the DSP
 rejects a duplicate, so send each pair once.
 
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-8-srinivas.kandagatla@oss.qualcomm.com
 ---
  include/uapi/sound/snd_ar_tokens.h |  11 +++
  sound/soc/qcom/qdsp6/audioreach.c  |  90 +++++++++++++++++--
@@ -1750,7 +1757,7 @@ index 612d8f03e6e9..5de7e821e5f4 100644
  
  			idr_remove(&apm->sub_graphs_idr, sg->sub_graph_id);
  			list_del(&sg->node);
-From 1a8a1392c6bc7d29eb69a48bed5bb04038d410bd Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:18 +0100
 Subject: [PATCH 8/23] ASoC: qcom: audioreach: run VI module in calibration mode
@@ -1765,6 +1772,7 @@ pair per speaker without gaps.
 
 Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-9-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/qcom/qdsp6/audioreach.c | 72 +++++++++++++++++++++++--------
  sound/soc/qcom/qdsp6/audioreach.h | 36 ++++++++++++++++
@@ -2021,7 +2029,7 @@ index 968fb7898aa4..66efb6a10bf9 100644
  		}
  
  		break;
-From f1d555835c8e00b10a1d40623043d0e12667428e Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:19 +0100
 Subject: [PATCH 9/23] ASoC: qcom: q6apm-dai: add S32_LE format support
@@ -2031,6 +2039,7 @@ speaker. Add S32_LE to the q6apm-dai formats so it is not converted.
 
 Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-10-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/qcom/qdsp6/q6apm-dai.c | 9 +++++++--
  1 file changed, 7 insertions(+), 2 deletions(-)
@@ -2069,7 +2078,7 @@ index dc092ec8a274..46f2cde33413 100644
  	default:
  		return -EINVAL;
  	}
-From 439048d33f80a7a139a154d31bd2dc6840df3fe5 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:20 +0100
 Subject: [PATCH 10/23] ASoC: qcom: audioreach: support up to four speakers in VI
@@ -2083,6 +2092,7 @@ Raise the limit to MAX_SP_VI_SPEAKERS (4).
 
 Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-11-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/qcom/qdsp6/audioreach.c | 2 +-
  sound/soc/qcom/qdsp6/audioreach.h | 2 ++
@@ -2114,7 +2124,7 @@ index 4744d3117010..c8c7fa4f6f70 100644
  #define PARAM_ID_SP_VI_OP_MODE_CFG		0x080011f4
  #define PARAM_ID_SP_VI_OP_MODE_NORMAL		0
  #define PARAM_ID_SP_VI_OP_MODE_CALIBRATION	1
-From 040bd60c6a755067fd4075a41d5a5ac4a3480060 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:21 +0100
 Subject: [PATCH 11/23] ASoC: qcom: audioreach: cache VI calibration results per
@@ -2132,6 +2142,7 @@ documented enum.
 
 Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-12-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/qcom/qdsp6/audioreach.c | 129 ++++++++++++++++++++++++++++++
  sound/soc/qcom/qdsp6/audioreach.h |  39 ++++++---
@@ -2424,7 +2435,7 @@ index 66efb6a10bf9..c410e2f6e6a3 100644
  }
  
  static int graph_callback(const struct gpr_resp_pkt *data, void *priv, int op)
-From d19fdc0e596c3d7bbb8678c9c33af4a0937df316 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:22 +0100
 Subject: [PATCH 12/23] ASoC: qcom: audioreach: make the speaker protection operation
@@ -2436,6 +2447,7 @@ is Normal.
 
 Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-13-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/qcom/qdsp6/audioreach.c | 33 +++++++++++++++++++++----------
  sound/soc/qcom/qdsp6/audioreach.h |  2 ++
@@ -2543,7 +2555,7 @@ index 232faba6d83f..e30603674e37 100644
  void audioreach_vi_calibration_event(struct device *dev,
  				     const struct event_id_vi_per_spkr_calibration *cali,
  				     u32 num_ch);
-From 97c61089352b0d3581bce8e91382b874166dc947 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:23 +0100
 Subject: [PATCH 13/23] ASoC: qcom: audioreach: send cached R0/T0 to the VI module in
@@ -2559,6 +2571,7 @@ not match the stored set is refused instead of being partly configured.
 
 Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-14-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/qcom/qdsp6/audioreach.c | 170 ++++++++++++++++++++++++++++++
  sound/soc/qcom/qdsp6/audioreach.h |  21 ++++
@@ -2812,7 +2825,7 @@ index e30603674e37..67a9d3c66fd4 100644
  void audioreach_vi_calibration_event(struct device *dev,
  				     const struct event_id_vi_per_spkr_calibration *cali,
  				     u32 num_ch);
-From 0221fd8d7b22bc63e31a3b9680b2039092ec8c38 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:24 +0100
 Subject: [PATCH 14/23] ASoC: qcom: audioreach: send static cfg blobs to speaker
@@ -2829,6 +2842,7 @@ sent whole.
 
 Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-15-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/qcom/qdsp6/audioreach.c | 139 ++++++++++++++++++++++++++++++
  1 file changed, 139 insertions(+)
@@ -2996,7 +3010,7 @@ index 8706471e2a43..089cc9dd76fc 100644
  		if (!rc)
  			rc = audioreach_module_enable(graph, module, true);
  
-From 1f3279997b2e5282ccc50ec57ad87aa57a86950b Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:25 +0100
 Subject: [PATCH 15/23] ASoC: qcom: audioreach: add speaker protection mixer controls
@@ -3006,6 +3020,7 @@ R0/T0 pairs, so userspace can run a calibration and restore its result.
 
 Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-16-srinivas.kandagatla@oss.qualcomm.com
 ---
  include/uapi/sound/snd_ar_tokens.h |  2 +
  sound/soc/qcom/qdsp6/topology.c    | 80 ++++++++++++++++++++++++++++++
@@ -3136,7 +3151,7 @@ index 5de7e821e5f4..6316d1ab0675 100644
  };
  
  static const struct snd_soc_tplg_ops audioreach_tplg_ops = {
-From 8a958d11fbb5d556df96a597dc06b3f60a21c82d Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:26 +0100
 Subject: [PATCH 16/23] ASoC: qcom: audioreach: pin SPEAKER_PROTECTION_VI media
@@ -3150,6 +3165,7 @@ Use those for the VI module and the codec DMA source in its subgraph,
 and keep the channel count, which follows the number of speakers.
 
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-17-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/qcom/qdsp6/audioreach.c | 29 +++++++++++++++++++++++++++++
  1 file changed, 29 insertions(+)
@@ -3200,7 +3216,7 @@ index 089cc9dd76fc..d027c763eb25 100644
  	switch (module->module_id) {
  	case MODULE_ID_DATA_LOGGING:
  		rc = audioreach_module_enable(graph, module, true);
-From 0a90147e8a7caa44465dfdffe58043995d0262ef Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:27 +0100
 Subject: [PATCH 17/23] ASoC: qcom: audioreach: add live speaker temperature (T0)
@@ -3216,6 +3232,7 @@ control. Record T0 with R0 when a calibration completes. A slot that
 cannot be read reports 0.
 
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-18-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/qcom/qdsp6/audioreach.c | 65 ++++++++++++++++++++++++++++++-
  sound/soc/qcom/qdsp6/audioreach.h |  5 +++
@@ -3433,7 +3450,7 @@ index 6316d1ab0675..8bc681a633d8 100644
  static int audioreach_control_load_mix(struct snd_soc_component *scomp,
  				       struct snd_ar_control *scontrol,
  				       struct snd_kcontrol_new *kc,
-From f06dddac930507f95bd6bcf0ff6c4af01f00acd4 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:28 +0100
 Subject: [PATCH 18/23] ASoC: qcom: audioreach: add speaker protection calibration
@@ -3443,6 +3460,7 @@ Add a read-only "Speaker Protection Calibration State" control with
 each speaker's last calibration state, so userspace can follow a run.
 
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-19-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/qcom/qdsp6/audioreach.c | 51 +++++++++++++++++++++++++++++++
  sound/soc/qcom/qdsp6/audioreach.h |  2 ++
@@ -3637,7 +3655,7 @@ index 8bc681a633d8..75381d9a1435 100644
  };
  
  /* Kept apart from the topology SP controls, so FEs have them without it */
-From ece41d0a609428e614294872fbc8eb4ea76f1290 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:29 +0100
 Subject: [PATCH 19/23] ASoC: qcom: audioreach: keep the last VI calibration result
@@ -3652,6 +3670,7 @@ Only mark the run pending when arming, and drop the previous result
 when the first event of the new run arrives.
 
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-20-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/qcom/qdsp6/audioreach.c | 25 ++++++++++++++++++++-----
  1 file changed, 20 insertions(+), 5 deletions(-)
@@ -3722,7 +3741,7 @@ index 3eba0a9a0372..e996be54c42e 100644
  }
  
  static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
-From b0aca3c55a4071a21429fe07db34e7b8aae53b07 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:30 +0100
 Subject: [PATCH 20/23] ASoC: qcom: x1e80100: carry WSA VI feedback on the WSA
@@ -3737,6 +3756,7 @@ core's capture stream events for such links power the VI widgets.
 Nothing changes until the DT adds the VI DAIs to the link.
 
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-21-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/qcom/x1e80100.c | 27 +++++++++++++++++++++++++++
  1 file changed, 27 insertions(+)
@@ -3793,7 +3813,7 @@ index 7eeb32ada7fa..466245dd8644 100644
  	}
  }
  
-From 0d5f221ddcf7920dbc0ffcdde87b9f8a6e738851 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:31 +0100
 Subject: [PATCH 21/23] ASoC: qcom: x1e80100: register WSA speaker thermal zones for
@@ -3806,6 +3826,7 @@ control. A missing zone is logged and leaves its slot reading 0. The
 map is cleared when the link is torn down.
 
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-22-srinivas.kandagatla@oss.qualcomm.com
 ---
  sound/soc/qcom/x1e80100.c | 54 +++++++++++++++++++++++++++++++++++++++
  1 file changed, 54 insertions(+)
@@ -3903,7 +3924,7 @@ index 466245dd8644..014f803f6891 100644
  			link->be_hw_params_fixup = x1e80100_be_hw_params_fixup;
  			link->ops = &x1e80100_be_ops;
  		}
-From bcee19ffc7e4561c00d40898eddc7733678e099f Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:32 +0100
 Subject: [PATCH 22/23] arm64: dts: qcom: glymur-crd: add WSA speaker protection VI
@@ -3916,6 +3937,7 @@ speaker protection. The speakers now expose two DAIs, so give them a
 
 Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-23-srinivas.kandagatla@oss.qualcomm.com
 ---
  arch/arm64/boot/dts/qcom/glymur-crd.dtsi | 29 ++++++++++++++++++------
  1 file changed, 22 insertions(+), 7 deletions(-)
@@ -3990,7 +4012,7 @@ index 58158b51fe29..fddc76f59557 100644
  		sound-name-prefix = "TweeterRight";
  		vdd-1p8-supply = <&vreg_l15b_e0_1p8>;
  		vdd-io-supply = <&vreg_l18b_e0_1p2>;
-From 89d86de8b7452bbaefe91d99cf33e4bead0706b0 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
 Date: Fri, 23 Oct 2026 18:14:33 +0100
 Subject: [PATCH 23/23] arm64: dts: qcom: mahua-t14s: add WSA speaker protection VI
@@ -4002,6 +4024,7 @@ speaker protection. The speakers now expose two DAIs, so give them a
 '#sound-dai-cells' of 1 and address the playback DAI explicitly.
 
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261023171433.820092-24-srinivas.kandagatla@oss.qualcomm.com
 ---
  .../mahua-lenovo-thinkpad-t14s-gen7-lcd.dts   | 19 +++++++++++++++----
  1 file changed, 15 insertions(+), 4 deletions(-)

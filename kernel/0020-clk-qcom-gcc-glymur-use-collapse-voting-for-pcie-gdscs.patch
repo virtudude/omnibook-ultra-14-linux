@@ -1,4 +1,4 @@
-From e828688294f41560585e6e4c42e86fb68018f8ba Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Taniya Das <taniya.das@oss.qualcomm.com>
 Date: Wed, 28 Oct 2026 15:05:32 +0530
 Subject: [PATCH] clk: qcom: gcc-glymur: use collapse-voting for PCIe GDSCs

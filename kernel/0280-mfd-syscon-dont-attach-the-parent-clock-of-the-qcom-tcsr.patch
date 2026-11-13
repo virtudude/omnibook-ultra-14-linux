@@ -1,0 +1,58 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Wed, 11 Nov 2026 19:57:17 -0500
+Subject: [PATCH] mfd: syscon: don't attach the parent clock of the Qualcomm
+ TCSR
+
+of_syscon_register() takes the first "clocks" entry of a syscon node as
+its register clock and keeps it prepared. For a node that is also a
+clock provider, such as the Qualcomm Glymur and X1E TCSR, that entry is
+the provider's parent (the RPMh CXO clock), not a register clock.
+
+On Glymur, the SCM node's qcom,dload-mode looks up the TCSR syscon, so
+CXO stays prepared, and its RPMh vote keeps the XO crystal on and
+blocks AOSS sleep in system suspend.
+
+Skip the clock lookup for the Glymur and X1E TCSR only: some clock
+providers, such as the i.MX95 VPU CSR, do need their clock input for
+register access.
+
+Link: https://github.com/justririll/x1e-sleep
+Assisted-by: Claude:claude-opus-5-5
+---
+ drivers/mfd/syscon.c | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/mfd/syscon.c b/drivers/mfd/syscon.c
+index 21a7fcdd2737..ec238752485c 100644
+--- a/drivers/mfd/syscon.c
++++ b/drivers/mfd/syscon.c
+@@ -37,6 +37,16 @@ static const struct regmap_config syscon_regmap_config = {
+ 	.reg_stride = 4,
+ };
+ 
++/*
++ * Clock controllers whose "clocks" are their parents, not a register clock.
++ * Keeping such a clock prepared from here pins it, e.g. an RPMh XO vote.
++ */
++static const struct of_device_id syscon_parent_clk_only[] = {
++	{ .compatible = "qcom,glymur-tcsr" },
++	{ .compatible = "qcom,x1e80100-tcsr" },
++	{ }
++};
++
+ static struct syscon *of_syscon_register(struct device_node *np, bool check_res)
+ {
+ 	struct clk *clk;
+@@ -123,7 +133,10 @@ static struct syscon *of_syscon_register(struct device_node *np, bool check_res)
+ 	}
+ 
+ 	if (check_res) {
+-		clk = of_clk_get(np, 0);
++		if (of_match_node(syscon_parent_clk_only, np))
++			clk = ERR_PTR(-ENOENT);
++		else
++			clk = of_clk_get(np, 0);
+ 		if (IS_ERR(clk)) {
+ 			ret = PTR_ERR(clk);
+ 			/* clock is optional */

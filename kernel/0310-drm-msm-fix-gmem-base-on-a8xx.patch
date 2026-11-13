@@ -1,4 +1,4 @@
-From a1fa7c6477cdc002bd38bec957e3e504ca6e7cdc Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Connor Abbott <cwabbott0@gmail.com>
 Date: Thu, 29 Oct 2026 19:02:30 -0400
 Subject: [PATCH] drm/msm: Fix GMEM_BASE on a8xx

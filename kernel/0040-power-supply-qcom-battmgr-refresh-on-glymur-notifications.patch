@@ -1,4 +1,4 @@
-From af8a7ddafdfa288df2f232b0d26f28f403159fb5 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Tyler Baker <forcedinductionz@gmail.com>
 Date: Sat, 26 Sep 2026 20:01:33 -0400
 Subject: [PATCH] power: supply: qcom_battmgr: refresh on Glymur state

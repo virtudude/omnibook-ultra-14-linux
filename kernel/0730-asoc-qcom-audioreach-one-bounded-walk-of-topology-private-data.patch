@@ -1,29 +1,29 @@
-From c5154175b2888258120805d8ff3eea155edbe9f8 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Wed, 11 Nov 2026 15:02:20 -0500
 Subject: [PATCH] ASoC: qcom: audioreach: one bounded walk of topology private
  data
 
 The readers of a widget's or control's private data trust its vendor
-arrays: headers and elements are read unchecked, a signed offset is
-advanced by the array's size and can overflow or leave the private
-data, num_elems of 0 makes "<= num_elems - 1" loops overrun, mixer
-controls read their first array without checking there is one, and a
-cfg blob need not be a whole number of words.
+arrays: headers and elements are read unchecked, a signed offset can
+overflow or leave the private data, num_elems of 0 makes
+"<= num_elems - 1" loops overrun, mixer controls read their first array
+without checking there is one, and a cfg blob need not be whole words.
 
-Add audioreach_tplg_next_array(), the only walk of private data, which
-bounds every array and its elements before returning it, and convert
-the token finders, the control link parser, the cfg blob lookup and the
-mixer widget and control code to it. A missing or malformed sub-graph,
-container or module array now fails the widget.
+Add audioreach_tplg_next_array(), which bounds every array and its
+elements, and make it the only walk of private data. A missing or
+malformed sub-graph, container or module array now fails a PGA widget,
+and a malformed one a mixer widget. Buffer, AIF, encoder, decoder and
+converter widgets keep loading past loader errors, since modules those
+loaders don't handle also return one.
 
 Assisted-by: Claude:claude-opus-5-5
 ---
- sound/soc/qcom/qdsp6/topology.c | 312 +++++++++++++++++---------------
- 1 file changed, 169 insertions(+), 143 deletions(-)
+ sound/soc/qcom/qdsp6/topology.c | 314 +++++++++++++++++---------------
+ 1 file changed, 171 insertions(+), 143 deletions(-)
 
 diff --git a/sound/soc/qcom/qdsp6/topology.c b/sound/soc/qcom/qdsp6/topology.c
-index a4276dd8b87b..aa27676bbe87 100644
+index a4276dd8b87b..33566a04bc84 100644
 --- a/sound/soc/qcom/qdsp6/topology.c
 +++ b/sound/soc/qcom/qdsp6/topology.c
 @@ -252,146 +252,159 @@ static struct audioreach_module *audioreach_tplg_alloc_module(struct q6apm *apm,
@@ -439,7 +439,16 @@ index a4276dd8b87b..aa27676bbe87 100644
  		switch (le32_to_cpu(w_elem->token)) {
  		case AR_TKN_U32_SUB_GRAPH_INSTANCE_ID:
  			scontrol->sgid = le32_to_cpu(w_elem->value);
-@@ -1616,11 +1638,15 @@ static int audioreach_control_load_mix(struct snd_soc_component *scomp,
+@@ -1213,6 +1235,8 @@ static int audioreach_widget_unload(struct snd_soc_component *scomp,
+ 		/* virtual widget */
+ 		struct snd_ar_control *scontrol = dobj->private;
+ 
++		if (!scontrol)
++			return 0;
+ 		list_del(&scontrol->node);
+ 		kfree(scontrol);
+ 		return 0;
+@@ -1616,11 +1640,15 @@ static int audioreach_control_load_mix(struct snd_soc_component *scomp,
  	int tkn_count = 0;
  
  	mc = container_of_const(hdr, struct snd_soc_tplg_mixer_control, hdr);

@@ -1,4 +1,4 @@
-From e303934d369fd64c5f98af6f9fd0e27a83055254 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Shuai Zhang <shuai.zhang@oss.qualcomm.com>
 Date: Mon, 2 Nov 2026 17:48:00 +0800
 Subject: [PATCH] power: sequencing: qcom-wcn: increase WCN7850 power-up delay

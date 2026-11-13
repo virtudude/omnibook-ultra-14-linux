@@ -1,4 +1,4 @@
-From 334f22d38a5b700b0bdcc8f23dc1a0dcae8bc3f7 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Rob Clark <robin.clark@oss.qualcomm.com>
 Date: Wed, 4 Nov 2026 13:20:47 -0800
 Subject: [PATCH] drm/msm/a8xx: Fix 1/2b alpha filtering precision

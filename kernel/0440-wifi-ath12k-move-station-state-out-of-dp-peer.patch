@@ -13,7 +13,7 @@ logical link id series that follows is written on top of them.
      Author: Aishwarya R <aishwarya.r@oss.qualcomm.com>
      Message-ID: <20260925051036.2838210-3-aishwarya.r@oss.qualcomm.com>
 
-From 9644e64b916eba0cc0a1a116d361082c9e00a850 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Aishwarya R <aishwarya.r@oss.qualcomm.com>
 Date: Fri, 25 Sep 2026 10:40:35 +0530
 Subject: [PATCH 1/2] wifi: ath12k: store station pointer only in dp_peer
@@ -292,7 +292,7 @@ index 41abf1865702..6f4dae8b2c6b 100644
  	status.info = info;
  	status.skb = msdu;
  	rate = peer->last_txrate;
-From 1724b23f86e3ef67d1109f95904e4d6b4264d437 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Aishwarya R <aishwarya.r@oss.qualcomm.com>
 Date: Fri, 25 Sep 2026 10:40:36 +0530
 Subject: [PATCH 2/2] wifi: ath12k: move is_authorized flag to ath12k_sta

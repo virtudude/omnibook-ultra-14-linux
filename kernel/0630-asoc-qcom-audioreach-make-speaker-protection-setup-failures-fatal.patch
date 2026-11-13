@@ -1,21 +1,21 @@
-From 3288ce2c0d636fe9197b94ef2aa68eda63d074ee Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Mon, 9 Nov 2026 20:02:27 -0500
 Subject: [PATCH] ASoC: qcom: audioreach: make speaker protection setup
  failures fatal
 
-Speaker protection must not run half configured unnoticed:
+Speaker protection must not run half configured:
 
 - an SP or SP_VI module without a static cfg blob fails the graph
   instead of running on DSP defaults;
 - R0/T0 is sent after the static cfg blob, whose thermal record would
-  otherwise override it with the topology defaults, then the module is
-  enabled;
-- the module state is logged only once every command for it has
-  succeeded, and the failing step otherwise;
+  otherwise override it, and only then is the module enabled;
 - Normal mode without R0/T0 warns that it runs on topology defaults;
 - the operation mode is read once per VI setup, so the op mode cfg and
   the R0/T0 decision cannot disagree.
+
+The module state is logged only once every command for it succeeded,
+and the failing step otherwise.
 
 Assisted-by: Claude:claude-opus-5-5
 ---
@@ -23,7 +23,7 @@ Assisted-by: Claude:claude-opus-5-5
  1 file changed, 95 insertions(+), 60 deletions(-)
 
 diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
-index e996be54c42e..8d6e3d7ca3a6 100644
+index e996be54c42e..ea1883063216 100644
 --- a/sound/soc/qcom/qdsp6/audioreach.c
 +++ b/sound/soc/qcom/qdsp6/audioreach.c
 @@ -1866,9 +1866,9 @@ static void audioreach_arm_vi_calibration(void)
@@ -197,7 +197,7 @@ index e996be54c42e..8d6e3d7ca3a6 100644
 +		if (rc)
 +			dev_err(graph->dev, "SP RX setup failed: %d\n", rc);
 +		else
-+			dev_info(graph->dev, "SP RX configured and enabled\n");
++			dev_dbg(graph->dev, "SP RX configured and enabled\n");
  
  		break;
 -	case MODULE_ID_SPEAKER_PROTECTION_VI:
@@ -220,10 +220,10 @@ index e996be54c42e..8d6e3d7ca3a6 100644
 +		}
  
 +		/* Everything above was acknowledged by the DSP */
-+		dev_info(graph->dev, "SP VI configured: %s mode, %u channels, %s\n",
-+			 mode == PARAM_ID_SP_VI_OP_MODE_NORMAL ? "Normal" : "Calibration",
-+			 cfg->num_channels,
-+			 r0t0_sent ? "R0/T0 sent" : "no R0/T0 (topology defaults)");
++		dev_dbg(graph->dev, "SP VI configured: %s mode, %u channels, %s\n",
++			mode == PARAM_ID_SP_VI_OP_MODE_NORMAL ? "Normal" : "Calibration",
++			cfg->num_channels,
++			r0t0_sent ? "R0/T0 sent" : "no R0/T0 (topology defaults)");
  		break;
 +	}
  	case MODULE_ID_AUDIO_IF_SOURCE:

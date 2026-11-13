@@ -40,7 +40,7 @@ ath-next.
      Author: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
      Message-ID: <20261110-ath12k-logical-link-id-v5-11-26a3ed38db09@oss.qualcomm.com>
 
-From 7745a97740b7d676198c5374d882b3d88fcb84d7 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
 Date: Tue, 10 Nov 2026 14:40:22 +0800
 Subject: [PATCH 1/11] wifi: ath12k: fix potential OOB access due to unverified
@@ -113,7 +113,7 @@ index a32c804403e8..c8e590e5e250 100644
  		device_id = hw_links[hw_link_id].device_id;
  		partner_dp = ath12k_dp_hw_grp_to_dp(dp_hw_grp, device_id);
  
-From 22db2bd3c7c872758d64bc33e606baa3ed16e45b Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
 Date: Tue, 10 Nov 2026 14:40:23 +0800
 Subject: [PATCH 2/11] wifi: ath12k: skip hw link id match for devices without hw
@@ -290,7 +290,7 @@ index b1c17cc197df..5b31719b15ca 100644
  	},
  };
  
-From 570e8aa8f5bb2dcac476093e80b2d1888e8d97d2 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
 Date: Tue, 10 Nov 2026 14:40:24 +0800
 Subject: [PATCH 3/11] wifi: ath12k: rename ath12k_dp_peer::hw_links to link_id_map
@@ -379,7 +379,7 @@ index c8e590e5e250..2a0141157426 100644
  }
  
  int
-From e61700d7db5dfaa0324549e770f5b93e40a4654a Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
 Date: Tue, 10 Nov 2026 14:40:25 +0800
 Subject: [PATCH 4/11] wifi: ath12k: rename ath12k_dp_link_peer::hw_link_id to
@@ -468,7 +468,7 @@ index b9c94d6366fa..d2752b35ba0f 100644
  	u32 rx_tid_active_bitmask;
  
  	/* link stats */
-From 09117862da5e4e4bd7434d19eaf8fac3a7e32956 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
 Date: Tue, 10 Nov 2026 14:40:26 +0800
 Subject: [PATCH 5/11] wifi: ath12k: rename ath12k_skb_rxcb::hw_link_id to
@@ -567,7 +567,7 @@ index 2a0141157426..a59adbb78c76 100644
  }
  
  int
-From 96b0779e55cd45233416b803ae9fb75cc2d63c22 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
 Date: Tue, 10 Nov 2026 14:40:27 +0800
 Subject: [PATCH 6/11] wifi: ath12k: derive device id without drv_link_id for single
@@ -699,7 +699,7 @@ index a59adbb78c76..08a9f070e4aa 100644
  		partner_dp = ath12k_dp_hw_grp_to_dp(dp_hw_grp, device_id);
  		if (unlikely(!partner_dp)) {
  			ath12k_dbg(ab, ATH12K_DBG_DATA,
-From 13540af6b5cf07547041b04357f4066c5c5a60b5 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
 Date: Tue, 10 Nov 2026 14:40:28 +0800
 Subject: [PATCH 7/11] wifi: ath12k: add support for HTT_T2H_MSG_TYPE_PEER_EXTENDED
@@ -994,7 +994,7 @@ index b508aa759bd8..5506f2ce8d05 100644
  	WMI_TLV_SERVICE_THERM_THROT_POUT_REDUCTION = 410,
  	WMI_TLV_SERVICE_WDS_NULL_FRAME_SUPPORT = 421,
  	WMI_TLV_SERVICE_IS_TARGET_IPA = 425,
-From dfc445cbe807f40bbce0b78b5afcad04e61d1890 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
 Date: Tue, 10 Nov 2026 14:40:29 +0800
 Subject: [PATCH 8/11] wifi: ath12k: allocate logical link id on host when firmware
@@ -1214,7 +1214,7 @@ index eb0fca43e6f7..065253545f52 100644
  	}
  
  	/*
-From f92b5ecbb3d530290e1976858f6061f9af9b6cc9 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
 Date: Tue, 10 Nov 2026 14:40:30 +0800
 Subject: [PATCH 9/11] wifi: ath12k: derive REO RX drv_link_id per device via HAL
@@ -1524,7 +1524,7 @@ index a56ca9fd3de4..c7e1fba9bb4b 100644
  void ath12k_hal_rx_desc_get_crypto_hdr_wcn7850(struct hal_rx_desc *desc,
  					       u8 *crypto_hdr,
  					       enum hal_encrypt_type enctype);
-From 3157776039ba37af79b348812c0b247f5ea9edf9 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
 Date: Tue, 10 Nov 2026 14:40:31 +0800
 Subject: [PATCH 10/11] wifi: ath12k: derive WBM RX drv_link_id per device via HAL
@@ -1792,7 +1792,7 @@ index c7e1fba9bb4b..3fa919352686 100644
  void ath12k_hal_rx_desc_get_crypto_hdr_wcn7850(struct hal_rx_desc *desc,
  					       u8 *crypto_hdr,
  					       enum hal_encrypt_type enctype);
-From 8c3116d657ce72c0b25cda6a2ec34d81a6520745 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Baochen Qiang <baochen.qiang@oss.qualcomm.com>
 Date: Tue, 10 Nov 2026 14:40:32 +0800
 Subject: [PATCH 11/11] wifi: ath12k: use link_id_map to resolve RX link id for all

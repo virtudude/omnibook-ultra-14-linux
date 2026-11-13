@@ -1,4 +1,4 @@
-From e7d903db24a03a7c2167a1228515ecb551d714d4 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Rob Clark <robin.clark@oss.qualcomm.com>
 Date: Wed, 28 Oct 2026 17:16:00 -0700
 Subject: [PATCH] drm/msm/adreno: Soften no-firmware message

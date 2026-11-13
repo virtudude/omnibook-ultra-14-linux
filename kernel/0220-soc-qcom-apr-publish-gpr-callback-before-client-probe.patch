@@ -1,4 +1,4 @@
-From 41ceeaa605cce63b7c2ac26affea148db9e18db8 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Mohit Sharma <mohit.sharma@oss.qualcomm.com>
 Date: Thu, 22 Oct 2026 20:11:30 +0530
 Subject: [PATCH] soc: qcom: apr: Publish GPR callback before client probe

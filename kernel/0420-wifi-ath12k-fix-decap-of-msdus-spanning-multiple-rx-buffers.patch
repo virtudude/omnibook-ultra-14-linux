@@ -1,4 +1,4 @@
-From 04781cc6bba7426d2a6521ccfe100cf0c318fd4d Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Lorenzo Bianconi <lorenzo.bianconi@oss.qualcomm.com>
 Date: Thu, 15 Oct 2026 11:17:40 +0200
 Subject: [PATCH] wifi: ath12k: fix decap of MSDUs spanning multiple RX buffers

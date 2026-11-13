@@ -1,0 +1,205 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Fri, 13 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/2] arm64: dts: qcom: glymur: iris video node
+
+Patches 8 and 9 of the glymur iris v11 series: the glymur node and the
+glymur-crd enable.
+
+ 1/2 arm64: dts: qcom: glymur: Add iris video node
+     Author: Vishnu Reddy <busanna.reddy@oss.qualcomm.com>
+     Message-ID: <20260917-glymur-v11-8-e0c8bc914742@oss.qualcomm.com>
+ 2/2 arm64: dts: qcom: glymur-crd: Enable iris video codec node
+     Author: Vishnu Reddy <busanna.reddy@oss.qualcomm.com>
+     Message-ID: <20260917-glymur-v11-9-e0c8bc914742@oss.qualcomm.com>
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Vishnu Reddy <busanna.reddy@oss.qualcomm.com>
+Date: Thu, 17 Sep 2026 10:30:27 +0530
+Subject: [PATCH 1/2] arm64: dts: qcom: glymur: Add iris video node
+
+Add iris video codec to glymur SoC, which comes with significantly
+different powering up sequence than previous platforms, thus different
+clocks and resets.
+
+Reviewed-by: Vikash Garodia <vikash.garodia@oss.qualcomm.com>
+Reviewed-by: Dmitry Baryshkov <dmitry.baryshkov@oss.qualcomm.com>
+Reviewed-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
+Tested-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
+Signed-off-by: Vishnu Reddy <busanna.reddy@oss.qualcomm.com>
+Link: https://patch.msgid.link/20260917-glymur-v11-8-e0c8bc914742@oss.qualcomm.com
+Signed-off-by: Abel Vesa <abel.vesa@oss.qualcomm.com>
+---
+ arch/arm64/boot/dts/qcom/glymur.dtsi | 120 +++++++++++++++++++++++++++
+ 1 file changed, 120 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/glymur.dtsi b/arch/arm64/boot/dts/qcom/glymur.dtsi
+index 515847f28f30..5545de4925f0 100644
+--- a/arch/arm64/boot/dts/qcom/glymur.dtsi
++++ b/arch/arm64/boot/dts/qcom/glymur.dtsi
+@@ -5817,6 +5817,126 @@ mdss_dp3_out: endpoint {
+ 			};
+ 		};
+ 
++		iris: video-codec@aa00000 {
++			compatible = "qcom,glymur-iris";
++			reg = <0x0 0x0aa00000 0x0 0xf0000>;
++
++			clocks = <&gcc GCC_VIDEO_AXI0C_CLK>,
++				 <&videocc VIDEO_CC_MVS0C_CLK>,
++				 <&videocc VIDEO_CC_MVS0_CLK>,
++				 <&gcc GCC_VIDEO_AXI0_CLK>,
++				 <&videocc VIDEO_CC_MVS0C_FREERUN_CLK>,
++				 <&videocc VIDEO_CC_MVS0_FREERUN_CLK>,
++				 <&gcc GCC_VIDEO_AXI1_CLK>,
++				 <&videocc VIDEO_CC_MVS1_CLK>,
++				 <&videocc VIDEO_CC_MVS1_FREERUN_CLK>;
++			clock-names = "core_iface",
++				      "core",
++				      "vcodec0_core",
++				      "vcodec0_iface",
++				      "core_freerun",
++				      "vcodec0_core_freerun",
++				      "vcodec1_iface",
++				      "vcodec1_core",
++				      "vcodec1_core_freerun";
++
++			dma-coherent;
++
++			interconnects = <&hsc_noc MASTER_APPSS_PROC QCOM_ICC_TAG_ACTIVE_ONLY
++					 &config_noc SLAVE_VENUS_CFG QCOM_ICC_TAG_ACTIVE_ONLY>,
++					<&mmss_noc MASTER_VIDEO QCOM_ICC_TAG_ALWAYS
++					 &mc_virt SLAVE_EBI1 QCOM_ICC_TAG_ALWAYS>;
++			interconnect-names = "cpu-cfg",
++					     "video-mem";
++
++			interrupts = <GIC_SPI 174 IRQ_TYPE_LEVEL_HIGH>;
++
++			memory-region = <&video_mem>;
++
++			operating-points-v2 = <&iris_opp_table>;
++
++			power-domains = <&videocc VIDEO_CC_MVS0C_GDSC>,
++					<&videocc VIDEO_CC_MVS0_GDSC>,
++					<&rpmhpd RPMHPD_MXC>,
++					<&rpmhpd RPMHPD_MMCX>,
++					<&videocc VIDEO_CC_MVS1_GDSC>;
++			power-domain-names = "venus",
++					     "vcodec0",
++					     "mxc",
++					     "mmcx",
++					     "vcodec1";
++
++			resets = <&gcc GCC_VIDEO_AXI0C_CLK_ARES>,
++				 <&gcc GCC_VIDEO_AXI0_CLK_ARES>,
++				 <&videocc VIDEO_CC_MVS0C_FREERUN_CLK_ARES>,
++				 <&videocc VIDEO_CC_MVS0_FREERUN_CLK_ARES>,
++				 <&gcc GCC_VIDEO_AXI1_CLK_ARES>,
++				 <&videocc VIDEO_CC_MVS1_FREERUN_CLK_ARES>;
++			reset-names = "core_bus",
++				      "vcodec0_bus",
++				      "core",
++				      "vcodec0_core",
++				      "vcodec1_bus",
++				      "vcodec1_core";
++
++			#address-cells = <1>;
++			#size-cells = <1>;
++			dma-ranges = <0x0 0x0 0x0 0xffe00000>;
++
++			status = "disabled";
++
++			non-pixel {
++				iommus = <&apps_smmu 0x1940 0x0>,
++					 <&apps_smmu 0x1944 0x0>,
++					 <&apps_smmu 0x19e0 0x0>;
++				iommu-ranges = <0x25800000 0xda600000>;
++			};
++
++			pixel {
++				iommus = <&apps_smmu 0x1943 0x0>;
++			};
++
++			iris_opp_table: opp-table {
++				compatible = "operating-points-v2";
++
++				opp-240000000 {
++					opp-hz = /bits/ 64 <240000000 240000000 360000000>;
++					required-opps = <&rpmhpd_opp_svs>,
++							<&rpmhpd_opp_low_svs>;
++				};
++
++				opp-338000000 {
++					opp-hz = /bits/ 64 <338000000 338000000 507000000>;
++					required-opps = <&rpmhpd_opp_svs>,
++							<&rpmhpd_opp_svs>;
++				};
++
++				opp-366000000 {
++					opp-hz = /bits/ 64 <366000000 366000000 549000000>;
++					required-opps = <&rpmhpd_opp_svs_l1>,
++							<&rpmhpd_opp_svs_l1>;
++				};
++
++				opp-444000000 {
++					opp-hz = /bits/ 64 <444000000 444000000 666000000>;
++					required-opps = <&rpmhpd_opp_svs_l1>,
++							<&rpmhpd_opp_nom>;
++				};
++
++				opp-533333334 {
++					opp-hz = /bits/ 64 <533333334 533333334 800000000>;
++					required-opps = <&rpmhpd_opp_svs_l1>,
++							<&rpmhpd_opp_turbo>;
++				};
++
++				opp-655000000 {
++					opp-hz = /bits/ 64 <655000000 655000000 982000000>;
++					required-opps = <&rpmhpd_opp_nom>,
++							<&rpmhpd_opp_turbo_l1>;
++				};
++			};
++		};
++
+ 		videocc: clock-controller@aaf0000 {
+ 			compatible = "qcom,glymur-videocc";
+ 			reg = <0x0 0x0aaf0000 0x0 0x10000>;
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Vishnu Reddy <busanna.reddy@oss.qualcomm.com>
+Date: Thu, 17 Sep 2026 10:30:28 +0530
+Subject: [PATCH 2/2] arm64: dts: qcom: glymur-crd: Enable iris video codec node
+
+The iris hardware block is described in the glymur SoC DTSI, and enabling
+it here allows the media iris driver to probe and use the video codec
+functionality.
+
+Reviewed-by: Vikash Garodia <vikash.garodia@oss.qualcomm.com>
+Reviewed-by: Dmitry Baryshkov <dmitry.baryshkov@oss.qualcomm.com>
+Signed-off-by: Vishnu Reddy <busanna.reddy@oss.qualcomm.com>
+Link: https://patch.msgid.link/20260917-glymur-v11-9-e0c8bc914742@oss.qualcomm.com
+Signed-off-by: Abel Vesa <abel.vesa@oss.qualcomm.com>
+---
+ arch/arm64/boot/dts/qcom/glymur-crd.dtsi | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/qcom/glymur-crd.dtsi b/arch/arm64/boot/dts/qcom/glymur-crd.dtsi
+index fddc76f59557..df12c2a13955 100644
+--- a/arch/arm64/boot/dts/qcom/glymur-crd.dtsi
++++ b/arch/arm64/boot/dts/qcom/glymur-crd.dtsi
+@@ -709,6 +709,16 @@ touchscreen@38 {
+ 	};
+ };
+ 
++&iris {
++	firmware-name = "qcom/vpu/vpu36_p4_s7.mbn";
++
++	status = "okay";
++
++	video-firmware {
++		iommus = <&apps_smmu 0x19e2 0x0>;
++	};
++};
++
+ &lpass_vamacro {
+ 	pinctrl-0 = <&dmic01_default>, <&dmic23_default>;
+ 	pinctrl-names = "default";

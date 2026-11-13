@@ -1,24 +1,22 @@
-From 07a8074ba12197d4a2f6a0960707ce14ff6d9884 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Tue, 10 Nov 2026 23:13:35 -0500
 Subject: [PATCH] ASoC: qcom: load the factory speaker calibration from UEFI
 
 Without the factory R0/T0 the VI module runs on the topology's default
-speaker model; on the HP OmniBook Ultra 14 the protected graph then
-plays about 11 dB quieter. HP keeps the factory R0/T0 of the speakers
-in the UEFI variable SmartAmpCalibrationData, as Windows uses it.
+speaker model, and on the HP OmniBook Ultra 14 the protected graph
+plays about 11 dB quieter. HP keeps the factory R0/T0 in the UEFI
+variable SmartAmpCalibrationData, which Windows uses.
 
-With "qcom,uefi-speaker-calibration", the first Normal mode SP open with
-no R0/T0 set reads the variable, unless the R0/T0 control was written
-meanwhile. It is read at open, not probe, because uefisecapp may come up
-after the card; a failure is retried at the next open, rate limited.
-
-The variable is used only if it has the expected size, is marked valid,
-covers every speaker, and every R0 lies within the board's
-"qcom,speaker-r0-range-micro-ohms", which catches unit or scale errors
-the control's range check cannot. It is read with efivar_get_variable()
-under efivar_lock(), as rtc-pm8xxx does, because on these laptops the
-variables come from uefisecapp, not EFI runtime services.
+With "qcom,uefi-speaker-calibration", read it at the first Normal mode
+SP open with no R0/T0 set, not at probe, as uefisecapp may come up
+after the card; a failure is retried at a later open, with
+rate-limited warnings.
+Use it only if it has the expected size, is marked valid, covers every
+speaker, and every R0 lies within "qcom,speaker-r0-range-micro-ohms",
+which catches unit or scale errors. Read it with efivar_get_variable()
+under efivar_lock(), as rtc-pm8xxx does, since the variables come from
+uefisecapp, not EFI runtime services.
 
 Assisted-by: Claude:claude-opus-5-5
 ---
@@ -28,7 +26,7 @@ Assisted-by: Claude:claude-opus-5-5
  3 files changed, 143 insertions(+), 1 deletion(-)
 
 diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
-index a40c0418f126..ef1e57c2fdf2 100644
+index 2a8a4d7e6150..18584a15216c 100644
 --- a/sound/soc/qcom/qdsp6/audioreach.c
 +++ b/sound/soc/qcom/qdsp6/audioreach.c
 @@ -1,6 +1,7 @@
@@ -39,7 +37,7 @@ index a40c0418f126..ef1e57c2fdf2 100644
  #include <linux/kernel.h>
  #include <linux/mutex.h>
  #include <linux/slab.h>
-@@ -1842,7 +1843,8 @@ int audioreach_get_sp_vi_cal_state(long *vals, unsigned int count)
+@@ -1740,7 +1741,8 @@ int audioreach_get_sp_vi_cal_state(long *vals, unsigned int count)
  }
  EXPORT_SYMBOL_GPL(audioreach_get_sp_vi_cal_state);
  
@@ -47,9 +45,9 @@ index a40c0418f126..ef1e57c2fdf2 100644
 +static int __audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals,
 +				       unsigned int count, bool only_if_unset)
  {
- 	char name[MAX_SP_VI_SPEAKERS][32];
  	struct sp_vi_r0t0_cfg new = {};
-@@ -1889,6 +1891,10 @@ int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int
+ 	unsigned int i, num_ch;
+@@ -1785,6 +1787,10 @@ int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int
  
  	guard(mutex)(&sp_vi_r0t0_cfg_lock);
  
@@ -59,8 +57,8 @@ index a40c0418f126..ef1e57c2fdf2 100644
 +
  	sp_vi_r0t0_cfg = new;
  
- 	if (audioreach_sp_get_lanes(lane, name, num_ch))
-@@ -1909,6 +1915,129 @@ int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int
+ 	for (i = 0; i < num_ch; i++) {
+@@ -1803,6 +1809,129 @@ int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int
  	return num_ch;
  }
  
@@ -190,7 +188,7 @@ index a40c0418f126..ef1e57c2fdf2 100644
  void audioreach_vi_calibration_event(struct device *dev,
  				     const struct event_id_vi_per_spkr_calibration *cali,
  				     u32 num_ch)
-@@ -2297,6 +2426,8 @@ static int audioreach_sp_vi_send_r0t0(struct q6apm_graph *graph,
+@@ -2122,6 +2251,8 @@ static int audioreach_sp_vi_send_r0t0(struct q6apm_graph *graph,
  	if (mode != PARAM_ID_SP_VI_OP_MODE_NORMAL)
  		return 0;
  
@@ -200,22 +198,22 @@ index a40c0418f126..ef1e57c2fdf2 100644
  
  	if (!sp_vi_r0t0_cfg.num_ch) {
 diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
-index 39fb88a54eae..3168ec6ee99c 100644
+index 157d1ef2137c..3cbe3dda1252 100644
 --- a/sound/soc/qcom/qdsp6/audioreach.h
 +++ b/sound/soc/qcom/qdsp6/audioreach.h
-@@ -1143,6 +1143,7 @@ int audioreach_sp_register_speaker_map(struct thermal_zone_device * const *tzs,
- 				       unsigned int num);
+@@ -1151,6 +1151,7 @@ int audioreach_sp_register_speaker_map(struct thermal_zone_device * const *tzs,
+ 				       bool lane_order);
  int audioreach_get_sp_vi_t0(long *vals, unsigned int count);
  void audioreach_sp_set_required(bool required);
 +void audioreach_sp_set_r0t0_from_uefi(bool enable, u32 r0_min_uohm, u32 r0_max_uohm);
  bool audioreach_sp_required(void);
- void audioreach_sp_session_begin(void);
- int audioreach_sp_session_end(struct device *dev);
+ void audioreach_sp_session_begin(struct q6apm_graph *graph);
+ int audioreach_sp_session_end(struct q6apm_graph *graph, int rc);
 diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
-index 162dcc22090d..18eb44a56622 100644
+index a993db485708..02851fb599d6 100644
 --- a/sound/soc/qcom/x1e80100.c
 +++ b/sound/soc/qcom/x1e80100.c
-@@ -436,6 +436,16 @@ static int x1e80100_platform_probe(struct platform_device *pdev)
+@@ -419,6 +419,16 @@ static int x1e80100_platform_probe(struct platform_device *pdev)
  	x1e80100_add_be_ops(card);
  	audioreach_sp_set_required(of_property_read_bool(dev->of_node,
  							 "qcom,speaker-protection-required"));

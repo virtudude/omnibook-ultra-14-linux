@@ -1,0 +1,177 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Fri, 13 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/2] Input: gpio-keys - arm switches only away from their wake state
+
+The binding and the driver for wakeup-on-state-change, which leaves
+the wakeup of a switch unarmed while it is already in the state it
+would wake on.
+
+ 1/2 dt-bindings: input: gpio-keys: add wakeup-on-state-change
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 2/2 Input: gpio-keys - arm switches only away from their wake state
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Thu, 12 Nov 2026 18:11:23 -0500
+Subject: [PATCH 1/2] dt-bindings: input: gpio-keys: add wakeup-on-state-change
+
+Some switches see spurious edges on their line while the system sleeps,
+such as the lid switch on Qualcomm Glymur laptops on every exit from CX
+power collapse. Add a property that leaves the wakeup of a switch with
+an asserted or deasserted wakeup-event-action unarmed while the switch
+is already in that state.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ .../devicetree/bindings/input/gpio-keys.yaml          | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/input/gpio-keys.yaml b/Documentation/devicetree/bindings/input/gpio-keys.yaml
+index cc78c2152921..4c039dc34055 100644
+--- a/Documentation/devicetree/bindings/input/gpio-keys.yaml
++++ b/Documentation/devicetree/bindings/input/gpio-keys.yaml
+@@ -96,6 +96,16 @@ patternProperties:
+         $ref: /schemas/types.yaml#/definitions/uint32
+         enum: [0, 1, 2]
+ 
++      wakeup-on-state-change:
++        description:
++          For a switch with wakeup-event-action set to asserted or deasserted,
++          don't arm the wakeup while the switch is already in that state, so
++          that spurious edges on the line cannot wake the system. A switch
++          outside that state at suspend wakes the system on entering it; a
++          switch already in that state at suspend does not wake the system for
++          the rest of that suspend.
++        type: boolean
++
+       linux,can-disable:
+         description:
+           Indicates that button is connected to dedicated (not shared) interrupt
+@@ -129,6 +139,7 @@ patternProperties:
+ 
+     dependencies:
+       wakeup-event-action: [ wakeup-source ]
++      wakeup-on-state-change: [ wakeup-event-action ]
+       linux,input-value: [ gpios ]
+ 
+     unevaluatedProperties: false
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Thu, 12 Nov 2026 18:07:58 -0500
+Subject: [PATCH 2/2] Input: gpio-keys - arm switches only away from their wake
+ state
+
+A switch with wakeup-event-action wakes the system when it enters the
+asserted or deasserted state, but its interrupt stays armed for the
+same edge while it is already in that state, so a spurious edge wakes
+the system. On Qualcomm Glymur laptops the lid line sees such an edge
+on every exit from CX power collapse, so a suspend with the lid open
+ends after a few seconds.
+
+Add a wakeup-on-state-change property that leaves the wake interrupt of
+such a switch unarmed while it is already in its wake state. It is
+opt-in because a lid closed and reopened during a suspend that started
+with the lid open then no longer wakes the system.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ drivers/input/keyboard/gpio_keys.c | 31 ++++++++++++++++++++++++++++--
+ include/linux/gpio_keys.h          |  4 ++++
+ 2 files changed, 33 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/input/keyboard/gpio_keys.c b/drivers/input/keyboard/gpio_keys.c
+index 661f2da6054b..bad8adb776b9 100644
+--- a/drivers/input/keyboard/gpio_keys.c
++++ b/drivers/input/keyboard/gpio_keys.c
+@@ -47,6 +47,7 @@ struct gpio_button_data {
+ 	unsigned int irq;
+ 	unsigned int wakeirq;
+ 	unsigned int wakeup_trigger_type;
++	bool wakeup_skipped;
+ 
+ 	spinlock_t lock;
+ 	bool disabled;
+@@ -822,6 +823,8 @@ gpio_keys_get_devtree_pdata(struct device *dev)
+ 
+ 		fwnode_property_read_u32(child, "wakeup-event-action",
+ 					 &button->wakeup_event_action);
++		button->wakeup_on_change =
++			fwnode_property_read_bool(child, "wakeup-on-state-change");
+ 
+ 		button->can_disable =
+ 			fwnode_property_read_bool(child, "linux,can-disable");
+@@ -941,7 +944,25 @@ static int gpio_keys_probe(struct platform_device *pdev)
+ static int __maybe_unused
+ gpio_keys_button_enable_wakeup(struct gpio_button_data *bdata)
+ {
+-	int error;
++	const struct gpio_keys_button *button = bdata->button;
++	bool wake_state;
++	int error, state;
++
++	/*
++	 * A switch that wakes on entering a state cannot do so while it is
++	 * already in that state; leaving its wake line unarmed then avoids
++	 * spurious wake edges on it.
++	 */
++	if (button->wakeup_on_change && bdata->gpiod && button->type == EV_SW &&
++	    (button->wakeup_event_action == EV_ACT_ASSERTED ||
++	     button->wakeup_event_action == EV_ACT_DEASSERTED)) {
++		wake_state = button->wakeup_event_action == EV_ACT_ASSERTED;
++		state = gpiod_get_value_cansleep(bdata->gpiod);
++		if (state >= 0 && !!state == wake_state) {
++			bdata->wakeup_skipped = true;
++			return 0;
++		}
++	}
+ 
+ 	error = enable_irq_wake(bdata->irq);
+ 	if (error) {
+@@ -976,6 +997,11 @@ gpio_keys_button_disable_wakeup(struct gpio_button_data *bdata)
+ {
+ 	int error;
+ 
++	if (bdata->wakeup_skipped) {
++		bdata->wakeup_skipped = false;
++		return;
++	}
++
+ 	if (bdata->wakeirq) {
+ 		enable_irq(bdata->irq);
+ 		disable_irq(bdata->wakeirq);
+@@ -1039,7 +1065,8 @@ gpio_keys_disable_wakeup(struct gpio_keys_drvdata *ddata)
+ 	for (i = 0; i < ddata->pdata->nbuttons; i++) {
+ 		bdata = &ddata->data[i];
+ 		bdata->suspended = false;
+-		if (irqd_is_wakeup_set(irq_get_irq_data(bdata->irq)))
++		if (bdata->wakeup_skipped ||
++		    irqd_is_wakeup_set(irq_get_irq_data(bdata->irq)))
+ 			gpio_keys_button_disable_wakeup(bdata);
+ 	}
+ }
+diff --git a/include/linux/gpio_keys.h b/include/linux/gpio_keys.h
+index e8d6dc290efb..e7dc74e61ae8 100644
+--- a/include/linux/gpio_keys.h
++++ b/include/linux/gpio_keys.h
+@@ -16,6 +16,9 @@ struct device;
+  * @type:		input event type (%EV_KEY, %EV_SW, %EV_ABS)
+  * @wakeup:		configure the button as a wake-up source
+  * @wakeup_event_action:	event action to trigger wakeup
++ * @wakeup_on_change:	for a switch with an asserted or deasserted
++ *			@wakeup_event_action, don't arm the wakeup while
++ *			the switch is already in that state
+  * @debounce_interval:	debounce ticks interval in msecs
+  * @can_disable:	%true indicates that userspace is allowed to
+  *			disable button via sysfs
+@@ -33,6 +36,7 @@ struct gpio_keys_button {
+ 	unsigned int type;
+ 	int wakeup;
+ 	int wakeup_event_action;
++	bool wakeup_on_change;
+ 	int debounce_interval;
+ 	bool can_disable;
+ 	int value;

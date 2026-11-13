@@ -1,4 +1,4 @@
-From ed9726f17e89be2ff9fbad26fbe1987ea20b7ef1 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Miaoqing Pan <miaoqing.pan@oss.qualcomm.com>
 Date: Tue, 15 Sep 2026 16:00:53 +0800
 Subject: [PATCH] wifi: ath12k: Fix failure to create ath12k_dp_peer on MLO

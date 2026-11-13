@@ -1,4 +1,4 @@
-From 3d062b281c5e86992f553870778ace76f42c0ecb Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Anandu Krishnan E <anandu.e@oss.qualcomm.com>
 Date: Tue, 27 Oct 2026 00:23:32 +0530
 Subject: [PATCH] misc: fastrpc: map ADSP remote heap into remoteproc IOMMU
@@ -32,6 +32,7 @@ assignment) back down, used both from fastrpc_rpmsg_remove() and
 from fastrpc_rpmsg_probe()'s error path.
 
 Signed-off-by: Anandu Krishnan E <anandu.e@oss.qualcomm.com>
+Link: https://lore.kernel.org/r/20261027-fastrpc-kvm-iommu-v3-v3-1-f3cd5c030c78@oss.qualcomm.com
 ---
  drivers/misc/fastrpc.c | 156 +++++++++++++++++++++++++++++++++++------
  1 file changed, 134 insertions(+), 22 deletions(-)

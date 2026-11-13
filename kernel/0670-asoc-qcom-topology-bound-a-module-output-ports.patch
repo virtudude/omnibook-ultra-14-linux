@@ -1,4 +1,4 @@
-From 97a07148bc8bf2322f526f8c81787dc17c48ad32 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Tue, 10 Nov 2026 23:08:56 -0500
 Subject: [PATCH] ASoC: qcom: topology: bound a module's output ports by its
@@ -6,10 +6,10 @@ Subject: [PATCH] ASoC: qcom: topology: bound a module's output ports by its
 
 audioreach_parse_common_tokens() takes max_op_port from the topology
 unchecked and walks the AR_MAX_MOD_LINKS-sized connection arrays up to
-it, reading past their end for a module with more output ports. Clamp
-it to AR_MAX_MOD_LINKS with a warning: the tokens cannot carry more
-connections anyway, and failing here would leak the allocated module.
+it. Clamp it to AR_MAX_MOD_LINKS with a warning: the tokens cannot
+carry more connections, and failing here would leak the module.
 
+Fixes: 03365d6a58c4 ("ASoC: qdsp6: audioreach: add support for more port connections")
 Assisted-by: Claude:claude-opus-5-5
 ---
  sound/soc/qcom/qdsp6/topology.c | 6 ++++++

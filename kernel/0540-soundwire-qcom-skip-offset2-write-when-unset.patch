@@ -1,4 +1,4 @@
-From fbaa964fe8585c137d1945032d51f9c0ea32960f Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Date: Tue, 1 Sep 2026 21:13:22 +0530
 Subject: [PATCH] soundwire: qcom: skip offset2 write when unset
@@ -13,6 +13,7 @@ Skip the field when it is unset, like the other optional fields.
 Fixes: 02efb49aa805 ("soundwire: qcom: add support for SoundWire controller")
 Signed-off-by: Ravi Hothi <ravi.hothi@oss.qualcomm.com>
 Signed-off-by: Srinivas Kandagatla <srinivas.kandagatla@oss.qualcomm.com>
+Link: https://github.com/Srinivas-Kandagatla/linux/commit/65aca3ef0d1fb2f6b20892f0d1a3a1ef391ccf7f
 ---
  drivers/soundwire/qcom.c | 5 ++++-
  1 file changed, 4 insertions(+), 1 deletion(-)

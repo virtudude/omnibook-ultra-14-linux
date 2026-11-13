@@ -1,0 +1,78 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Fri, 13 Nov 2026 02:45:29 -0500
+Subject: [PATCH] ASoC: qcom: q6apm-dai: queue no playback buffers while
+ stopped
+
+q6apm_dai_ack() sends a buffer to the DSP for every period userspace
+writes, also after TRIGGER_STOP, which leaves the DSP graph running.
+After a speaker protection fault tore down the WSA back end, with
+userspace preparing again at once, about 50 buffers were refused with
+-EBUSY within 170 ms because the GPR channel to the ADSP was full, and
+the ADSP then answered no more commands until reboot.
+
+Queue buffers only while the stream is not stopped, as q6asm-dai does.
+A start after a stop without a prepare, which ALSA allows after a
+failed start, sends what was written meanwhile; for that the queue
+pointer is reset by prepare instead of stop, which also keeps such a
+start from resending the periods before the stop.
+
+Tested with the fault held for 1 s and for 150 s: no buffer was refused
+and the speakers played again once the fault cleared.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/qdsp6/q6apm-dai.c | 22 +++++++++++++++++++++-
+ 1 file changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/sound/soc/qcom/qdsp6/q6apm-dai.c b/sound/soc/qcom/qdsp6/q6apm-dai.c
+index 725b0ac0c3e4..032dfbab09aa 100644
+--- a/sound/soc/qcom/qdsp6/q6apm-dai.c
++++ b/sound/soc/qcom/qdsp6/q6apm-dai.c
+@@ -398,6 +398,7 @@ static int q6apm_dai_prepare(struct snd_soc_component *component,
+ 	}
+ 
+ 	prtd->last_pos_index = 0;
++	prtd->queue_ptr = 0;
+ 	prtd->pcm_count = snd_pcm_lib_period_bytes(substream);
+ 	if (q6apm_is_graph_in_push_pull_mode(prtd->graph)) {
+ 		if (prtd->pcm_size != prtd->push_pull_size) {
+@@ -475,6 +476,14 @@ static int q6apm_dai_ack(struct snd_soc_component *component, struct snd_pcm_sub
+ 	if (!prtd->graph || q6apm_is_graph_in_push_pull_mode(prtd->graph))
+ 		return 0;
+ 
++	/*
++	 * A stopped stream queues no buffers: its graph may feed a back end
++	 * that is gone, and the buffers would pile up in the DSP until it takes
++	 * no more commands.
++	 */
++	if (prtd->state != Q6APM_STREAM_RUNNING)
++		return 0;
++
+ 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+ 		avail_periods = (runtime->control->appl_ptr - prtd->queue_ptr)/runtime->period_size;
+ 		for (i = 0; i < avail_periods; i++) {
+@@ -501,11 +510,22 @@ static int q6apm_dai_trigger(struct snd_soc_component *component,
+ 	case SNDRV_PCM_TRIGGER_START:
+ 	case SNDRV_PCM_TRIGGER_RESUME:
+ 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
++		/*
++		 * Started again without a prepare, e.g. after a failed start:
++		 * send what was written while stopped.
++		 */
++		if (prtd->state == Q6APM_STREAM_STOPPED) {
++			prtd->state = Q6APM_STREAM_RUNNING;
++			ret = q6apm_dai_ack(component, substream);
++			if (ret < 0)
++				prtd->state = Q6APM_STREAM_STOPPED;
++			else
++				ret = 0;
++		}
+ 		break;
+ 	case SNDRV_PCM_TRIGGER_STOP:
+ 		/* TODO support be handled via SoftPause Module */
+ 		prtd->state = Q6APM_STREAM_STOPPED;
+-		prtd->queue_ptr = 0;
+ 		prtd->last_pos_index = 0;
+ 		break;
+ 	case SNDRV_PCM_TRIGGER_SUSPEND:

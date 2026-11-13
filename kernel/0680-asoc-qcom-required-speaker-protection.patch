@@ -1,78 +1,74 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
-Date: Wed, 11 Nov 2026 00:00:00 +0000
-Subject: [PATCH 0/11] ASoC: qcom: make speaker protection safe to require
+Date: Fri, 13 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/10] ASoC: qcom: make speaker protection safe to require
 
 Speaker protection in codec DMA lane order, a V/I guard in the
-amplifier and WSA macro, checked calibration results, one checked
-SP RX/SP VI configuration pass, and the DT property that makes
-protection mandatory for a card. Includes the sm8250 and wsa8840
-binding changes these use.
+amplifier and WSA macro, calibration results reported but never
+applied, one checked SP RX/SP VI pass, and a DT property that makes
+protection mandatory, with the sm8250 and wsa8840 bindings.
 
- 1/11 ASoC: dt-bindings: qcom,sm8250: add WSA speaker protection properties
+ 1/10 ASoC: dt-bindings: qcom,sm8250: add WSA speaker protection properties
      Author: virtudude <virtudude@protonmail.com>
      Not posted.
- 2/11 ASoC: dt-bindings: qcom,sm8250: allow 18 codec DAIs on a link
+ 2/10 ASoC: dt-bindings: qcom,sm8250: allow 18 codec DAIs on a link
      Author: virtudude <virtudude@protonmail.com>
      Not posted.
- 3/11 ASoC: qcom: run speaker protection in codec DMA lane order
+ 3/10 ASoC: qcom: run speaker protection in codec DMA lane order
      Author: virtudude <virtudude@protonmail.com>
      Not posted.
- 4/11 ASoC: dt-bindings: qcom,wsa8840: add V/I guard and tweeter properties
+ 4/10 ASoC: dt-bindings: qcom,wsa8840: add speaker protection properties
      Author: virtudude <virtudude@protonmail.com>
      Not posted.
- 5/11 ASoC: codecs: wsa884x: add a V/I guard: no PA without V/I sense
+ 5/10 ASoC: codecs: wsa884x: add a V/I guard: no PA without V/I sense
      Author: virtudude <virtudude@protonmail.com>
      Not posted.
- 6/11 ASoC: codecs: lpass-wsa-macro: refuse V/I capture without V/I inputs
+ 6/10 ASoC: codecs: lpass-wsa-macro: refuse V/I capture without V/I inputs
      Author: virtudude <virtudude@protonmail.com>
      Not posted.
- 7/11 ASoC: qcom: audioreach: check VI calibration results before storing them
+ 7/10 ASoC: qcom: audioreach: report VI calibration results, never apply them
      Author: virtudude <virtudude@protonmail.com>
      Not posted.
- 8/11 ASoC: qcom: audioreach: configure SP RX and SP VI in one checked pass
+ 8/10 ASoC: qcom: audioreach: configure SP RX and SP VI in one checked pass
      Author: virtudude <virtudude@protonmail.com>
      Not posted.
- 9/11 ASoC: qcom: x1e80100: require speaker protection when the DT says so
+ 9/10 ASoC: qcom: x1e80100: require speaker protection when the DT says so
      Author: virtudude <virtudude@protonmail.com>
      Not posted.
-10/11 ASoC: qcom: audioreach: report VI calibration results, never apply them
-     Author: virtudude <virtudude@protonmail.com>
-     Not posted.
-11/11 ASoC: qcom: q6apm: refuse graphs that tap another graph's SP VI subgraph
+10/10 ASoC: qcom: q6apm: refuse graphs that tap another graph's SP VI subgraph
      Author: virtudude <virtudude@protonmail.com>
      Not posted.
 
-From 92d009d3fe5eaad12106ca1e1b0a6461d5de0671 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Tue, 10 Nov 2026 23:09:47 -0500
-Subject: [PATCH 1/11] ASoC: dt-bindings: qcom,sm8250: add WSA speaker protection
+Subject: [PATCH 1/10] ASoC: dt-bindings: qcom,sm8250: add WSA speaker protection
  properties
 
-The x1e80100 and glymur sound cards can run DSP speaker protection on
-the WSA speakers with V/I feedback from the WSA884x amplifiers. Describe
-what the machine driver needs for that:
+Describe what the x1e80100 and glymur cards need to run DSP speaker
+protection with V/I feedback from the WSA884x amplifiers:
 
 - qcom,wsa-speaker-lanes: the codec DMA lane of each V/I speaker. On
   Glymur the lanes alternate between the WSA and WSA2 macros, so link
-  order is not lane order, while calibration and tuning data are kept
-  in lane order.
+  order is not the lane order calibration and tuning data use.
 - qcom,speaker-protection-required: the speakers must not play without
-  speaker protection.
-- qcom,uefi-speaker-calibration and qcom,speaker-r0-range-micro-ohms:
-  the factory R0/T0 is in the UEFI variable SmartAmpCalibrationData,
-  and its R0 values must lie in the given range.
+  speaker protection. They run at the amplifiers' operating point if
+  every amplifier has one and qcom,vi-guard, else at conservative gain
+  limits.
+- qcom,uefi-speaker-calibration, qcom,speaker-r0-range-micro-ohms: the
+  factory R0/T0 is in the UEFI variable SmartAmpCalibrationData, and
+  its R0 values must lie in the given range.
 
 Assisted-by: Claude:claude-opus-5-5
 ---
- .../bindings/sound/qcom,sm8250.yaml           | 57 +++++++++++++++++++
- 1 file changed, 57 insertions(+)
+ .../bindings/sound/qcom,sm8250.yaml           | 61 +++++++++++++++++++
+ 1 file changed, 61 insertions(+)
 
 diff --git a/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml b/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml
-index e2e3fc99e6d9..a681a33d053a 100644
+index e2e3fc99e6d9..78363c30edbe 100644
 --- a/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml
 +++ b/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml
-@@ -76,6 +76,43 @@ properties:
+@@ -76,6 +76,47 @@ properties:
      $ref: /schemas/types.yaml#/definitions/string
      description: User visible long sound card name
  
@@ -93,7 +89,11 @@ index e2e3fc99e6d9..a681a33d053a 100644
 +    type: boolean
 +    description:
 +      The speakers on the WSA playback link must not be driven without DSP
-+      speaker protection fed by V/I sense from every amplifier.
++      speaker protection fed by V/I sense from every amplifier. If every
++      amplifier on the link has qcom,vi-guard and an operating point
++      (qcom,pa-gain-max-millidecibel and qcom,speaker-full-scale-microvolt),
++      the speakers may run at it; otherwise they are held at conservative
++      gain limits.
 +
 +  qcom,uefi-speaker-calibration:
 +    type: boolean
@@ -116,7 +116,7 @@ index e2e3fc99e6d9..a681a33d053a 100644
  patternProperties:
    ".*-dai-link$":
      description:
-@@ -154,6 +191,26 @@ required:
+@@ -154,6 +195,26 @@ required:
    - compatible
    - model
  
@@ -143,10 +143,10 @@ index e2e3fc99e6d9..a681a33d053a 100644
  additionalProperties: false
  
  examples:
-From 155788e056a027e7cb1b4271cf8647b31c185570 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Tue, 10 Nov 2026 23:29:02 -0500
-Subject: [PATCH 2/11] ASoC: dt-bindings: qcom,sm8250: allow 18 codec DAIs on a link
+Subject: [PATCH 2/10] ASoC: dt-bindings: qcom,sm8250: allow 18 codec DAIs on a link
 
 A WSA playback link that also carries the V/I feedback of four WSA884x
 speakers lists, per macro, both DAIs of two amplifiers, the SoundWire
@@ -159,10 +159,10 @@ Assisted-by: Claude:claude-opus-5-5
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml b/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml
-index a681a33d053a..3a7636774c67 100644
+index 78363c30edbe..54a398044b4d 100644
 --- a/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml
 +++ b/Documentation/devicetree/bindings/sound/qcom,sm8250.yaml
-@@ -166,7 +166,7 @@ patternProperties:
+@@ -170,7 +170,7 @@ patternProperties:
          properties:
            sound-dai:
              minItems: 1
@@ -171,78 +171,74 @@ index a681a33d053a..3a7636774c67 100644
  
            dai-tdm-slot-num:
              $ref: /schemas/types.yaml#/definitions/uint32
-From ac44b21fc634791586be0e929f8d7c0eb13bfe0e Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Tue, 10 Nov 2026 23:10:57 -0500
-Subject: [PATCH 3/11] ASoC: qcom: run speaker protection in codec DMA lane order
+Subject: [PATCH 3/10] ASoC: qcom: run speaker protection in codec DMA lane order
 
-The SP/VI code assumed speaker n is codec DMA lane n and that link codec
-order is speaker order. On Glymur the WSA lanes alternate between the
-WSA and WSA2 macros, so four amplifiers in link order sit on lanes 0, 2,
-1, 3, while the factory R0/T0 and the per-speaker SP/VI tuning are kept
-in lane order: speakers 1 and 2 got each other's calibration and tuning.
+The SP/VI code assumed speaker n is codec DMA lane n and that link
+codec order is speaker order. On Glymur the WSA lanes alternate between
+the WSA and WSA2 macros, so four amplifiers in link order sit on lanes
+0, 2, 1, 3, while the factory R0/T0 and SP/VI tuning are in lane order:
+speakers 1 and 2 got each other's calibration and tuning.
 
-The machine driver now registers the VI speakers sorted by lane, from
-"qcom,wsa-speaker-lanes", and fails the card on a property that is not
-a permutation matching the speaker count. Audioreach keeps each
-speaker's lane, builds the VI channel map in speaker order (resent
-after the static cfg blob, which may carry its own), has the MFC before
-SP RX output speaker order and requires an MFC after SP to restore lane
-order, and refuses SP RX/VI without a matching speaker map.
+Register the VI speakers in lane order from "qcom,wsa-speaker-lanes",
+failing the card unless it is a permutation matching the speaker count.
+audioreach builds the VI channel map from that, with each 32-bit V/I
+word mapped as I then V as it lies in memory, resends it after the
+static cfg blob, and refuses SP RX/VI unless the speakers were
+registered in lane order for the graph's channel count.
 
 Assisted-by: Claude:claude-opus-5-5
 ---
- sound/soc/qcom/qdsp6/audioreach.c | 287 ++++++++++++++++++++++++++++--
- sound/soc/qcom/qdsp6/audioreach.h |   1 +
- sound/soc/qcom/x1e80100.c         |  77 ++++++--
- 3 files changed, 336 insertions(+), 29 deletions(-)
+ sound/soc/qcom/qdsp6/audioreach.c | 146 ++++++++++++++++++++++++------
+ sound/soc/qcom/qdsp6/audioreach.h |   3 +-
+ sound/soc/qcom/x1e80100.c         |  79 +++++++++++-----
+ 3 files changed, 174 insertions(+), 54 deletions(-)
 
 diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
-index 4fb1ed80f564..da97df7b5881 100644
+index ea1883063216..95cfadef12b9 100644
 --- a/sound/soc/qcom/qdsp6/audioreach.c
 +++ b/sound/soc/qcom/qdsp6/audioreach.c
-@@ -47,9 +47,16 @@ struct sp_vi_r0t0_cfg {
+@@ -47,10 +47,17 @@ struct sp_vi_r0t0_cfg {
  static struct sp_vi_r0t0_cfg sp_vi_r0t0_cfg;
  static DEFINE_MUTEX(sp_vi_r0t0_cfg_lock);
  
 -/* Speakers' thermal zones in VI channel order, set by the machine driver */
 +/*
-+ * Speakers in the machine driver's order, which the R0/T0 and T0 controls,
-+ * the calibration results and the SP/VI tuning records follow. @lane is each
-+ * speaker's codec DMA lane: its V/I capture word and its RX samples.
++ * The SP speakers in codec DMA lane order, set by the machine driver for the
++ * card's lifetime: speaker n is lane n, its V/I capture word and its RX
++ * samples. The R0/T0 and T0 controls, the calibration results and the SP/VI
++ * tuning records follow this order.
 + */
  static struct {
  	struct thermal_zone_device	*tz[MAX_SP_VI_SPEAKERS];
 +	char				 name[MAX_SP_VI_SPEAKERS][32];
-+	u8				 lane[MAX_SP_VI_SPEAKERS];
-+	bool				 lanes_set;
  	unsigned int			 num;
++	bool				 lane_order;
  } sp_speaker_map;
  static DEFINE_MUTEX(sp_speaker_map_lock);
-@@ -1578,25 +1585,73 @@ void audioreach_get_sp_vi_r0t0(long *vals, unsigned int count)
+ 
+@@ -1577,8 +1584,16 @@ void audioreach_get_sp_vi_r0t0(long *vals, unsigned int count)
+ 	}
  }
  
++/**
++ * audioreach_sp_register_speaker_map() - set the SP speakers
++ * @tzs: each speaker's thermal zone, or NULL
++ * @names: each speaker's name, for the log
++ * @num: number of speakers, 0 to clear
++ * @lane_order: the speakers are in codec DMA lane order; SP runs only then
++ */
  int audioreach_sp_register_speaker_map(struct thermal_zone_device * const *tzs,
-+				       const char * const *names, const u8 *lanes,
- 				       unsigned int num)
+-				       unsigned int num)
++				       const char * const *names, unsigned int num,
++				       bool lane_order)
  {
--	unsigned int i;
-+	unsigned int i, seen = 0;
+ 	unsigned int i;
  
- 	if (num > MAX_SP_VI_SPEAKERS)
- 		return -EINVAL;
+@@ -1587,16 +1602,40 @@ int audioreach_sp_register_speaker_map(struct thermal_zone_device * const *tzs,
  
-+	if (lanes) {
-+		for (i = 0; i < num; i++) {
-+			if (lanes[i] >= num || (seen & BIT(lanes[i]))) {
-+				pr_err("SP speaker lanes are not a permutation of 0..%u\n",
-+				       num - 1);
-+				return -EINVAL;
-+			}
-+			seen |= BIT(lanes[i]);
-+		}
-+	}
-+
  	guard(mutex)(&sp_speaker_map_lock);
  
 -	for (i = 0; i < num; i++)
@@ -251,114 +247,74 @@ index 4fb1ed80f564..da97df7b5881 100644
  		sp_speaker_map.tz[i] = tzs[i];
 -	for (; i < MAX_SP_VI_SPEAKERS; i++)
 -		sp_speaker_map.tz[i] = NULL;
-+		sp_speaker_map.lane[i] = lanes ? lanes[i] : i;
 +		if (names && names[i])
 +			strscpy(sp_speaker_map.name[i], names[i]);
 +		else
 +			snprintf(sp_speaker_map.name[i], sizeof(sp_speaker_map.name[i]),
 +				 "spk%u", i);
++		if (lane_order)
++			pr_info("SP speaker %u %s: codec DMA lane %u\n",
++				i, sp_speaker_map.name[i], i);
 +	}
-+	sp_speaker_map.lanes_set = lanes;
  	sp_speaker_map.num = num;
++	sp_speaker_map.lane_order = lane_order;
  
-+	for (i = 0; i < num; i++)
-+		pr_info("SP speaker %u %s: codec DMA lane %u\n",
-+			i, sp_speaker_map.name[i], sp_speaker_map.lane[i]);
-+
  	return 0;
  }
  EXPORT_SYMBOL_GPL(audioreach_sp_register_speaker_map);
  
-+/*
-+ * SP runs only on a speaker map registered with explicit lanes for exactly
-+ * @num speakers; anything else would guess the speaker order.
-+ */
-+static int audioreach_sp_get_lanes(u8 *lane, char (*name)[32], unsigned int num)
++/* SP runs only on @num speakers registered in lane order */
++static bool audioreach_sp_speakers_match(unsigned int num)
 +{
-+	unsigned int i;
-+
-+	if (!num || num > MAX_SP_VI_SPEAKERS)
-+		return -EINVAL;
-+
 +	guard(mutex)(&sp_speaker_map_lock);
 +
-+	if (!sp_speaker_map.lanes_set || sp_speaker_map.num != num)
-+		return -EINVAL;
++	return num && sp_speaker_map.lane_order && sp_speaker_map.num == num;
++}
 +
-+	for (i = 0; i < num; i++) {
-+		lane[i] = sp_speaker_map.lane[i];
-+		if (name)
-+			strscpy(name[i], sp_speaker_map.name[i]);
-+	}
++static void audioreach_sp_speaker_name(unsigned int i, char *name, size_t len)
++{
++	guard(mutex)(&sp_speaker_map_lock);
 +
-+	return 0;
++	strscpy(name, i < sp_speaker_map.num ? sp_speaker_map.name[i] : "?", len);
 +}
 +
  /* Read each speaker's T0 in Q6 (degC * 64), 0 if its zone cannot be read */
  int audioreach_get_sp_vi_t0(long *vals, unsigned int count)
  {
-@@ -1638,7 +1693,9 @@ EXPORT_SYMBOL_GPL(audioreach_get_sp_vi_cal_state);
+@@ -1685,10 +1724,12 @@ int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int
  
- int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int count)
- {
-+	char name[MAX_SP_VI_SPEAKERS][32];
- 	struct sp_vi_r0t0_cfg new = {};
-+	u8 lane[MAX_SP_VI_SPEAKERS];
- 	unsigned int i, num_ch;
- 
- 	/* One R0 and one T0 per channel, so an odd count cannot be complete. */
-@@ -1683,12 +1740,16 @@ int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int
- 
- 	sp_vi_r0t0_cfg = new;
- 
-+	if (audioreach_sp_get_lanes(lane, name, num_ch))
-+		for (i = 0; i < num_ch; i++)
-+			strscpy(name[i], "?");
-+
  	for (i = 0; i < num_ch; i++) {
  		int r0_int, r0_frac;
++		char name[32];
  
++		audioreach_sp_speaker_name(i, name, sizeof(name));
  		r0_int = sp_vi_q24_to_int_frac(new.r0_cali_q24[i], &r0_frac);
 -		dev_info(dev, "SP channel %u: R0 %d.%03d ohms (Q24 %d), T0 %d.%03d degC (Q6 %d)\n",
 -			 i, r0_int, r0_frac, new.r0_cali_q24[i],
 +		dev_info(dev, "SP channel %u %s: R0 %d.%03d ohms (Q24 %d), T0 %d.%03d degC (Q6 %d)\n",
-+			 i, name[i], r0_int, r0_frac, new.r0_cali_q24[i],
++			 i, name, r0_int, r0_frac, new.r0_cali_q24[i],
  			 new.t0_cali_q6[i] / 64,
  			 abs((new.t0_cali_q6[i] % 64) * 1000 / 64),
  			 new.t0_cali_q6[i]);
-@@ -1872,6 +1933,72 @@ static void audioreach_arm_vi_calibration(struct device *dev)
- 	dev_info(dev, "VI calibration run %u armed\n", ++run);
+@@ -1864,6 +1905,56 @@ static void audioreach_arm_vi_calibration(void)
+ 	memset(sp_vi_r0.seen_states, 0, sizeof(sp_vi_r0.seen_states));
  }
  
 +/*
 + * PARAM_ID_SP_VI_CHANNEL_MAP_CFG lists, in the order they arrive, which
 + * speaker's Vsense (2n + 1) or Isense (2n + 2) each 16-bit V/I channel is.
 + * Each 32-bit word of the WSA V/I capture carries one speaker, V in bits
-+ * 31..16 and I in bits 15..0, so in memory a word is I then V. Word m is
-+ * codec DMA lane m, which holds the speaker whose registered lane is m.
++ * 31..16 and I in bits 15..0, so in memory a word is I then V. Word n is
++ * codec DMA lane n, which is speaker n.
 + */
-+static int audioreach_sp_vi_fill_chan_info(struct device *dev, u32 *chan,
-+					   u32 num_speakers, bool log)
++static void audioreach_sp_vi_fill_chan_info(u32 *chan, u32 num_speakers)
 +{
-+	char name[MAX_SP_VI_SPEAKERS][32];
-+	u8 lane[MAX_SP_VI_SPEAKERS];
 +	unsigned int s;
 +
-+	if (audioreach_sp_get_lanes(lane, name, num_speakers)) {
-+		dev_err(dev, "SP speaker map does not match the %u-speaker VI graph\n",
-+			num_speakers);
-+		return -EINVAL;
-+	}
-+
 +	for (s = 0; s < num_speakers; s++) {
-+		chan[2 * lane[s]] = 2 * s + 2;
-+		chan[2 * lane[s] + 1] = 2 * s + 1;
-+		if (log)
-+			dev_info(dev, "SP VI speaker %u %s: lane %u, I = ch %u, V = ch %u\n",
-+				 s, name[s], lane[s], 2 * lane[s] + 1, 2 * lane[s] + 2);
++		chan[2 * s] = 2 * s + 2;
++		chan[2 * s + 1] = 2 * s + 1;
 +	}
-+
-+	return 0;
 +}
 +
 +/*
@@ -385,10 +341,8 @@ index 4fb1ed80f564..da97df7b5881 100644
 +	cm_cfg->param_data.param_size = cm_sz - APM_MODULE_PARAM_DATA_SIZE;
 +	cm_cfg->cfg.num_channels = num_speakers * 2;
 +
-+	rc = audioreach_sp_vi_fill_chan_info(graph->dev, cm_cfg->cfg.channel_mapping,
-+					     num_speakers, true);
-+	if (!rc)
-+		rc = q6apm_send_cmd_sync(graph->apm, pkt, 0);
++	audioreach_sp_vi_fill_chan_info(cm_cfg->cfg.channel_mapping, num_speakers);
++	rc = q6apm_send_cmd_sync(graph->apm, pkt, 0);
 +	kfree(pkt);
 +	if (rc)
 +		dev_err(graph->dev, "SP VI channel map failed: %d\n", rc);
@@ -399,7 +353,7 @@ index 4fb1ed80f564..da97df7b5881 100644
  static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
  					    const struct audioreach_module *module,
  					    const struct audioreach_module_config *mcfg,
-@@ -1883,7 +2010,7 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+@@ -1875,20 +1966,16 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
  	struct apm_module_sp_vi_ex_mode_cfg *ex_cfg;
  	int op_sz, cm_sz, ex_sz;
  	struct apm_module_param_data *param_data;
@@ -408,7 +362,23 @@ index 4fb1ed80f564..da97df7b5881 100644
  	struct gpr_pkt *pkt;
  	u32 num_speakers;
  	void *p;
-@@ -1941,14 +2068,11 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
+ 
+-	if (num_channels > MAX_SP_VI_SPEAKERS) {
+-		dev_err(graph->dev, "Error: Invalid channels (%d)!\n", num_channels);
+-		return -EINVAL;
+-	}
+-
+ 	/* One 32-bit V/I word per speaker, so channels == speakers */
+ 	num_speakers = num_channels;
+-	if (!num_speakers) {
+-		dev_err(graph->dev, "Error: VI needs at least one channel\n");
++	if (!audioreach_sp_speakers_match(num_speakers)) {
++		dev_err(graph->dev, "SP VI: no speaker map in lane order for %u speakers\n",
++			num_speakers);
+ 		return -EINVAL;
+ 	}
+ 
+@@ -1933,16 +2020,7 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
  	param_data->param_size = cm_sz - APM_MODULE_PARAM_DATA_SIZE;
  
  	cm_cfg->cfg.num_channels = num_speakers * 2;
@@ -420,184 +390,42 @@ index 4fb1ed80f564..da97df7b5881 100644
 -		cm_cfg->cfg.channel_mapping[2 * j] = 2 * j + 1;
 -		cm_cfg->cfg.channel_mapping[2 * j + 1] = 2 * j + 2;
 -		j++;
-+	rc = audioreach_sp_vi_fill_chan_info(graph->dev, cm_cfg->cfg.channel_mapping,
-+					     num_speakers, false);
-+	if (rc) {
-+		kfree(pkt);
-+		return rc;
- 	}
- 
+-	}
+-
++	audioreach_sp_vi_fill_chan_info(cm_cfg->cfg.channel_mapping, num_speakers);
  	p += cm_sz;
-@@ -1979,6 +2103,8 @@ static int audioreach_sp_vi_send_r0t0(struct q6apm_graph *graph,
- {
- 	struct apm_module_sp_th_vi_r0t0_cfg *r0t0_cfg;
- 	struct apm_module_param_data *param_data;
-+	char name[MAX_SP_VI_SPEAKERS][32];
-+	u8 lane[MAX_SP_VI_SPEAKERS];
- 	struct gpr_pkt *pkt;
- 	int rc, i, r0t0_sz;
- 	void *p;
-@@ -2002,6 +2128,12 @@ static int audioreach_sp_vi_send_r0t0(struct q6apm_graph *graph,
- 		return -EINVAL;
- 	}
  
-+	if (audioreach_sp_get_lanes(lane, name, num_speakers)) {
-+		dev_err(graph->dev, "SP speaker map does not match the %u-speaker graph\n",
-+			num_speakers);
-+		return -EINVAL;
-+	}
-+
- 	r0t0_sz = APM_SP_TH_VI_R0T0_CFG_PSIZE(sp_vi_r0t0_cfg.num_ch);
- 	pkt = audioreach_alloc_apm_cmd_pkt(r0t0_sz, APM_CMD_SET_CFG, 0);
- 	if (IS_ERR(pkt))
-@@ -2035,8 +2167,8 @@ static int audioreach_sp_vi_send_r0t0(struct q6apm_graph *graph,
+ 	ex_cfg = p;
+@@ -2026,11 +2104,10 @@ static int audioreach_sp_vi_send_r0t0(struct q6apm_graph *graph,
+ 		int r0_int, r0_frac;
  
  		r0_int = sp_vi_q24_to_int_frac(sp_vi_r0t0_cfg.r0_cali_q24[i], &r0_frac);
- 		dev_info(graph->dev,
+-		dev_info(graph->dev,
 -			 "  SP ch%u: R0 %d.%03d ohms, T0 %d.%03d degC\n",
 -			 i, r0_int, r0_frac,
-+			 "  SP ch%u %s lane %u: R0 %d.%03d ohms, T0 %d.%03d degC\n",
-+			 i, name[i], lane[i], r0_int, r0_frac,
- 			 sp_vi_r0t0_cfg.t0_cali_q6[i] / 64,
- 			 abs((sp_vi_r0t0_cfg.t0_cali_q6[i] % 64) * 1000 / 64));
+-			 sp_vi_r0t0_cfg.t0_cali_q6[i] / 64,
+-			 abs((sp_vi_r0t0_cfg.t0_cali_q6[i] % 64) * 1000 / 64));
++		dev_dbg(graph->dev, "  SP ch%u: R0 %d.%03d ohms, T0 %d.%03d degC\n",
++			i, r0_int, r0_frac,
++			sp_vi_r0t0_cfg.t0_cali_q6[i] / 64,
++			abs((sp_vi_r0t0_cfg.t0_cali_q6[i] % 64) * 1000 / 64));
  	}
-@@ -2183,6 +2315,96 @@ static int audioreach_speaker_protection_vi_static_cfg(struct q6apm_graph *graph
- 	return audioreach_speaker_protection_send_static_cfg(graph, module, "VI");
- }
+ 	*sent = true;
  
-+static const struct audioreach_module *
-+audioreach_sg_find_module(const struct audioreach_module *ref, u32 iid)
-+{
-+	const struct audioreach_sub_graph *sg;
-+	const struct audioreach_container *c;
-+	const struct audioreach_module *m;
-+
-+	if (!ref->container || !ref->container->sub_graph)
-+		return NULL;
-+	sg = ref->container->sub_graph;
-+
-+	list_for_each_entry(c, &sg->container_list, node)
-+		list_for_each_entry(m, &c->modules_list, node)
-+			if (m->instance_id == iid)
-+				return m;
-+
-+	return NULL;
-+}
-+
-+static bool audioreach_fed_by_mfc(const struct audioreach_module *module)
-+{
-+	const struct audioreach_sub_graph *sg;
-+	const struct audioreach_container *c;
-+	const struct audioreach_module *m;
-+
-+	if (!module->container || !module->container->sub_graph)
-+		return false;
-+	sg = module->container->sub_graph;
-+
-+	list_for_each_entry(c, &sg->container_list, node)
-+		list_for_each_entry(m, &c->modules_list, node)
-+			if (m->module_id == MODULE_ID_MFC &&
-+			    m->dst_mod_inst_id[0] == module->instance_id)
-+				return true;
-+
-+	return false;
-+}
-+
-+static u32 audioreach_next_module_id(const struct audioreach_module *module)
-+{
-+	const struct audioreach_module *next;
-+
-+	if (!module->dst_mod_inst_id[0])
-+		return 0;
-+	next = audioreach_sg_find_module(module, module->dst_mod_inst_id[0]);
-+
-+	return next ? next->module_id : 0;
-+}
-+
-+/*
-+ * The SP RX module works in speaker order, the codec DMA sink in lane order.
-+ * The MFC in front of the SP module outputs the speakers in speaker order
-+ * (each one under its lane's channel type), and an MFC after it puts them
-+ * back in lane order by channel type.
-+ */
-+static int audioreach_sp_rx_mfc_cfg(struct device *dev,
-+				    const struct audioreach_module_config *cfg,
-+				    struct audioreach_module_config *out)
-+{
-+	char name[MAX_SP_VI_SPEAKERS][32];
-+	u8 lane[MAX_SP_VI_SPEAKERS];
-+	unsigned int s, n = cfg->num_channels;
-+
-+	if (n > MAX_SP_VI_SPEAKERS || audioreach_sp_get_lanes(lane, name, n)) {
-+		dev_err(dev, "SP speaker map does not match the %u-channel SP RX graph\n", n);
-+		return -EINVAL;
-+	}
-+
-+	*out = *cfg;
-+	for (s = 0; s < n; s++) {
-+		unsigned int t;
-+
-+		if (!cfg->channel_map[lane[s]]) {
-+			dev_err(dev, "SP RX lane %u has no channel type\n", lane[s]);
-+			return -EINVAL;
-+		}
-+		for (t = 0; t < s; t++)
-+			if (cfg->channel_map[lane[t]] == cfg->channel_map[lane[s]]) {
-+				dev_err(dev, "SP RX lanes %u and %u share channel type %u\n",
-+					lane[t], lane[s], cfg->channel_map[lane[s]]);
-+				return -EINVAL;
-+			}
-+		out->channel_map[s] = cfg->channel_map[lane[s]];
-+		dev_info(dev, "SP RX speaker %u %s: lane %u, channel type %u\n",
-+			 s, name[s], lane[s], out->channel_map[s]);
-+	}
-+
-+	return 0;
-+}
-+
- static bool audioreach_sg_contains_sp_vi(const struct audioreach_sub_graph *sg)
- {
- 	const struct audioreach_container *c;
-@@ -2258,12 +2480,38 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
- 			rc = audioreach_sal_limiter_enable(graph, module, true);
- 		break;
- 	case MODULE_ID_MFC:
-+		if (audioreach_next_module_id(module) == MODULE_ID_SPEAKER_PROTECTION) {
-+			struct audioreach_module_config sp_cfg;
-+
-+			rc = audioreach_sp_rx_mfc_cfg(graph->dev, cfg, &sp_cfg);
-+			if (!rc)
-+				rc = audioreach_mfc_set_media_format(graph, module, &sp_cfg);
-+			break;
-+		}
- 		rc = audioreach_mfc_set_media_format(graph, module, cfg);
- 		break;
- 	case MODULE_ID_GAPLESS:
+@@ -2256,6 +2333,12 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
  		rc = audioreach_gapless_set_media_format(graph, module, cfg);
  		break;
  	case MODULE_ID_SPEAKER_PROTECTION:
-+		if (!audioreach_fed_by_mfc(module) ||
-+		    audioreach_next_module_id(module) != MODULE_ID_MFC) {
-+			dev_err(graph->dev,
-+				"SP RX: the SP module must sit directly between two MFCs\n");
++		if (!audioreach_sp_speakers_match(cfg->num_channels)) {
++			dev_err(graph->dev, "SP RX: no speaker map in lane order for %u speakers\n",
++				cfg->num_channels);
 +			rc = -EINVAL;
 +			break;
-+		}
-+		{
-+			u8 lane[MAX_SP_VI_SPEAKERS];
-+
-+			if (audioreach_sp_get_lanes(lane, NULL, cfg->num_channels)) {
-+				dev_err(graph->dev,
-+					"SP RX: no speaker lane map for %u speakers\n",
-+					cfg->num_channels);
-+				rc = -EINVAL;
-+				break;
-+			}
 +		}
  		rc = audioreach_speaker_protection(graph, module);
  		if (!rc)
  			rc = audioreach_speaker_protection_static_cfg(graph, module);
-@@ -2282,6 +2530,9 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+@@ -2274,6 +2357,9 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
  		rc = audioreach_speaker_protection_vi(graph, module, cfg, mode);
  		if (!rc)
  			rc = audioreach_speaker_protection_vi_static_cfg(graph, module);
@@ -608,19 +436,21 @@ index 4fb1ed80f564..da97df7b5881 100644
  			rc = audioreach_sp_vi_send_r0t0(graph, module, mode,
  							cfg->num_channels, &r0t0_sent);
 diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
-index 6a08f52b7786..2a47d9a29093 100644
+index 6a08f52b7786..82d389f4e484 100644
 --- a/sound/soc/qcom/qdsp6/audioreach.h
 +++ b/sound/soc/qcom/qdsp6/audioreach.h
-@@ -1139,6 +1139,7 @@ void audioreach_set_sp_operation_mode(u32 mode);
+@@ -1139,7 +1139,8 @@ void audioreach_set_sp_operation_mode(u32 mode);
  void audioreach_get_sp_vi_r0t0(long *vals, unsigned int count);
  int audioreach_set_sp_vi_r0t0(struct device *dev, const long *vals, unsigned int count);
  int audioreach_sp_register_speaker_map(struct thermal_zone_device * const *tzs,
-+				       const char * const *names, const u8 *lanes,
- 				       unsigned int num);
+-				       unsigned int num);
++				       const char * const *names, unsigned int num,
++				       bool lane_order);
  int audioreach_get_sp_vi_t0(long *vals, unsigned int count);
  int audioreach_get_sp_vi_cal_state(long *vals, unsigned int count);
+ int audioreach_add_sp_telemetry_controls(struct snd_soc_component *component);
 diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
-index ad2cc6297ae7..429cf896bd3e 100644
+index 3b52151c41aa..746419a30ce7 100644
 --- a/sound/soc/qcom/x1e80100.c
 +++ b/sound/soc/qcom/x1e80100.c
 @@ -3,6 +3,7 @@
@@ -631,7 +461,7 @@ index ad2cc6297ae7..429cf896bd3e 100644
  #include <linux/platform_device.h>
  #include <linux/soundwire/sdw.h>
  #include <linux/thermal.h>
-@@ -27,15 +28,24 @@ struct x1e80100_snd_data {
+@@ -27,52 +28,82 @@ struct x1e80100_snd_data {
  };
  
  /*
@@ -639,104 +469,104 @@ index ad2cc6297ae7..429cf896bd3e 100644
 - * which is the VI channel order.
 + * Register the VI speakers in codec DMA lane order, the order of HP's
 + * per-speaker calibration and tuning: speaker k is the amp on lane k.
-+ * "qcom,wsa-speaker-lanes" gives each speaker's lane in link order.
++ * "qcom,wsa-speaker-lanes" gives each speaker's lane in link order; without
++ * it the speakers keep link order and do not run speaker protection.
   */
 -static void x1e80100_register_sp_speakers(struct snd_soc_pcm_runtime *rtd)
 +static int x1e80100_register_sp_speakers(struct snd_soc_pcm_runtime *rtd)
  {
++	struct device_node *np = rtd->card->dev->of_node;
++	struct snd_soc_component *amps[MAX_SP_VI_SPEAKERS], *spk[MAX_SP_VI_SPEAKERS];
  	struct thermal_zone_device *tzs[MAX_SP_VI_SPEAKERS];
 +	const char *names[MAX_SP_VI_SPEAKERS];
-+	struct device_node *np = rtd->card->dev->of_node;
-+	u32 lanes32[MAX_SP_VI_SPEAKERS];
-+	u8 lanes[MAX_SP_VI_SPEAKERS];
-+	struct thermal_zone_device *tz_sorted[MAX_SP_VI_SPEAKERS];
-+	const char *name_sorted[MAX_SP_VI_SPEAKERS];
-+	u8 lane_sorted[MAX_SP_VI_SPEAKERS];
++	u32 lanes[MAX_SP_VI_SPEAKERS];
  	struct snd_soc_dai *codec_dai;
 -	unsigned int num = 0;
--	int i;
-+	bool have_lanes = false;
-+	unsigned int num = 0, k;
-+	int i, n;
++	unsigned int num = 0, k, seen = 0;
++	bool lane_order;
+ 	int i;
  
  	for_each_rtd_codec_dais(rtd, i, codec_dai) {
  		struct snd_soc_component *component = codec_dai->component;
-@@ -47,8 +57,10 @@ static void x1e80100_register_sp_speakers(struct snd_soc_pcm_runtime *rtd)
- 			continue;
- 		if (!component || !component->dev)
+-		struct thermal_zone_device *tz;
+-		struct sdw_slave *slave;
+-		char tz_name[THERMAL_NAME_LENGTH];
+ 
+-		if (strcmp(codec_dai->name, "VI"))
+-			continue;
+-		if (!component || !component->dev)
++		if (strcmp(codec_dai->name, "VI") || !component->dev)
  			continue;
 -		if (num >= ARRAY_SIZE(tzs))
 -			break;
-+		if (num >= ARRAY_SIZE(tzs)) {
-+			dev_err(rtd->dev, "more than %zu VI speakers\n", ARRAY_SIZE(tzs));
++		if (num >= ARRAY_SIZE(amps)) {
++			dev_err(rtd->dev, "more than %zu VI speakers\n", ARRAY_SIZE(amps));
 +			return -EINVAL;
 +		}
++		amps[num++] = component;
++	}
++
++	lane_order = num && of_property_present(np, "qcom,wsa-speaker-lanes");
++	if (lane_order &&
++	    (of_property_count_u32_elems(np, "qcom,wsa-speaker-lanes") != num ||
++	     of_property_read_u32_array(np, "qcom,wsa-speaker-lanes", lanes, num))) {
++		dev_err(rtd->dev, "qcom,wsa-speaker-lanes needs one lane for each of the %u speakers\n",
++			num);
++		return -EINVAL;
++	}
++
++	for (k = 0; k < num; k++) {
++		u32 lane = lane_order ? lanes[k] : k;
++
++		if (lane >= num || (seen & BIT(lane))) {
++			dev_err(rtd->dev, "qcom,wsa-speaker-lanes is not a permutation of 0..%u\n",
++				num - 1);
++			return -EINVAL;
++		}
++		seen |= BIT(lane);
++		spk[lane] = amps[k];
++	}
++
++	for (k = 0; k < num; k++) {
++		struct snd_soc_component *component = spk[k];
++		struct sdw_slave *slave = dev_to_sdw_dev(component->dev);
++		char tz_name[THERMAL_NAME_LENGTH];
  
  		/* The name wsa884x registers its thermal zone under */
- 		slave = dev_to_sdw_dev(component->dev);
-@@ -62,17 +74,58 @@ static void x1e80100_register_sp_speakers(struct snd_soc_pcm_runtime *rtd)
- 				 PTR_ERR(tz));
- 			tz = NULL;
+-		slave = dev_to_sdw_dev(component->dev);
+ 		scnprintf(tz_name, sizeof(tz_name), "wsa-%d-%u",
+ 			  slave->bus->id, slave->id.unique_id);
+-		tz = thermal_zone_get_zone_by_name(tz_name);
+-		if (IS_ERR(tz)) {
++		tzs[k] = thermal_zone_get_zone_by_name(tz_name);
++		if (IS_ERR(tzs[k])) {
+ 			dev_warn(rtd->dev,
+ 				 "no thermal zone '%s' for %s (%ld); SP T0 kcontrol will read 0 for this slot\n",
+-				 tz_name, dev_name(component->dev),
+-				 PTR_ERR(tz));
+-			tz = NULL;
++				 tz_name, dev_name(component->dev), PTR_ERR(tzs[k]));
++			tzs[k] = NULL;
  		}
-+		names[num] = component->name_prefix ?: dev_name(component->dev);
- 		tzs[num++] = tz;
+-		tzs[num++] = tz;
++		names[k] = component->name_prefix ?: dev_name(component->dev);
  	}
  
 -	/* Also drops the zones of a previous bind when none are found */
 -	audioreach_sp_register_speaker_map(tzs, num);
-+	if (num && of_property_present(np, "qcom,wsa-speaker-lanes")) {
-+		n = of_property_count_u32_elems(np, "qcom,wsa-speaker-lanes");
-+		if (n != num ||
-+		    of_property_read_u32_array(np, "qcom,wsa-speaker-lanes", lanes32, num)) {
-+			dev_err(rtd->dev, "qcom,wsa-speaker-lanes has %d entries, link has %u speakers\n",
-+				n, num);
-+			return -EINVAL;
-+		}
-+		for (i = 0; i < num; i++)
-+			lanes[i] = lanes32[i] < 0x100 ? lanes32[i] : 0xff;
-+		have_lanes = true;
-+
-+		/* Each lane 0..num-1 exactly once, then speaker k = lane k */
-+		for (k = 0; k < num; k++) {
-+			int found = -1;
-+
-+			for (i = 0; i < num; i++) {
-+				if (lanes[i] != k)
-+					continue;
-+				if (found >= 0) {
-+					dev_err(rtd->dev, "qcom,wsa-speaker-lanes: lane %u twice\n",
-+						k);
-+					return -EINVAL;
-+				}
-+				found = i;
-+			}
-+			if (found < 0) {
-+				dev_err(rtd->dev, "qcom,wsa-speaker-lanes: no speaker on lane %u\n",
-+					k);
-+				return -EINVAL;
-+			}
-+			tz_sorted[k] = tzs[found];
-+			name_sorted[k] = names[found];
-+			lane_sorted[k] = k;
-+		}
-+		memcpy(tzs, tz_sorted, num * sizeof(tzs[0]));
-+		memcpy(names, name_sorted, num * sizeof(names[0]));
-+		memcpy(lanes, lane_sorted, num);
-+	}
-+
 +	/* Also drops the speakers of a previous bind when none are found */
-+	return audioreach_sp_register_speaker_map(tzs, names, have_lanes ? lanes : NULL, num);
++	return audioreach_sp_register_speaker_map(tzs, names, num, lane_order);
  }
  
  static void x1e80100_snd_exit(struct snd_soc_pcm_runtime *rtd)
  {
  	if (snd_soc_rtd_to_cpu(rtd, 0)->id == WSA_CODEC_DMA_RX_0)
 -		audioreach_sp_register_speaker_map(NULL, 0);
-+		audioreach_sp_register_speaker_map(NULL, NULL, NULL, 0);
++		audioreach_sp_register_speaker_map(NULL, NULL, 0, false);
  }
  
  static const struct {
-@@ -126,7 +179,9 @@ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
+@@ -130,7 +161,9 @@ static int x1e80100_snd_init(struct snd_soc_pcm_runtime *rtd)
  
  	switch (cpu_dai->id) {
  	case WSA_CODEC_DMA_RX_0:
@@ -747,31 +577,35 @@ index ad2cc6297ae7..429cf896bd3e 100644
  		fallthrough;
  	case WSA_CODEC_DMA_RX_1:
  		/*
-From 036cd520372ae62b2d1bcf101e3628c4fcf76d9a Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Tue, 10 Nov 2026 23:11:05 -0500
-Subject: [PATCH 4/11] ASoC: dt-bindings: qcom,wsa8840: add V/I guard and tweeter
+Subject: [PATCH 4/10] ASoC: dt-bindings: qcom,wsa8840: add speaker protection
  properties
 
-Two board properties of a WSA884x speaker:
+Board properties of a WSA884x speaker:
 
-- qcom,vi-guard: the speaker may only be driven while the amplifier's
-  V/I sense feeds speaker protection, so the driver keeps the PA off
-  unless the V/I sense port streams.
+- qcom,vi-guard: drive the PA only while the amplifier's V/I sense
+  feeds speaker protection.
 - qcom,tweeter: the amplifier drives a tweeter, which speaker
-  protection only runs behind a DSP high-pass (the SP module's own
-  high-pass is a single ~80 Hz filter shared by all speakers).
+  protection only runs behind a DSP high-pass (SP's own high-pass is a
+  single ~80 Hz filter shared by all speakers).
+- qcom,pa-gain-max-millidecibel, qcom,speaker-full-scale-microvolt: the
+  operating point the board was qualified at with speaker protection:
+  the highest PA gain, a PA Volume step, and the peak terminal voltage
+  for 0 dBFS at that gain (unity digital gain, compander off), which
+  the V/I model must assume. Each requires the other.
 
 Assisted-by: Claude:claude-opus-5-5
 ---
- .../devicetree/bindings/sound/qcom,wsa8840.yaml      | 12 ++++++++++++
- 1 file changed, 12 insertions(+)
+ .../bindings/sound/qcom,wsa8840.yaml          | 38 +++++++++++++++++++
+ 1 file changed, 38 insertions(+)
 
 diff --git a/Documentation/devicetree/bindings/sound/qcom,wsa8840.yaml b/Documentation/devicetree/bindings/sound/qcom,wsa8840.yaml
-index 42ae6d60a874..aff26a95a50b 100644
+index 42ae6d60a874..2b58fa77d2a9 100644
 --- a/Documentation/devicetree/bindings/sound/qcom,wsa8840.yaml
 +++ b/Documentation/devicetree/bindings/sound/qcom,wsa8840.yaml
-@@ -46,6 +46,18 @@ properties:
+@@ -46,6 +46,37 @@ properties:
        Must be 1 on boards which use the VI sense capture DAI, so that the
        playback and capture DAIs can be addressed separately.
  
@@ -787,44 +621,80 @@ index 42ae6d60a874..aff26a95a50b 100644
 +      The amplifier drives a tweeter, which may only run speaker protection
 +      behind a DSP high-pass filter.
 +
++  qcom,pa-gain-max-millidecibel:
++    $ref: /schemas/types.yaml#/definitions/int32
++    enum: [-3000, 1500, 3000, 4500, 6000, 7500, 9000, 10500, 12000, 13500,
++           15000, 16500, 18000, 19500, 21000]
++    description:
++      Highest nominal PA gain, in millidecibels on the PA Volume scale (-3 dB
++      floor, then 1.5 dB steps up to +21 dB), the board may run this amplifier
++      at in speaker mode with the CSR gain path. With
++      qcom,speaker-full-scale-microvolt it describes the calibrated operating
++      point.
++
++  qcom,speaker-full-scale-microvolt:
++    minimum: 1
++    maximum: 63999999
++    description:
++      Peak voltage at the speaker terminals for a 0 dBFS signal, measured on
++      the board with the PA at qcom,pa-gain-max-millidecibel, unity digital
++      gain ahead of the amplifier and the compander off.
++
    vdd-1p8-supply: true
    vdd-io-supply: true
  
-From 781c698bdf9b63529848a2b54d48e6aa7601cf1a Mon Sep 17 00:00:00 2001
+@@ -62,6 +93,10 @@ oneOf:
+   - required:
+       - reset-gpios
+ 
++dependentRequired:
++  qcom,pa-gain-max-millidecibel: [ 'qcom,speaker-full-scale-microvolt' ]
++  qcom,speaker-full-scale-microvolt: [ 'qcom,pa-gain-max-millidecibel' ]
++
+ unevaluatedProperties: false
+ 
+ examples:
+@@ -80,6 +115,9 @@ examples:
+             powerdown-gpios = <&lpass_tlmm 18 GPIO_ACTIVE_LOW>;
+             #sound-dai-cells = <0>;
+             sound-name-prefix = "SpkrRight";
++            qcom,vi-guard;
++            qcom,pa-gain-max-millidecibel = <12000>;
++            qcom,speaker-full-scale-microvolt = <5511000>;
+             vdd-1p8-supply = <&vreg_l15b_1p8>;
+             vdd-io-supply = <&vreg_l3g_1p2>;
+         };
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Tue, 10 Nov 2026 23:11:21 -0500
-Subject: [PATCH 5/11] ASoC: codecs: wsa884x: add a V/I guard: no PA without V/I
+Subject: [PATCH 5/10] ASoC: codecs: wsa884x: add a V/I guard: no PA without V/I
  sense
 
 Speaker protection estimates coil temperature and excursion from the
-amplifier's V/I sense; without that stream the DSP protects the speaker
-with stale or no data. With "qcom,vi-guard" the amplifier only runs its
-PA while its own V/I sense port streams:
+amplifier's V/I sense; without that stream the DSP protects on stale or
+no data. With "qcom,vi-guard", unmute keeps the PA off unless the
+amplifier is attached and its VISENSE port is enabled and prepared;
+mute and VISENSE PRE_DEPREP switch the PA off, checked by readback and
+retried until it reads off, and a detach leaves it off in the cache
+for the reattach; the VISENSE Switch cannot
+change while the port is prepared, and V/I capture with it off is
+refused.
 
-- unmute keeps the PA off unless VISENSE is enabled and prepared;
-- the PA is switched off at VISENSE PRE_DEPREP;
-- a 20 ms watchdog switches it off if the port stops or the amplifier
-  detaches, and the off write must read back as off;
-- a trip stays latched until the next stream start.
+The off write takes its runtime PM reference before the guard's lock,
+as resuming the bus reports status, which takes that lock. Under the
+SoundWire bus lock it does not resume and leaves a suspended amplifier
+to the retry.
 
 Assisted-by: Claude:claude-opus-5-5
 ---
- sound/soc/codecs/wsa884x.c | 228 +++++++++++++++++++++++++++++++++++--
- 1 file changed, 220 insertions(+), 8 deletions(-)
+ sound/soc/codecs/wsa884x.c | 196 +++++++++++++++++++++++++++++++++++--
+ 1 file changed, 188 insertions(+), 8 deletions(-)
 
 diff --git a/sound/soc/codecs/wsa884x.c b/sound/soc/codecs/wsa884x.c
-index a2e77faacc55..38c428c9a0aa 100644
+index a2e77faacc55..b03903413944 100644
 --- a/sound/soc/codecs/wsa884x.c
 +++ b/sound/soc/codecs/wsa884x.c
-@@ -6,6 +6,7 @@
- 
- #include <linux/bitfield.h>
- #include <linux/cleanup.h>
-+#include <linux/debugfs.h>
- #include <linux/device.h>
- #include <linux/gpio/consumer.h>
- #include <linux/hwmon.h>
-@@ -13,6 +14,7 @@
+@@ -13,6 +13,7 @@
  #include <linux/kernel.h>
  #include <linux/module.h>
  #include <linux/mutex.h>
@@ -832,7 +702,7 @@ index a2e77faacc55..38c428c9a0aa 100644
  #include <linux/pm_runtime.h>
  #include <linux/regmap.h>
  #include <linux/regulator/consumer.h>
-@@ -24,6 +26,7 @@
+@@ -24,6 +25,7 @@
  #include <sound/pcm.h>
  #include <sound/pcm_params.h>
  #include <linux/thermal.h>
@@ -840,7 +710,7 @@ index a2e77faacc55..38c428c9a0aa 100644
  #include <sound/soc-dapm.h>
  #include <sound/soc.h>
  #include <sound/tlv.h>
-@@ -752,8 +755,22 @@ struct wsa884x_priv {
+@@ -752,8 +754,21 @@ struct wsa884x_priv {
  	struct mutex sp_lock;
  	int temperature;
  	bool pa_on;
@@ -849,21 +719,20 @@ index a2e77faacc55..38c428c9a0aa 100644
 +	 * VISENSE port streams. Protected by vi_guard_lock.
 +	 */
 +	bool vi_guard;
-+	bool vi_guard_unmuted;
-+	bool vi_guard_tripped;
-+	bool vi_guard_inject;
++	bool vi_unmuted;
++	/* A PA off write failed and is retried by vi_off_work */
++	bool vi_off_failed;
 +	/* Serialises the guard state with port enable/prepare and unmute */
 +	struct mutex vi_guard_lock;
-+	struct delayed_work vi_guard_work;
-+	struct dentry *debugfs;
++	struct delayed_work vi_off_work;
  };
  
-+#define WSA884X_VI_GUARD_PERIOD_MS	20
++#define WSA884X_VI_OFF_RETRY_MS	20
 +
  enum {
  	COMP_OFFSET0,
  	COMP_OFFSET1,
-@@ -1556,6 +1573,21 @@ static int wsa884x_update_status(struct sdw_slave *slave,
+@@ -1556,6 +1571,22 @@ static int wsa884x_update_status(struct sdw_slave *slave,
  		wsa884x->hw_init = false;
  		regcache_cache_only(wsa884x->regmap, true);
  		regcache_mark_dirty(wsa884x->regmap);
@@ -876,28 +745,28 @@ index a2e77faacc55..38c428c9a0aa 100644
 +					   WSA884X_PA_FSM_EN_GLOBAL_PA_EN_MASK, 0);
 +			regmap_update_bits(wsa884x->regmap, WSA884X_DRE_CTL_1,
 +					   WSA884X_DRE_CTL_1_CSR_GAIN_EN_MASK, 0);
-+			if (wsa884x->vi_guard_unmuted) {
-+				wsa884x->vi_guard_tripped = true;
-+				wsa884x->vi_guard_unmuted = false;
++			/* The register cache writes the PA off on reattach */
++			wsa884x->vi_off_failed = false;
++			if (wsa884x->vi_unmuted) {
++				wsa884x->vi_unmuted = false;
 +				dev_err(wsa884x->dev, "V/I guard: amp detached while the PA was on\n");
 +			}
 +		}
  		return 0;
  	}
  
-@@ -1574,12 +1606,128 @@ static int wsa884x_update_status(struct sdw_slave *slave,
+@@ -1574,12 +1605,104 @@ static int wsa884x_update_status(struct sdw_slave *slave,
  	return 0;
  }
  
-+/* Write the PA off to the hardware, not only to the register cache */
++/*
++ * Write the PA off to the hardware, not only to the register cache. The
++ * caller holds a runtime PM reference: a suspended or detached amp only has
++ * its cache written, which is no proof.
++ */
 +static int wsa884x_pa_force_off(struct wsa884x_priv *wsa884x)
 +{
 +	int ret;
-+
-+	/* A suspended or detached amp only has its cache written: no proof */
-+	ret = pm_runtime_resume_and_get(wsa884x->dev);
-+	if (ret < 0)
-+		return ret;
 +
 +	if (!wsa884x->hw_init)
 +		ret = -ENODEV;
@@ -914,8 +783,6 @@ index a2e77faacc55..38c428c9a0aa 100644
 +			ret = ret & WSA884X_PA_FSM_EN_GLOBAL_PA_EN_MASK ? -EIO : 0;
 +	}
 +
-+	pm_runtime_mark_last_busy(wsa884x->dev);
-+	pm_runtime_put_autosuspend(wsa884x->dev);
 +	return ret;
 +}
 +
@@ -924,79 +791,51 @@ index a2e77faacc55..38c428c9a0aa 100644
 +	return wsa884x->hw_init &&
 +	       wsa884x->port_enable[WSA884X_PORT_VISENSE] &&
 +	       wsa884x->port_prepared[WSA884X_PORT_VISENSE] &&
-+	       wsa884x->slave->status != SDW_SLAVE_UNATTACHED &&
-+	       !wsa884x->vi_guard_inject;
++	       wsa884x->slave->status != SDW_SLAVE_UNATTACHED;
 +}
 +
-+/* Called with vi_guard_lock held; the fault latches until a guarded unmute */
-+static void wsa884x_vi_guard_trip(struct wsa884x_priv *wsa884x, const char *why)
++/*
++ * Called with vi_guard_lock held. @pm is the result of taking a runtime PM
++ * reference: that must happen before vi_guard_lock, as resuming the amplifier
++ * resumes its bus, which reports the amplifier's status under that lock.
++ */
++static int wsa884x_vi_pa_off(struct wsa884x_priv *wsa884x, int pm, const char *why)
 +{
-+	int ret;
++	int ret = pm ?: wsa884x_pa_force_off(wsa884x);
 +
-+	if (wsa884x->vi_guard_tripped && !wsa884x->vi_guard_unmuted)
-+		return;
-+
-+	wsa884x->vi_guard_tripped = true;
-+	ret = wsa884x_pa_force_off(wsa884x);
++	wsa884x->vi_unmuted = false;
++	wsa884x->vi_off_failed = ret;
 +	if (ret) {
-+		/* Stay armed: the watchdog retries the write every period */
 +		dev_err_ratelimited(wsa884x->dev, "V/I guard: %s; PA off failed (%d), retrying\n",
 +				    why, ret);
-+		schedule_delayed_work(&wsa884x->vi_guard_work,
-+				      msecs_to_jiffies(WSA884X_VI_GUARD_PERIOD_MS));
-+		return;
++		schedule_delayed_work(&wsa884x->vi_off_work,
++				      msecs_to_jiffies(WSA884X_VI_OFF_RETRY_MS));
 +	}
-+	dev_err(wsa884x->dev, "V/I guard: PA off, %s\n", why);
-+	wsa884x->vi_guard_unmuted = false;
++
++	return ret;
 +}
 +
-+static void wsa884x_vi_guard_work(struct work_struct *work)
++static void wsa884x_vi_off_work(struct work_struct *work)
 +{
 +	struct wsa884x_priv *wsa884x = container_of(to_delayed_work(work),
 +						    struct wsa884x_priv,
-+						    vi_guard_work);
++						    vi_off_work);
++	int pm;
 +
-+	guard(mutex)(&wsa884x->vi_guard_lock);
-+
-+	if (!wsa884x->vi_guard_unmuted)
-+		return;
-+
-+	if (wsa884x->vi_guard_tripped || !wsa884x_vi_running(wsa884x)) {
-+		wsa884x_vi_guard_trip(wsa884x, "V/I sense stopped while the PA was on");
-+		return;
++	pm = pm_runtime_resume_and_get(wsa884x->dev);
++	scoped_guard(mutex, &wsa884x->vi_guard_lock) {
++		if (wsa884x->vi_off_failed)
++			wsa884x_vi_pa_off(wsa884x, pm, "retry");
 +	}
-+
-+	schedule_delayed_work(&wsa884x->vi_guard_work,
-+			      msecs_to_jiffies(WSA884X_VI_GUARD_PERIOD_MS));
++	if (!pm)
++		pm_runtime_put_autosuspend(wsa884x->dev);
 +}
-+
-+/* Fault injection: the next watchdog run sees V/I as stopped */
-+static int wsa884x_vi_guard_inject_get(void *data, u64 *val)
-+{
-+	struct wsa884x_priv *wsa884x = data;
-+
-+	guard(mutex)(&wsa884x->vi_guard_lock);
-+	*val = wsa884x->vi_guard_inject;
-+	return 0;
-+}
-+
-+static int wsa884x_vi_guard_inject_set(void *data, u64 val)
-+{
-+	struct wsa884x_priv *wsa884x = data;
-+
-+	guard(mutex)(&wsa884x->vi_guard_lock);
-+	wsa884x->vi_guard_inject = !!val;
-+	return 0;
-+}
-+DEFINE_DEBUGFS_ATTRIBUTE(wsa884x_vi_guard_inject_fops, wsa884x_vi_guard_inject_get,
-+			 wsa884x_vi_guard_inject_set, "%llu\n");
 +
 +static void wsa884x_vi_guard_stop(void *data)
 +{
 +	struct wsa884x_priv *wsa884x = data;
 +
-+	cancel_delayed_work_sync(&wsa884x->vi_guard_work);
-+	debugfs_remove_recursive(wsa884x->debugfs);
++	cancel_delayed_work_sync(&wsa884x->vi_off_work);
 +}
 +
  static int wsa884x_port_prep(struct sdw_slave *slave,
@@ -1008,13 +847,20 @@ index a2e77faacc55..38c428c9a0aa 100644
 +	guard(mutex)(&wsa884x->vi_guard_lock);
 +
 +	if (wsa884x->vi_guard && prepare_ch->num == WSA884X_PORT_VISENSE + 1 &&
-+	    state == SDW_OPS_PORT_PRE_DEPREP && wsa884x->vi_guard_unmuted)
-+		wsa884x_vi_guard_trip(wsa884x, "V/I sense port stopped while the PA was on");
++	    state == SDW_OPS_PORT_PRE_DEPREP && wsa884x->vi_unmuted) {
++		/* Never resume under the bus lock: if not active, the retry work does */
++		int pm = pm_runtime_get_if_active(&slave->dev);
++
++		wsa884x_vi_pa_off(wsa884x, pm > 0 ? 0 : -EAGAIN,
++				  "V/I sense port stopped while the PA was on");
++		if (pm > 0)
++			pm_runtime_put_autosuspend(&slave->dev);
++	}
 +
  	if (state == SDW_OPS_PORT_POST_PREP)
  		wsa884x->port_prepared[prepare_ch->num - 1] = true;
  	else
-@@ -1639,6 +1787,16 @@ static int wsa884x_set_swr_port(struct snd_kcontrol *kcontrol,
+@@ -1639,6 +1762,16 @@ static int wsa884x_set_swr_port(struct snd_kcontrol *kcontrol,
  	struct soc_mixer_control *mixer = (struct soc_mixer_control *)kcontrol->private_value;
  	int portidx = mixer->reg;
  
@@ -1031,7 +877,7 @@ index a2e77faacc55..38c428c9a0aa 100644
  	if (ucontrol->value.integer.value[0]) {
  		if (wsa884x->port_enable[portidx])
  			return 0;
-@@ -1789,8 +1947,11 @@ static int wsa884x_vi_hw_params(struct snd_pcm_substream *substream,
+@@ -1789,8 +1922,11 @@ static int wsa884x_vi_hw_params(struct snd_pcm_substream *substream,
  {
  	struct wsa884x_priv *wsa884x = dev_get_drvdata(dai->dev);
  
@@ -1045,7 +891,7 @@ index a2e77faacc55..38c428c9a0aa 100644
  
  	wsa884x->vi_port_config = wsa884x_pconfig[WSA884X_PORT_VISENSE];
  	wsa884x->vi_sconfig.frame_rate = params_rate(params);
-@@ -1843,11 +2004,32 @@ static int wsa884x_hw_free(struct snd_pcm_substream *substream,
+@@ -1843,11 +1979,31 @@ static int wsa884x_hw_free(struct snd_pcm_substream *substream,
  	return 0;
  }
  
@@ -1065,20 +911,19 @@ index a2e77faacc55..38c428c9a0aa 100644
 +		struct wsa884x_priv *wsa884x = snd_soc_component_get_drvdata(component);
 +
 +		if (wsa884x->vi_guard) {
-+			cancel_delayed_work_sync(&wsa884x->vi_guard_work);
-+			guard(mutex)(&wsa884x->vi_guard_lock);
-+			if (wsa884x_pa_force_off(wsa884x)) {
-+				/* Keep the guard armed until the PA is really off */
-+				wsa884x_vi_guard_trip(wsa884x, "mute write failed");
-+				return -EIO;
-+			}
-+			wsa884x->vi_guard_unmuted = false;
-+			return 0;
++			int pm, ret;
++
++			pm = pm_runtime_resume_and_get(wsa884x->dev);
++			scoped_guard(mutex, &wsa884x->vi_guard_lock)
++				ret = wsa884x_vi_pa_off(wsa884x, pm, "mute");
++			if (!pm)
++				pm_runtime_put_autosuspend(wsa884x->dev);
++			return ret ? -EIO : 0;
 +		}
  		snd_soc_component_write_field(component, WSA884X_DRE_CTL_1,
  					      WSA884X_DRE_CTL_1_CSR_GAIN_EN_MASK,
  					      0x0);
-@@ -1856,12 +2038,27 @@ static int wsa884x_mute_stream(struct snd_soc_dai *dai, int mute, int stream)
+@@ -1856,12 +2012,24 @@ static int wsa884x_mute_stream(struct snd_soc_dai *dai, int mute, int stream)
  					      0x0);
  
  	} else {
@@ -1095,35 +940,32 @@ index a2e77faacc55..38c428c9a0aa 100644
 +			return 0;
 +		}
 +
-+		/* Checked and enabled under the lock the guard trips under */
++		/* Checked and enabled under the lock the PA off paths take */
 +		guard(mutex)(&wsa884x->vi_guard_lock);
 +
-+		wsa884x->vi_guard_tripped = false;
 +		if (!wsa884x_vi_running(wsa884x)) {
-+			wsa884x->vi_guard_tripped = true;
 +			dev_err(component->dev,
 +				"V/I guard: PA kept off, V/I sense is not streaming\n");
 +			return -EIO;
 +		}
 +		wsa884x_pa_unmute(component);
-+		wsa884x->vi_guard_unmuted = true;
-+		schedule_delayed_work(&wsa884x->vi_guard_work,
-+				      msecs_to_jiffies(WSA884X_VI_GUARD_PERIOD_MS));
++		wsa884x->vi_unmuted = true;
++		wsa884x->vi_off_failed = false;
  	}
  
  	return 0;
-@@ -2201,6 +2398,10 @@ static int wsa884x_probe(struct sdw_slave *pdev,
+@@ -2201,6 +2369,10 @@ static int wsa884x_probe(struct sdw_slave *pdev,
  	pdev->prop.src_dpn_prop = wsa884x_src_dpn_prop;
  	pdev->prop.scp_int1_mask = SDW_SCP_INT1_BUS_CLASH | SDW_SCP_INT1_PARITY;
  
 +	mutex_init(&wsa884x->vi_guard_lock);
-+	INIT_DELAYED_WORK(&wsa884x->vi_guard_work, wsa884x_vi_guard_work);
++	INIT_DELAYED_WORK(&wsa884x->vi_off_work, wsa884x_vi_off_work);
 +	wsa884x->vi_guard = of_property_read_bool(dev->of_node, "qcom,vi-guard");
 +
  	wsa884x_reset_deassert(wsa884x);
  	ret = devm_add_action_or_reset(dev, wsa884x_reset_powerdown, wsa884x);
  	if (ret)
-@@ -2214,6 +2415,17 @@ static int wsa884x_probe(struct sdw_slave *pdev,
+@@ -2214,6 +2386,14 @@ static int wsa884x_probe(struct sdw_slave *pdev,
  	/* Start in cache-only until device is enumerated */
  	regcache_cache_only(wsa884x->regmap, true);
  
@@ -1132,32 +974,26 @@ index a2e77faacc55..38c428c9a0aa 100644
 +		ret = devm_add_action_or_reset(dev, wsa884x_vi_guard_stop, wsa884x);
 +		if (ret)
 +			return ret;
-+		wsa884x->debugfs = debugfs_create_dir(dev_name(dev), NULL);
-+		debugfs_create_file("vi_guard_inject", 0600, wsa884x->debugfs, wsa884x,
-+				    &wsa884x_vi_guard_inject_fops);
 +		dev_info(dev, "V/I guard on: the PA only runs while V/I sense streams\n");
 +	}
 +
  	if (IS_REACHABLE(CONFIG_HWMON)) {
  		struct device *hwmon;
  
-From 8d989c764cebf04fe12261a7bf14fa803d4390cc Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Tue, 10 Nov 2026 23:11:28 -0500
-Subject: [PATCH 6/11] ASoC: codecs: lpass-wsa-macro: refuse V/I capture without V/I
+Subject: [PATCH 6/10] ASoC: codecs: lpass-wsa-macro: refuse V/I capture without V/I
  inputs
 
 A V/I capture with no 'WSA_AIF_VI Mixer' input enabled gives speaker
-protection no feedback, but hw_params accepts it. Fail it with a clear
-message, and lock the mixer from AIF_VI hw_params to hw_free so V/I
-feedback cannot be switched off under a running speaker protection
-graph.
+protection no feedback, but hw_params accepts it. Refuse it, and lock
+the mixer from AIF_VI hw_params to hw_free so V/I feedback cannot be
+switched off under a running speaker protection graph.
 
-The mixer state and the AIF_VI reservation share one lock. Since the
-DAPM update in the mixer put takes the card locks, it runs after that
-lock is dropped, and hw_params refuses a V/I capture while a put is
-still in progress. Fold the per-TX bit handling of the put into one
-path.
+The mixer state and the AIF_VI reservation share one lock. The mixer
+put's DAPM update takes the card locks, so it runs after that lock is
+dropped, and hw_params refuses V/I capture while a put is in progress.
 
 Assisted-by: Claude:claude-opus-5-5
 ---
@@ -1294,29 +1130,32 @@ index e3fe8d0af8be..2819b993eed2 100644
  	wsa->macro = devm_clk_get_optional(dev, "macro");
  	if (IS_ERR(wsa->macro))
  		return dev_err_probe(dev, PTR_ERR(wsa->macro), "unable to get macro clock\n");
-From 48256b7fc36f6f5707d4043794107ca4b52bea98 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Tue, 10 Nov 2026 23:12:12 -0500
-Subject: [PATCH 7/11] ASoC: qcom: audioreach: check VI calibration results before
- storing them
+Subject: [PATCH 7/10] ASoC: qcom: audioreach: report VI calibration results, never
+ apply them
 
-A calibration result replaces the R0/T0 the VI module protects the
-speakers with, so only store one that is complete and plausible:
+A successful VI calibration run replaced the cached R0/T0 used by the
+next Normal mode graph. The result depends on conditions the kernel
+cannot check (a quiet, cold speaker at a known temperature and level),
+and a wrong R0 makes the thermal model misjudge the coil temperature.
 
-- an event for a different speaker count than the run was armed for,
-  or one claiming more speakers than it carries, fails the run;
-- a result is stored only when every speaker's die temperature can be
-  read for its T0;
-- every R0 and T0 must be within the range the R0/T0 control accepts.
+Only log the result, one line per speaker; R0/T0 stays what the
+"Speaker Protection R0T0" control or the factory calibration set. An
+event for a different speaker count than armed, or claiming more
+speakers than it carries, fails the run. Clear the per-speaker states
+and R0 of "Speaker Protection Calibration State" when a run is armed,
+and log a run number, so it never shows an earlier run's result.
 
 Assisted-by: Claude:claude-opus-5-5
 ---
- sound/soc/qcom/qdsp6/audioreach.c | 67 ++++++++++++++++++++++++++++---
- sound/soc/qcom/qdsp6/q6apm.c      | 10 ++++-
- 2 files changed, 70 insertions(+), 7 deletions(-)
+ sound/soc/qcom/qdsp6/audioreach.c | 44 ++++++++++++++++---------------
+ sound/soc/qcom/qdsp6/q6apm.c      | 10 +++++--
+ 2 files changed, 31 insertions(+), 23 deletions(-)
 
 diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
-index da97df7b5881..328266414740 100644
+index 95cfadef12b9..0669ec4bf19a 100644
 --- a/sound/soc/qcom/qdsp6/audioreach.c
 +++ b/sound/soc/qcom/qdsp6/audioreach.c
 @@ -27,6 +27,7 @@ enum sp_vi_cali_state {
@@ -1327,49 +1166,19 @@ index da97df7b5881..328266414740 100644
  	enum sp_vi_cali_state state;
  	u32 num_ch;
  	s32 r0_cali_q24[MAX_SP_VI_SPEAKERS];
-@@ -1676,6 +1677,38 @@ int audioreach_get_sp_vi_t0(long *vals, unsigned int count)
- }
- EXPORT_SYMBOL_GPL(audioreach_get_sp_vi_t0);
- 
-+/*
-+ * Read every speaker's T0 for a calibration result. A missing zone or a
-+ * failed read fails the whole result rather than storing 0 degC.
-+ */
-+static int audioreach_sp_read_t0_all(struct device *dev, long *vals, unsigned int num)
-+{
-+	unsigned int i;
-+
-+	guard(mutex)(&sp_speaker_map_lock);
-+
-+	if (num > sp_speaker_map.num) {
-+		dev_err(dev, "VI calibration: %u speakers, %u thermal zones registered\n",
-+			num, sp_speaker_map.num);
-+		return -ENODEV;
-+	}
-+
-+	for (i = 0; i < num; i++) {
-+		int mdeg;
-+
-+		if (!sp_speaker_map.tz[i] ||
-+		    thermal_zone_get_temp(sp_speaker_map.tz[i], &mdeg) ||
-+		    mdeg == THERMAL_TEMP_INVALID) {
-+			dev_err(dev, "VI calibration: no die temperature for %s, result not stored\n",
-+				sp_speaker_map.name[i]);
-+			return -EIO;
-+		}
-+		vals[i] = ((s64)mdeg * 64) / 1000;
-+	}
-+
-+	return 0;
-+}
-+
- /* Latest calibration state per speaker, 0 before any event */
- int audioreach_get_sp_vi_cal_state(long *vals, unsigned int count)
+@@ -1742,7 +1743,6 @@ void audioreach_vi_calibration_event(struct device *dev,
+ 				     const struct event_id_vi_per_spkr_calibration *cali,
+ 				     u32 num_ch)
  {
-@@ -1773,6 +1806,15 @@ void audioreach_vi_calibration_event(struct device *dev,
+-	long t0_live[MAX_SP_VI_SPEAKERS];
+ 	bool decisive = true;
+ 	bool success = true;
+ 	unsigned int i;
+@@ -1753,7 +1753,16 @@ void audioreach_vi_calibration_event(struct device *dev,
  	if (!sp_vi_r0.armed)
  		return;
  
+-	/* First event of this run: drop the previous result */
 +	/* A partial event cannot say anything about the missing speakers */
 +	if (!num_ch || num_ch != sp_vi_r0.armed_num) {
 +		dev_err(dev, "VI calibration event for %u speakers, run armed for %u: run failed\n",
@@ -1379,60 +1188,70 @@ index da97df7b5881..328266414740 100644
 +		return;
 +	}
 +
- 	/* First event of this run: drop the previous result */
++	/* First event of this run: mark the run as running */
  	if (!memchr_inv(sp_vi_r0.seen_states, 0, sizeof(sp_vi_r0.seen_states))) {
  		sp_vi_r0.state = SP_VI_CALI_RUNNING;
-@@ -1828,11 +1870,25 @@ void audioreach_vi_calibration_event(struct device *dev,
- 	/*
- 	 * Only a run where every speaker succeeded gives a usable R0/T0 set.
- 	 * The DSP reports only R0, so pair it with the speakers' last T0
+ 		sp_vi_r0.num_ch = 0;
+@@ -1805,22 +1814,6 @@ void audioreach_vi_calibration_event(struct device *dev,
+ 			 i, r0_int, r0_frac, sp_vi_r0.r0_cali_q24[i]);
+ 	}
+ 
+-	/*
+-	 * Only a run where every speaker succeeded gives a usable R0/T0 set.
+-	 * The DSP reports only R0, so pair it with the speakers' last T0
 -	 * reading; a zone that cannot be read gives T0 = 0.
-+	 * reading; a speaker whose zone cannot be read fails the run.
- 	 */
+-	 */
 -	if (success) {
 -		audioreach_get_sp_vi_t0(t0_live, num_ch);
-+	if (success && audioreach_sp_read_t0_all(dev, t0_live, num_ch)) {
-+		success = false;
-+		sp_vi_r0.state = SP_VI_CALI_FAILED;
-+	}
-+	for (i = 0; success && i < num_ch; i++) {
-+		s32 r0 = cali->cali_param[i].r0_cali_q24;
+-
+-		guard(mutex)(&sp_vi_r0t0_cfg_lock);
+-		sp_vi_r0t0_cfg.num_ch = num_ch;
+-		for (i = 0; i < num_ch; i++) {
+-			sp_vi_r0t0_cfg.r0_cali_q24[i] = cali->cali_param[i].r0_cali_q24;
+-			sp_vi_r0t0_cfg.t0_cali_q6[i] = (s16)t0_live[i];
+-		}
+-	}
+-
+ 	dev_info(dev, "VI calibration complete: %s\n", success ? "success" : "failed");
+ }
  
-+		if (r0 < SP_VI_R0_MIN_Q24 || r0 > SP_VI_R0_MAX_Q24 ||
-+		    t0_live[i] < SP_VI_T0_MIN_Q6 || t0_live[i] > SP_VI_T0_MAX_Q6) {
-+			dev_err(dev, "VI calibration channel %u: R0 Q24 %d / T0 Q6 %ld out of range, result not stored\n",
-+				i, r0, t0_live[i]);
-+			success = false;
-+			sp_vi_r0.state = SP_VI_CALI_FAILED;
-+		}
-+	}
-+
-+	if (success) {
- 		guard(mutex)(&sp_vi_r0t0_cfg_lock);
- 		sp_vi_r0t0_cfg.num_ch = num_ch;
- 		for (i = 0; i < num_ch; i++) {
-@@ -1917,7 +1973,7 @@ static int audioreach_register_events(struct q6apm_graph *graph,
+@@ -1836,7 +1829,7 @@ void audioreach_vi_calibration_abort(struct device *dev)
+ 
+ 	sp_vi_r0.armed = false;
+ 
+-	/* The DSP never reported on this run: keep the previous result */
++	/* The DSP never reported on this run: it stays idle, without a result */
+ 	if (!memchr_inv(sp_vi_r0.seen_states, 0, sizeof(sp_vi_r0.seen_states)))
+ 		return;
+ 
+@@ -1897,12 +1890,21 @@ static int audioreach_register_events(struct q6apm_graph *graph,
  	return rc;
  }
  
--static void audioreach_arm_vi_calibration(struct device *dev)
+-static void audioreach_arm_vi_calibration(void)
 +static void audioreach_arm_vi_calibration(struct device *dev, u32 num_speakers)
  {
- 	static unsigned int run;
++	static unsigned int run;
++
+ 	guard(mutex)(&sp_vi_r0_lock);
  
-@@ -1925,6 +1981,7 @@ static void audioreach_arm_vi_calibration(struct device *dev)
- 
- 	/* Calibration State shows only this run's result, 0 until it reports */
++	/* Calibration State shows only this run's result, 0 until it reports */
  	sp_vi_r0.armed = true;
 +	sp_vi_r0.armed_num = num_speakers;
- 	sp_vi_r0.state = SP_VI_CALI_IDLE;
- 	sp_vi_r0.num_ch = 0;
++	sp_vi_r0.state = SP_VI_CALI_IDLE;
++	sp_vi_r0.num_ch = 0;
  	memset(sp_vi_r0.seen_states, 0, sizeof(sp_vi_r0.seen_states));
-@@ -2028,7 +2085,7 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
++	memset(sp_vi_r0.last_state, 0, sizeof(sp_vi_r0.last_state));
++	memset(sp_vi_r0.r0_cali_q24, 0, sizeof(sp_vi_r0.r0_cali_q24));
++	dev_info(dev, "VI calibration run %u armed\n", ++run);
+ }
+ 
+ /*
+@@ -1980,7 +1982,7 @@ static int audioreach_speaker_protection_vi(struct q6apm_graph *graph,
  	}
  
  	if (mode == PARAM_ID_SP_VI_OP_MODE_CALIBRATION) {
--		audioreach_arm_vi_calibration(graph->dev);
+-		audioreach_arm_vi_calibration();
 +		audioreach_arm_vi_calibration(graph->dev, num_speakers);
  
  		rc = audioreach_register_events(graph, module);
@@ -1458,81 +1277,45 @@ index 131bc08423c7..f032ec52fc1c 100644
  
  	audioreach_vi_calibration_event(dev, cali, num_ch);
  }
-From b570df6774267b1e7cd92af1b6c2bb576d779542 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
-Date: Tue, 10 Nov 2026 23:12:24 -0500
-Subject: [PATCH 8/11] ASoC: qcom: audioreach: configure SP RX and SP VI in one
+Date: Fri, 13 Nov 2026 09:06:08 -0500
+Subject: [PATCH 8/10] ASoC: qcom: audioreach: configure SP RX and SP VI in one
  checked pass
 
-SP RX and SP VI are configured from global state (operation mode,
-speaker map) that can change between the two modules' media format
-calls, and nothing checks that a WSA RX graph configured both.
+SP RX and SP VI are configured from the global operation mode, which
+can change between the two modules' media format calls, and nothing
+checks that a WSA RX graph configured both.
 
-Make a WSA RX backend prepare one speaker protection configuration
-pass: mode and speaker map are snapshotted at its start, a pass that
-configures only one of SP RX and SP VI fails the prepare, and either
-module configured outside a pass is refused. A machine driver can
-require speaker protection (audioreach_sp_set_required()); a WSA RX
-graph without both modules then fails its prepare.
+Make a WSA RX backend prepare one speaker protection setup pass, owned
+by its graph and taking the mode once: a pass that configures only one
+of the two modules fails the prepare, and either module configured
+outside a pass is refused. With audioreach_sp_set_required(), a WSA RX
+graph without both modules fails its prepare.
 
 Assisted-by: Claude:claude-opus-5-5
 ---
- sound/soc/qcom/qdsp6/audioreach.c       | 134 +++++++++++++++++++++++-
- sound/soc/qcom/qdsp6/audioreach.h       |   4 +
- sound/soc/qcom/qdsp6/q6apm-lpass-dais.c |   8 ++
- 3 files changed, 141 insertions(+), 5 deletions(-)
+ sound/soc/qcom/qdsp6/audioreach.c       | 182 ++++++++++++++++++------
+ sound/soc/qcom/qdsp6/audioreach.h       |  12 ++
+ sound/soc/qcom/qdsp6/q6apm-lpass-dais.c |   8 +-
+ sound/soc/qcom/qdsp6/q6apm.h            |   1 +
+ 4 files changed, 158 insertions(+), 45 deletions(-)
 
 diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
-index 328266414740..381fcda23034 100644
+index 0669ec4bf19a..2a8a4d7e6150 100644
 --- a/sound/soc/qcom/qdsp6/audioreach.c
 +++ b/sound/soc/qcom/qdsp6/audioreach.c
-@@ -62,6 +62,24 @@ static struct {
+@@ -62,6 +62,8 @@ static struct {
  } sp_speaker_map;
  static DEFINE_MUTEX(sp_speaker_map_lock);
  
-+/*
-+ * One SP configuration pass (a WSA RX graph prepare): the mode and speaker
-+ * map are snapshotted at its start so RX and VI are set up from the same
-+ * values.
-+ */
-+static struct {
-+	bool	active;
-+	u32	mode;
-+	u8	lane[MAX_SP_VI_SPEAKERS];
-+	char	name[MAX_SP_VI_SPEAKERS][32];
-+	unsigned int num;
-+	bool	lanes_set;
-+	bool	rx_ok;
-+	bool	vi_ok;
-+} sp_session;
-+static DEFINE_MUTEX(sp_session_lock);
 +static bool sp_required;
 +
  /* SubGraph Config */
  struct apm_sub_graph_data {
  	struct apm_sub_graph_cfg sub_graph_cfg;
-@@ -1639,6 +1657,19 @@ static int audioreach_sp_get_lanes(u8 *lane, char (*name)[32], unsigned int num)
- 	if (!num || num > MAX_SP_VI_SPEAKERS)
- 		return -EINVAL;
- 
-+	scoped_guard(mutex, &sp_session_lock) {
-+		if (sp_session.active) {
-+			if (!sp_session.lanes_set || sp_session.num != num)
-+				return -EINVAL;
-+			for (i = 0; i < num; i++) {
-+				lane[i] = sp_session.lane[i];
-+				if (name)
-+					strscpy(name[i], sp_session.name[i]);
-+			}
-+			return 0;
-+		}
-+	}
-+
- 	guard(mutex)(&sp_speaker_map_lock);
- 
- 	if (!sp_speaker_map.lanes_set || sp_speaker_map.num != num)
-@@ -1653,6 +1684,93 @@ static int audioreach_sp_get_lanes(u8 *lane, char (*name)[32], unsigned int num)
- 	return 0;
+@@ -1637,6 +1639,68 @@ static void audioreach_sp_speaker_name(unsigned int i, char *name, size_t len)
+ 	strscpy(name, i < sp_speaker_map.num ? sp_speaker_map.name[i] : "?", len);
  }
  
 +void audioreach_sp_set_required(bool required)
@@ -1549,43 +1332,46 @@ index 328266414740..381fcda23034 100644
 +}
 +EXPORT_SYMBOL_GPL(audioreach_sp_required);
 +
-+/* Start a configuration pass: snapshot the mode and the speaker map */
-+void audioreach_sp_session_begin(void)
++/**
++ * audioreach_sp_session_begin() - start the SP setup of a WSA RX graph
++ * @graph: the graph about to be configured
++ *
++ * Lets its SP modules be configured, in the current mode.
++ */
++void audioreach_sp_session_begin(struct q6apm_graph *graph)
 +{
-+	guard(mutex)(&sp_speaker_map_lock);
-+	guard(mutex)(&sp_session_lock);
-+
-+	sp_session.mode = READ_ONCE(sp_operation_mode);
-+	sp_session.num = sp_speaker_map.num;
-+	sp_session.lanes_set = sp_speaker_map.lanes_set;
-+	memcpy(sp_session.lane, sp_speaker_map.lane, sizeof(sp_session.lane));
-+	memcpy(sp_session.name, sp_speaker_map.name, sizeof(sp_session.name));
-+	sp_session.rx_ok = false;
-+	sp_session.vi_ok = false;
-+	sp_session.active = true;
++	graph->sp = (struct audioreach_sp_pass) {
++		.active = true,
++		.mode = READ_ONCE(sp_operation_mode),
++	};
 +}
 +EXPORT_SYMBOL_GPL(audioreach_sp_session_begin);
 +
-+/*
-+ * End a configuration pass. SP RX without SP VI (or the reverse) is never
-+ * accepted, and when speaker protection is required both must be there.
++/**
++ * audioreach_sp_session_end() - finish the SP setup of a WSA RX graph
++ * @graph: the graph
++ * @rc: result of its configuration
++ *
++ * SP RX without SP VI (or the reverse) is never accepted, and when speaker
++ * protection is required both must be there.
++ *
++ * Return: @rc if it is an error, else 0 or a negative error code.
 + */
-+int audioreach_sp_session_end(struct device *dev)
++int audioreach_sp_session_end(struct q6apm_graph *graph, int rc)
 +{
-+	bool rx, vi;
++	struct audioreach_sp_pass *sp = &graph->sp;
++	struct device *dev = graph->dev;
 +
-+	scoped_guard(mutex, &sp_session_lock) {
-+		rx = sp_session.rx_ok;
-+		vi = sp_session.vi_ok;
-+		sp_session.active = false;
-+	}
++	sp->active = false;
++	if (rc)
++		return rc;
 +
-+	if (rx != vi) {
++	if (sp->rx_ok != sp->vi_ok) {
 +		dev_err(dev, "SP: SP RX %s but SP VI %s; refusing a half-protected graph\n",
-+			rx ? "configured" : "missing", vi ? "configured" : "missing");
++			sp->rx_ok ? "configured" : "missing", sp->vi_ok ? "configured" : "missing");
 +		return -EPERM;
 +	}
-+	if (READ_ONCE(sp_required) && !rx) {
++	if (READ_ONCE(sp_required) && !sp->rx_ok) {
 +		dev_err(dev, "SP: speaker protection is required and this graph has no SP RX/VI; refusing\n");
 +		return -EPERM;
 +	}
@@ -1594,117 +1380,215 @@ index 328266414740..381fcda23034 100644
 +}
 +EXPORT_SYMBOL_GPL(audioreach_sp_session_end);
 +
-+static u32 audioreach_sp_session_mode(void)
+ /* Read each speaker's T0 in Q6 (degC * 64), 0 if its zone cannot be read */
+ int audioreach_get_sp_vi_t0(long *vals, unsigned int count)
+ {
+@@ -1857,8 +1921,7 @@ EXPORT_SYMBOL_GPL(audioreach_vi_calibration_abort);
+ static int audioreach_speaker_protection(struct q6apm_graph *graph,
+ 					 const struct audioreach_module *module)
+ {
+-	return audioreach_send_u32_param(graph, module, PARAM_ID_SP_OP_MODE,
+-					 READ_ONCE(sp_operation_mode));
++	return audioreach_send_u32_param(graph, module, PARAM_ID_SP_OP_MODE, graph->sp.mode);
+ }
+ 
+ static int audioreach_register_events(struct q6apm_graph *graph,
+@@ -2254,6 +2317,76 @@ static int audioreach_speaker_protection_vi_static_cfg(struct q6apm_graph *graph
+ 	return audioreach_speaker_protection_send_static_cfg(graph, module, "VI");
+ }
+ 
++static int audioreach_sp_rx_setup(struct q6apm_graph *graph,
++				  const struct audioreach_module *module,
++				  const struct audioreach_module_config *cfg)
 +{
-+	guard(mutex)(&sp_session_lock);
++	int rc;
 +
-+	return sp_session.active ? sp_session.mode : READ_ONCE(sp_operation_mode);
-+}
-+
-+/*
-+ * SP modules are only configured inside a pass that checks them as a pair
-+ * (the WSA RX backend's prepare); anywhere else they are refused.
-+ */
-+static int audioreach_sp_session_mark(struct device *dev, bool rx)
-+{
-+	guard(mutex)(&sp_session_lock);
-+
-+	if (!sp_session.active) {
-+		dev_err(dev, "SP: %s configured outside a checked WSA RX graph; refusing\n",
-+			rx ? "SP RX" : "SP VI");
++	if (!graph->sp.active) {
++		dev_err(graph->dev, "SP: SP RX configured outside a checked WSA RX graph; refusing\n");
 +		return -EPERM;
 +	}
-+	if (rx)
-+		sp_session.rx_ok = true;
-+	else
-+		sp_session.vi_ok = true;
++	if (!audioreach_sp_speakers_match(cfg->num_channels)) {
++		dev_err(graph->dev, "SP RX: no speaker map in lane order for %u speakers\n",
++			cfg->num_channels);
++		return -EINVAL;
++	}
++
++	rc = audioreach_speaker_protection(graph, module);
++	if (!rc)
++		rc = audioreach_speaker_protection_static_cfg(graph, module);
++	if (!rc)
++		rc = audioreach_module_enable(graph, module, true);
++	if (rc) {
++		dev_err(graph->dev, "SP RX setup failed: %d\n", rc);
++		return rc;
++	}
++
++	graph->sp.rx_ok = true;
++	dev_dbg(graph->dev, "SP RX configured and enabled\n");
 +
 +	return 0;
 +}
 +
- /* Read each speaker's T0 in Q6 (degC * 64), 0 if its zone cannot be read */
- int audioreach_get_sp_vi_t0(long *vals, unsigned int count)
++static int audioreach_sp_vi_setup(struct q6apm_graph *graph,
++				  const struct audioreach_module *module,
++				  const struct audioreach_module_config *cfg)
++{
++	u32 mode = graph->sp.mode;
++	bool r0t0_sent = false;
++	int rc;
++
++	if (!graph->sp.active) {
++		dev_err(graph->dev, "SP: SP VI configured outside a checked WSA RX graph; refusing\n");
++		return -EPERM;
++	}
++
++	rc = audioreach_speaker_protection_vi(graph, module, cfg, mode);
++	if (!rc)
++		rc = audioreach_speaker_protection_vi_static_cfg(graph, module);
++	if (!rc)
++		rc = audioreach_sp_vi_send_channel_map(graph, module, cfg->num_channels);
++	if (!rc)
++		rc = audioreach_sp_vi_send_r0t0(graph, module, mode, cfg->num_channels,
++						&r0t0_sent);
++	if (!rc)
++		rc = audioreach_module_enable(graph, module, true);
++	if (rc) {
++		dev_err(graph->dev, "SP VI setup failed: %d\n", rc);
++		return rc;
++	}
++
++	/* Everything above was acknowledged by the DSP */
++	graph->sp.vi_ok = true;
++	dev_dbg(graph->dev, "SP VI configured: %s mode, %u channels, %s\n",
++		mode == PARAM_ID_SP_VI_OP_MODE_NORMAL ? "Normal" : "Calibration",
++		cfg->num_channels,
++		r0t0_sent ? "R0/T0 sent" : "no R0/T0 (topology defaults)");
++
++	return 0;
++}
++
+ static bool audioreach_sg_contains_sp_vi(const struct audioreach_sub_graph *sg)
  {
-@@ -1941,7 +2059,7 @@ static int audioreach_speaker_protection(struct q6apm_graph *graph,
- 					 const struct audioreach_module *module)
- {
- 	return audioreach_send_u32_param(graph, module, PARAM_ID_SP_OP_MODE,
--					 READ_ONCE(sp_operation_mode));
-+					 audioreach_sp_session_mode());
- }
- 
- static int audioreach_register_events(struct q6apm_graph *graph,
-@@ -2574,14 +2692,17 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
- 			rc = audioreach_speaker_protection_static_cfg(graph, module);
- 		if (!rc)
- 			rc = audioreach_module_enable(graph, module, true);
--		if (rc)
-+		if (rc) {
- 			dev_err(graph->dev, "SP RX setup failed: %d\n", rc);
--		else
--			dev_info(graph->dev, "SP RX configured and enabled\n");
-+		} else {
-+			rc = audioreach_sp_session_mark(graph->dev, true);
-+			if (!rc)
-+				dev_info(graph->dev, "SP RX configured and enabled\n");
-+		}
- 
+ 	const struct audioreach_container *c;
+@@ -2335,50 +2468,11 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
+ 		rc = audioreach_gapless_set_media_format(graph, module, cfg);
  		break;
- 	case MODULE_ID_SPEAKER_PROTECTION_VI: {
+ 	case MODULE_ID_SPEAKER_PROTECTION:
+-		if (!audioreach_sp_speakers_match(cfg->num_channels)) {
+-			dev_err(graph->dev, "SP RX: no speaker map in lane order for %u speakers\n",
+-				cfg->num_channels);
+-			rc = -EINVAL;
+-			break;
+-		}
+-		rc = audioreach_speaker_protection(graph, module);
+-		if (!rc)
+-			rc = audioreach_speaker_protection_static_cfg(graph, module);
+-		if (!rc)
+-			rc = audioreach_module_enable(graph, module, true);
+-		if (rc)
+-			dev_err(graph->dev, "SP RX setup failed: %d\n", rc);
+-		else
+-			dev_dbg(graph->dev, "SP RX configured and enabled\n");
+-
++		rc = audioreach_sp_rx_setup(graph, module, cfg);
+ 		break;
+-	case MODULE_ID_SPEAKER_PROTECTION_VI: {
 -		u32 mode = READ_ONCE(sp_operation_mode);
-+		u32 mode = audioreach_sp_session_mode();
- 		bool r0t0_sent = false;
- 
- 		rc = audioreach_speaker_protection_vi(graph, module, cfg, mode);
-@@ -2601,6 +2722,9 @@ int audioreach_set_media_format(struct q6apm_graph *graph,
- 		}
- 
- 		/* Everything above was acknowledged by the DSP */
-+		rc = audioreach_sp_session_mark(graph->dev, false);
-+		if (rc)
-+			break;
- 		dev_info(graph->dev, "SP VI configured: %s mode, %u channels, %s\n",
- 			 mode == PARAM_ID_SP_VI_OP_MODE_NORMAL ? "Normal" : "Calibration",
- 			 cfg->num_channels,
+-		bool r0t0_sent = false;
+-
+-		rc = audioreach_speaker_protection_vi(graph, module, cfg, mode);
+-		if (!rc)
+-			rc = audioreach_speaker_protection_vi_static_cfg(graph, module);
+-		if (!rc)
+-			rc = audioreach_sp_vi_send_channel_map(graph, module,
+-							       cfg->num_channels);
+-		if (!rc)
+-			rc = audioreach_sp_vi_send_r0t0(graph, module, mode,
+-							cfg->num_channels, &r0t0_sent);
+-		if (!rc)
+-			rc = audioreach_module_enable(graph, module, true);
+-		if (rc) {
+-			dev_err(graph->dev, "SP VI setup failed: %d\n", rc);
+-			break;
+-		}
+-
+-		/* Everything above was acknowledged by the DSP */
+-		dev_dbg(graph->dev, "SP VI configured: %s mode, %u channels, %s\n",
+-			mode == PARAM_ID_SP_VI_OP_MODE_NORMAL ? "Normal" : "Calibration",
+-			cfg->num_channels,
+-			r0t0_sent ? "R0/T0 sent" : "no R0/T0 (topology defaults)");
++	case MODULE_ID_SPEAKER_PROTECTION_VI:
++		rc = audioreach_sp_vi_setup(graph, module, cfg);
+ 		break;
+-	}
+ 	case MODULE_ID_AUDIO_IF_SOURCE:
+ 	case MODULE_ID_AUDIO_IF_SINK:
+ 		rc = audioreach_audio_if_set_media_format(graph, module, cfg);
 diff --git a/sound/soc/qcom/qdsp6/audioreach.h b/sound/soc/qcom/qdsp6/audioreach.h
-index 2a47d9a29093..39fb88a54eae 100644
+index 82d389f4e484..157d1ef2137c 100644
 --- a/sound/soc/qcom/qdsp6/audioreach.h
 +++ b/sound/soc/qcom/qdsp6/audioreach.h
-@@ -1142,6 +1142,10 @@ int audioreach_sp_register_speaker_map(struct thermal_zone_device * const *tzs,
- 				       const char * const *names, const u8 *lanes,
- 				       unsigned int num);
+@@ -970,6 +970,14 @@ struct audioreach_graph_info {
+ 	uint32_t dst_mod_ip_port_id;
+ };
+ 
++/* The speaker protection setup of a WSA RX graph, one prepare */
++struct audioreach_sp_pass {
++	bool active;
++	u32 mode;
++	bool rx_ok;
++	bool vi_ok;
++};
++
+ #define MAX_INTENTS 4
+ 
+ struct audioreach_control_link {
+@@ -1142,6 +1150,10 @@ int audioreach_sp_register_speaker_map(struct thermal_zone_device * const *tzs,
+ 				       const char * const *names, unsigned int num,
+ 				       bool lane_order);
  int audioreach_get_sp_vi_t0(long *vals, unsigned int count);
 +void audioreach_sp_set_required(bool required);
 +bool audioreach_sp_required(void);
-+void audioreach_sp_session_begin(void);
-+int audioreach_sp_session_end(struct device *dev);
++void audioreach_sp_session_begin(struct q6apm_graph *graph);
++int audioreach_sp_session_end(struct q6apm_graph *graph, int rc);
  int audioreach_get_sp_vi_cal_state(long *vals, unsigned int count);
  int audioreach_add_sp_telemetry_controls(struct snd_soc_component *component);
  void audioreach_vi_calibration_event(struct device *dev,
 diff --git a/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c b/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
-index fb9a0d7c5c1c..56df143b27d8 100644
+index fb9a0d7c5c1c..dbb4609fb235 100644
 --- a/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
 +++ b/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
-@@ -254,7 +254,15 @@ static int q6apm_lpass_dai_prepare(struct snd_pcm_substream *substream, struct s
+@@ -254,7 +254,13 @@ static int q6apm_lpass_dai_prepare(struct snd_pcm_substream *substream, struct s
  	}
  
  	cfg->direction = substream->stream;
-+	if (dai->id == WSA_CODEC_DMA_RX_0)
-+		audioreach_sp_session_begin();
- 	rc = q6apm_graph_media_format_pcm(dai_data->graph[dai->id], cfg);
+-	rc = q6apm_graph_media_format_pcm(dai_data->graph[dai->id], cfg);
 +	if (dai->id == WSA_CODEC_DMA_RX_0) {
-+		int sp_rc = audioreach_sp_session_end(dai->dev);
-+
-+		if (!rc)
-+			rc = sp_rc;
++		audioreach_sp_session_begin(dai_data->graph[dai->id]);
++		rc = q6apm_graph_media_format_pcm(dai_data->graph[dai->id], cfg);
++		rc = audioreach_sp_session_end(dai_data->graph[dai->id], rc);
++	} else {
++		rc = q6apm_graph_media_format_pcm(dai_data->graph[dai->id], cfg);
 +	}
  	if (rc) {
  		dev_err(dai->dev, "Failed to set media format %d\n", rc);
  		goto err;
-From 82da5ec805ac0eec7e6183c9e1b736d299e40352 Mon Sep 17 00:00:00 2001
+diff --git a/sound/soc/qcom/qdsp6/q6apm.h b/sound/soc/qcom/qdsp6/q6apm.h
+index 96409075b294..c1a1dbf34e9d 100644
+--- a/sound/soc/qcom/qdsp6/q6apm.h
++++ b/sound/soc/qcom/qdsp6/q6apm.h
+@@ -111,6 +111,7 @@ struct q6apm_graph {
+ 	struct mutex lock;
+ 	struct audioreach_graph *ar_graph;
+ 	struct audioreach_graph_info *info;
++	struct audioreach_sp_pass sp;
+ };
+ 
+ /* Graph Operations */
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Mon, 9 Nov 2026 23:29:54 -0500
-Subject: [PATCH 9/11] ASoC: qcom: x1e80100: require speaker protection when the DT
+Subject: [PATCH 9/10] ASoC: qcom: x1e80100: require speaker protection when the DT
  says so
 
 With "qcom,speaker-protection-required" on the sound node:
@@ -1720,10 +1604,10 @@ Assisted-by: Claude:claude-opus-5-5
  1 file changed, 53 insertions(+)
 
 diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
-index 429cf896bd3e..162dcc22090d 100644
+index 746419a30ce7..a993db485708 100644
 --- a/sound/soc/qcom/x1e80100.c
 +++ b/sound/soc/qcom/x1e80100.c
-@@ -291,6 +291,47 @@ static int x1e80100_snd_hw_map_channels(unsigned int *ch_map, int num)
+@@ -274,6 +274,47 @@ static int x1e80100_snd_hw_map_channels(unsigned int *ch_map, int num)
  	return 0;
  }
  
@@ -1771,7 +1655,7 @@ index 429cf896bd3e..162dcc22090d 100644
  static int x1e80100_snd_prepare(struct snd_pcm_substream *substream)
  {
  	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
-@@ -303,6 +344,16 @@ static int x1e80100_snd_prepare(struct snd_pcm_substream *substream)
+@@ -286,6 +327,16 @@ static int x1e80100_snd_prepare(struct snd_pcm_substream *substream)
  	switch (cpu_dai->id) {
  	case WSA_CODEC_DMA_RX_0:
  	case WSA_CODEC_DMA_RX_1:
@@ -1788,7 +1672,7 @@ index 429cf896bd3e..162dcc22090d 100644
  		ret = x1e80100_snd_hw_map_channels(rx_slot, channels);
  		if (ret)
  			return ret;
-@@ -383,6 +434,8 @@ static int x1e80100_platform_probe(struct platform_device *pdev)
+@@ -366,6 +417,8 @@ static int x1e80100_platform_probe(struct platform_device *pdev)
  
  	card->driver_name = of_device_get_match_data(dev);
  	x1e80100_add_be_ops(card);
@@ -1797,64 +1681,10 @@ index 429cf896bd3e..162dcc22090d 100644
  
  	return devm_snd_soc_register_card(dev, card);
  }
-From 8f38e583c1b0935e8241bfbeaeed6c39d323c20c Mon Sep 17 00:00:00 2001
-From: virtudude <virtudude@protonmail.com>
-Date: Tue, 10 Nov 2026 00:15:20 -0500
-Subject: [PATCH 10/11] ASoC: qcom: audioreach: report VI calibration results, never
- apply them
-
-A successful VI calibration run replaced the cached R0/T0 used by the
-next Normal mode graph. A result depends on conditions the kernel cannot
-check (a quiet, cold speaker at a known temperature and level), and a
-wrong R0 makes the thermal model misjudge the coil temperature.
-
-Only report the result, one line per speaker. The R0/T0 in use stays
-what the "Speaker Protection R0T0" control or the factory calibration
-set.
-
-Assisted-by: Claude:claude-opus-5-5
----
- sound/soc/qcom/qdsp6/audioreach.c | 23 ++++++++++++++++-------
- 1 file changed, 16 insertions(+), 7 deletions(-)
-
-diff --git a/sound/soc/qcom/qdsp6/audioreach.c b/sound/soc/qcom/qdsp6/audioreach.c
-index 381fcda23034..a40c0418f126 100644
---- a/sound/soc/qcom/qdsp6/audioreach.c
-+++ b/sound/soc/qcom/qdsp6/audioreach.c
-@@ -2006,13 +2006,22 @@ void audioreach_vi_calibration_event(struct device *dev,
- 		}
- 	}
- 
--	if (success) {
--		guard(mutex)(&sp_vi_r0t0_cfg_lock);
--		sp_vi_r0t0_cfg.num_ch = num_ch;
--		for (i = 0; i < num_ch; i++) {
--			sp_vi_r0t0_cfg.r0_cali_q24[i] = cali->cali_param[i].r0_cali_q24;
--			sp_vi_r0t0_cfg.t0_cali_q6[i] = (s16)t0_live[i];
--		}
-+	/*
-+	 * Report only: the VI module keeps the R0/T0 set through the
-+	 * "Speaker Protection R0T0" control.
-+	 */
-+	for (i = 0; success && i < num_ch; i++) {
-+		char name[32] = "?";
-+		int r0_int, r0_frac;
-+
-+		scoped_guard(mutex, &sp_speaker_map_lock)
-+			if (i < sp_speaker_map.num)
-+				strscpy(name, sp_speaker_map.name[i]);
-+
-+		r0_int = sp_vi_q24_to_int_frac(cali->cali_param[i].r0_cali_q24, &r0_frac);
-+		dev_info(dev, "VI calibration result ch%u %s: R0 %d.%03d ohms (Q24 %d), T0 %ld.%03ld degC, not applied\n",
-+			 i, name, r0_int, r0_frac, cali->cali_param[i].r0_cali_q24,
-+			 t0_live[i] / 64, abs((t0_live[i] % 64) * 1000 / 64));
- 	}
- 
- 	dev_info(dev, "VI calibration complete: %s\n", success ? "success" : "failed");
-From c0fa6197d1bcaeadf60b064f1fa3fcd2001b1e25 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Tue, 10 Nov 2026 23:12:57 -0500
-Subject: [PATCH 11/11] ASoC: qcom: q6apm: refuse graphs that tap another graph's SP
+Subject: [PATCH 10/10] ASoC: qcom: q6apm: refuse graphs that tap another graph's SP
  VI subgraph
 
 A topology can let a capture graph read from a subgraph of another
@@ -1927,10 +1757,10 @@ index f032ec52fc1c..c1cdfe860f4d 100644
  	if (!graph)
  		return ERR_PTR(-ENOMEM);
 diff --git a/sound/soc/qcom/qdsp6/q6apm.h b/sound/soc/qcom/qdsp6/q6apm.h
-index 96409075b294..4d806591d86d 100644
+index c1a1dbf34e9d..b8b9fc0fe097 100644
 --- a/sound/soc/qcom/qdsp6/q6apm.h
 +++ b/sound/soc/qcom/qdsp6/q6apm.h
-@@ -155,6 +155,7 @@ int q6apm_send_cmd_sync(struct q6apm *apm, struct gpr_pkt *pkt,
+@@ -156,6 +156,7 @@ int q6apm_send_cmd_sync(struct q6apm *apm, struct gpr_pkt *pkt,
  struct audioreach_module *q6apm_find_module_by_mid(struct q6apm_graph *graph,
  						    uint32_t mid);
  bool q6apm_is_adsp_ready(void);

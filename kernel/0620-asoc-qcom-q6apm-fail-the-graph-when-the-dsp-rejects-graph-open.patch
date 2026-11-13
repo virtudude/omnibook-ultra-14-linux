@@ -1,17 +1,17 @@
-From 736197ee9a4880b0f04e5b48a10136b6da7d984f Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Mon, 9 Nov 2026 20:02:27 -0500
 Subject: [PATCH] ASoC: qcom: q6apm: fail the graph when the DSP rejects
  GRAPH_OPEN
 
-q6apm_get_audioreach_graph() sends APM_CMD_GRAPH_OPEN and returns the
-graph whatever the DSP answered, so a failed open (a module that cannot
-be created or rejects its configuration) only surfaces later as a
-confusing failure of another command, or not at all.
+q6apm_get_audioreach_graph() returns the graph whatever the DSP
+answered to APM_CMD_GRAPH_OPEN, so a failed open only surfaces later as
+a confusing failure of another command, or not at all.
 
-Check the result. On failure, close what the DSP may have opened, drop
+Check the result; on failure close what the DSP may have opened, drop
 the graph and return the error.
 
+Fixes: 5477518b8a0e ("ASoC: qdsp6: audioreach: add q6apm support")
 Assisted-by: Claude:claude-opus-5-5
 ---
  sound/soc/qcom/qdsp6/q6apm.c | 12 ++++++++++--

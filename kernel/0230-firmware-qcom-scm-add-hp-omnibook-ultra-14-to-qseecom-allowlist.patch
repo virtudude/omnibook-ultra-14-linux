@@ -1,4 +1,4 @@
-From af52506cf22b67791fbd1f4f3b95204af4979d72 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Jason Pettit <jason.pettit@oss.qualcomm.com>
 Date: Sun, 1 Nov 2026 12:02:36 -0800
 Subject: [PATCH] firmware: qcom: scm: add HP OmniBook Ultra 14-kg0xxx to

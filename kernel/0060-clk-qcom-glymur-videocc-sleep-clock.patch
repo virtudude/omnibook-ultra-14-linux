@@ -1,0 +1,131 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Fri, 13 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/2] qcom: videocc: sleep clock input on Glymur
+
+Patches 1 and 2 of the four-patch v3 series "qcom: videocc: Fix sleep
+clock on Glymur/SM8750/Nord": the binding and the glymur DTS change.
+The DTS patch stays with its binding so the pair remains one unit.
+
+ 1/2 dt-bindings: clock: qcom,sm8450-videocc: Fix clock inputs for Glymur
+     Author: Shawn Guo <shengchao.guo@oss.qualcomm.com>
+     Message-ID: <20261017045817.1506961-2-shengchao.guo@oss.qualcomm.com>
+ 2/2 arm64: dts: qcom: glymur: Add videocc sleep clock
+     Author: Shawn Guo <shengchao.guo@oss.qualcomm.com>
+     Message-ID: <20261017045817.1506961-3-shengchao.guo@oss.qualcomm.com>
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Shawn Guo <shengchao.guo@oss.qualcomm.com>
+Date: Sat, 17 Oct 2026 12:58:14 +0800
+Subject: [PATCH 1/2] dt-bindings: clock: qcom,sm8450-videocc: Fix clock inputs for
+ Glymur
+
+The schema describes exactly two clock inputs for every compatible it
+covers, a board XO and a video AHB clock from GCC. That does not match
+the video clock controller found on Glymur, Nord and SM8750.
+
+Per the hardware documentation, the controller on these SoCs has three
+clock inputs: the board XO, the active-only board XO that feeds its PLL
+reference, and the 32 kHz chip sleep clock that sources its sleep clock
+generator. It has no AHB clock input. The AHB clock the controller uses
+for itself is generated inside the block from the XO input.
+
+Because the schema stops at two items, the sleep clock input cannot be
+described in device tree at all, and the second item is described as a
+clock that is not routed into the controller.
+
+Describe three inputs for the Glymur, Nord and SM8750 compatibles and
+keep the existing two-input description for the remaining compatibles.
+
+Assisted-by: LLM
+Reviewed-by: Rob Herring (Arm) <robh@kernel.org>
+Signed-off-by: Shawn Guo <shengchao.guo@oss.qualcomm.com>
+Reviewed-by: Bartosz Golaszewski <bartosz.golaszewski@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261017045817.1506961-2-shengchao.guo@oss.qualcomm.com
+Signed-off-by: Abel Vesa <abel.vesa@oss.qualcomm.com>
+---
+ .../bindings/clock/qcom,sm8450-videocc.yaml   | 26 ++++++++++++++++---
+ 1 file changed, 23 insertions(+), 3 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/clock/qcom,sm8450-videocc.yaml b/Documentation/devicetree/bindings/clock/qcom,sm8450-videocc.yaml
+index e985a450451d..7ed5aeb050cd 100644
+--- a/Documentation/devicetree/bindings/clock/qcom,sm8450-videocc.yaml
++++ b/Documentation/devicetree/bindings/clock/qcom,sm8450-videocc.yaml
+@@ -42,9 +42,8 @@ properties:
+       - qcom,x1p42100-videocc
+ 
+   clocks:
+-    items:
+-      - description: Board XO source
+-      - description: Video AHB clock from GCC
++    minItems: 2
++    maxItems: 3
+ 
+   power-domains:
+     description:
+@@ -79,6 +78,27 @@ allOf:
+     then:
+       required:
+         - required-opps
++  - if:
++      properties:
++        compatible:
++          contains:
++            enum:
++              - qcom,glymur-videocc
++              - qcom,nord-videocc
++              - qcom,sm8750-videocc
++    then:
++      properties:
++        clocks:
++          items:
++            - description: Board XO source
++            - description: Board active-only XO source
++            - description: Sleep clock source
++    else:
++      properties:
++        clocks:
++          items:
++            - description: Board XO source
++            - description: Video AHB clock from GCC
+ 
+ unevaluatedProperties: false
+ 
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Shawn Guo <shengchao.guo@oss.qualcomm.com>
+Date: Sat, 17 Oct 2026 12:58:15 +0800
+Subject: [PATCH 2/2] arm64: dts: qcom: glymur: Add videocc sleep clock
+
+The video clock controller binding describes three clock inputs for
+Glymur: the board XO, the active-only board XO and the 32 kHz sleep
+clock. The videocc node passes only the first two.
+
+Pass the board sleep clock as the third input. No functional change,
+the video sleep clock keeps the rate left by the bootloader and has no
+rate consumer.
+
+Assisted-by: LLM
+Reviewed-by: Abel Vesa <abel.vesa@oss.qualcomm.com>
+Reviewed-by: Konrad Dybcio <konrad.dybcio@oss.qualcomm.com>
+Signed-off-by: Shawn Guo <shengchao.guo@oss.qualcomm.com>
+Reviewed-by: Bartosz Golaszewski <bartosz.golaszewski@oss.qualcomm.com>
+Link: https://patch.msgid.link/20261017045817.1506961-3-shengchao.guo@oss.qualcomm.com
+Signed-off-by: Abel Vesa <abel.vesa@oss.qualcomm.com>
+---
+ arch/arm64/boot/dts/qcom/glymur.dtsi | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/qcom/glymur.dtsi b/arch/arm64/boot/dts/qcom/glymur.dtsi
+index 7e1cc3935b37..515847f28f30 100644
+--- a/arch/arm64/boot/dts/qcom/glymur.dtsi
++++ b/arch/arm64/boot/dts/qcom/glymur.dtsi
+@@ -5821,7 +5821,8 @@ videocc: clock-controller@aaf0000 {
+ 			compatible = "qcom,glymur-videocc";
+ 			reg = <0x0 0x0aaf0000 0x0 0x10000>;
+ 			clocks = <&rpmhcc RPMH_CXO_CLK>,
+-				 <&rpmhcc RPMH_CXO_CLK_A>;
++				 <&rpmhcc RPMH_CXO_CLK_A>,
++				 <&sleep_clk>;
+ 
+ 			power-domains = <&rpmhpd RPMHPD_MMCX>,
+ 					<&rpmhpd RPMHPD_MXC>;

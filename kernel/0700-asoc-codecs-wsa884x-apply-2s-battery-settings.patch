@@ -1,33 +1,32 @@
-From 2ec7830c861a1ddcdaf1841067331f273db22ef7 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Mon, 9 Nov 2026 19:30:54 -0500
 Subject: [PATCH] ASoC: codecs: wsa884x: apply 2S battery settings when the amp
  reports 2S
 
 The driver programs Qualcomm's 1S battery settings on every board, but
-VPHX_SYS_EN_STATUS reports the amplifier's battery stacking, and on 2S
-laptops (Surface Pro 11, HP OmniBook Ultra 14) it reads 0x2.
+VPHX_SYS_EN_STATUS reports the battery stacking, and on 2S laptops
+(Surface Pro 11, HP OmniBook Ultra 14) it reads 0x2.
 
-Read it at init and, for 2S, apply what Qualcomm's downstream driver
-does for CONFIG_2S: its reg_init_2S DAC VCM and class-H values, OCP
-LOWVBAT_ITH_EN cleared, a 0x11 PBR boost current limit, the PBR
-thresholds of its G_21_DB/2S/8 Ohm column and the VPHX_SYS_EN bits of
-ANA_WO_CTL_0. 1S boards are unchanged; an unknown status keeps 1S with
-a warning, and a failed read or write fails the amplifier init.
+For 2S, apply the CONFIG_2S settings of Qualcomm's downstream driver:
+DAC VCM, class-H, OCP, PBR boost limit and the G_21_DB/2S/8 Ohm PBR
+thresholds, and the VPHX_SYS_EN bits. An unknown status keeps 1S with a
+warning. A failed 2S write marks the register cache dirty, as regmap
+caches the value before writing it and the next attach would skip it.
 
 Based on Jens Glathe's Surface Pro 11 change, without its 4 Ohm load
 settings.
 
 Assisted-by: Claude:claude-opus-5-5
 ---
- sound/soc/codecs/wsa884x.c | 127 ++++++++++++++++++++++++++++++++++---
- 1 file changed, 117 insertions(+), 10 deletions(-)
+ sound/soc/codecs/wsa884x.c | 130 ++++++++++++++++++++++++++++++++++---
+ 1 file changed, 120 insertions(+), 10 deletions(-)
 
 diff --git a/sound/soc/codecs/wsa884x.c b/sound/soc/codecs/wsa884x.c
-index 38c428c9a0aa..7deaa4833351 100644
+index b03903413944..3d4d920b4092 100644
 --- a/sound/soc/codecs/wsa884x.c
 +++ b/sound/soc/codecs/wsa884x.c
-@@ -159,6 +159,7 @@
+@@ -158,6 +158,7 @@
  #define WSA884X_BBM_CTL			(WSA884X_ANA_SPK_TOP_BASE + 0x28)
  #define WSA884X_TOP_MISC1		(WSA884X_ANA_SPK_TOP_BASE + 0x29)
  #define WSA884X_DAC_VCM_CTRL_REG7	(WSA884X_ANA_SPK_TOP_BASE + 0x2a)
@@ -35,7 +34,7 @@ index 38c428c9a0aa..7deaa4833351 100644
  #define WSA884X_TOP_BIAS_REG5		(WSA884X_ANA_SPK_TOP_BASE + 0x2b)
  #define WSA884X_DRV_LF_MISC_CTL2	(WSA884X_ANA_SPK_TOP_BASE + 0x2c)
  #define WSA884X_SPK_TOP_SPARE_TUNE_2	(WSA884X_ANA_SPK_TOP_BASE + 0x2d)
-@@ -441,7 +442,9 @@
+@@ -440,7 +441,9 @@
  #define WSA884X_CLSH_CTL_0_INPUT_EN_SHIFT		1
  #define WSA884X_CLSH_CTL_0_CLSH_EN_SHIFT		0
  #define WSA884X_CLSH_CTL_1		(WSA884X_DIG_CTRL0_BASE + 0xd1)
@@ -45,7 +44,7 @@ index 38c428c9a0aa..7deaa4833351 100644
  #define WSA884X_CLSH_V_PA_MIN		(WSA884X_DIG_CTRL0_BASE + 0xd3)
  #define WSA884X_CLSH_OVRD_VAL		(WSA884X_DIG_CTRL0_BASE + 0xd4)
  #define WSA884X_CLSH_HARD_MAX		(WSA884X_DIG_CTRL0_BASE + 0xd5)
-@@ -472,6 +475,8 @@
+@@ -471,6 +474,8 @@
  #define WSA884X_DIG_CTRL1_BASE		(WSA884X_BASE + 0x0500)
  #define WSA884X_DIG_CTRL1_PAGE		(WSA884X_DIG_CTRL1_BASE + 0x00)
  #define WSA884X_VPHX_SYS_EN_STATUS	(WSA884X_DIG_CTRL1_BASE + 0x01)
@@ -54,16 +53,16 @@ index 38c428c9a0aa..7deaa4833351 100644
  #define WSA884X_ANA_WO_CTL_0		(WSA884X_DIG_CTRL1_BASE + 0x04)
  #define WSA884X_ANA_WO_CTL_0_MODE_SHIFT		0
  #define WSA884X_ANA_WO_CTL_0_VPHX_SYS_EN_MASK			0xc0
-@@ -767,6 +772,8 @@ struct wsa884x_priv {
+@@ -765,6 +770,8 @@ struct wsa884x_priv {
+ 	/* Serialises the guard state with port enable/prepare and unmute */
  	struct mutex vi_guard_lock;
- 	struct delayed_work vi_guard_work;
- 	struct dentry *debugfs;
+ 	struct delayed_work vi_off_work;
 +	/* Battery stacking reported by VPHX_SYS_EN_STATUS */
 +	unsigned int supply_cfg;
  };
  
- #define WSA884X_VI_GUARD_PERIOD_MS	20
-@@ -1414,10 +1421,6 @@ static const struct reg_sequence wsa884x_reg_init[] = {
+ #define WSA884X_VI_OFF_RETRY_MS	20
+@@ -1412,10 +1419,6 @@ static const struct reg_sequence wsa884x_reg_init[] = {
  			     FIELD_PREP_CONST(WSA884X_BOP2_PROG_BOP2_HYST_MASK, 0x6) },
  	{ WSA884X_REF_CTRL, (0xd2 & ~WSA884X_REF_CTRL_BG_RDY_SEL_MASK) |
  			    FIELD_PREP_CONST(WSA884X_REF_CTRL_BG_RDY_SEL_MASK, 0x1) },
@@ -74,7 +73,7 @@ index 38c428c9a0aa..7deaa4833351 100644
  	{ WSA884X_STB_CTRL1, (0x42 & ~WSA884X_STB_CTRL1_SLOPE_COMP_CURRENT_MASK) |
  			     FIELD_PREP_CONST(WSA884X_STB_CTRL1_SLOPE_COMP_CURRENT_MASK, 0xd) },
  	{ WSA884X_CURRENT_LIMIT, (0x54 & ~WSA884X_CURRENT_LIMIT_CURRENT_LIMIT_MASK) |
-@@ -1483,6 +1486,93 @@ static const struct reg_sequence wsa884x_reg_init[] = {
+@@ -1481,6 +1484,96 @@ static const struct reg_sequence wsa884x_reg_init[] = {
  	{ WSA884X_OTP_REG_40, FIELD_PREP_CONST(WSA884X_OTP_REG_40_ISENSE_RESCAL_MASK, 0x8) },
  };
  
@@ -131,8 +130,11 @@ index 38c428c9a0aa..7deaa4833351 100644
 +	if (!ret)
 +		ret = regmap_update_bits(regmap, WSA884X_TOP_CTRL1,
 +					 WSA884X_TOP_CTRL1_OCP_LOWVBAT_ITH_EN_MASK, 0);
-+	if (ret)
++	if (ret) {
++		/* regmap caches a value before writing it: rewrite all at the next attach */
++		regcache_mark_dirty(regmap);
 +		dev_err(wsa884x->dev, "failed to apply 2S battery settings: %d\n", ret);
++	}
 +
 +	return ret;
 +}
@@ -168,7 +170,7 @@ index 38c428c9a0aa..7deaa4833351 100644
  static void wsa884x_set_gain_parameters(struct wsa884x_priv *wsa884x)
  {
  	struct regmap *regmap = wsa884x->regmap;
-@@ -1535,18 +1625,28 @@ static void wsa884x_set_gain_parameters(struct wsa884x_priv *wsa884x)
+@@ -1533,18 +1626,28 @@ static void wsa884x_set_gain_parameters(struct wsa884x_priv *wsa884x)
  	}
  }
  
@@ -198,7 +200,7 @@ index 38c428c9a0aa..7deaa4833351 100644
  	wo_ctl_0 |= FIELD_PREP(WSA884X_ANA_WO_CTL_0_DAC_CM_CLAMP_EN_MASK,
  			       WSA884X_ANA_WO_CTL_0_DAC_CM_CLAMP_EN_MODE_SPEAKER);
  	/* Assume that compander is enabled by default unless it is haptics sku */
-@@ -1556,11 +1656,17 @@ static void wsa884x_init(struct wsa884x_priv *wsa884x)
+@@ -1554,11 +1657,17 @@ static void wsa884x_init(struct wsa884x_priv *wsa884x)
  	else
  		wo_ctl_0 |= FIELD_PREP(WSA884X_ANA_WO_CTL_0_PA_AUX_GAIN_MASK,
  				       WSA884X_ANA_WO_CTL_0_PA_AUX_0_DB);
@@ -217,7 +219,7 @@ index 38c428c9a0aa..7deaa4833351 100644
  }
  
  static int wsa884x_update_status(struct sdw_slave *slave,
-@@ -1601,9 +1707,7 @@ static int wsa884x_update_status(struct sdw_slave *slave,
+@@ -1600,9 +1709,7 @@ static int wsa884x_update_status(struct sdw_slave *slave,
  		return ret;
  	}
  
@@ -227,8 +229,8 @@ index 38c428c9a0aa..7deaa4833351 100644
 +	return wsa884x_init(wsa884x);
  }
  
- /* Write the PA off to the hardware, not only to the register cache */
-@@ -1844,7 +1948,10 @@ static void wsa884x_spkr_post_pmu(struct snd_soc_component *component,
+ /*
+@@ -1819,7 +1926,10 @@ static void wsa884x_spkr_post_pmu(struct snd_soc_component *component,
  
  	if (wsa884x->port_enable[WSA884X_PORT_PBR]) {
  		curr_ovrd_en = 0x0;

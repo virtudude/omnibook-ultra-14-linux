@@ -31,7 +31,7 @@ drm/msm msm-fixes.
      Author: Akhil P Oommen <akhilpo@oss.qualcomm.com>
      Message-ID: <20261024-assorted-fixes-oct-v1-8-2977f974ddb7@oss.qualcomm.com>
 
-From d2b34fc610c896b8fe06d4bbb8ed0a2863554891 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Akhil P Oommen <akhilpo@oss.qualcomm.com>
 Date: Sat, 24 Oct 2026 16:00:07 +0530
 Subject: [PATCH 1/8] drm/msm/a6xx: Check BX dependency vote index
@@ -67,7 +67,7 @@ index 662f09bec9d5..9e02d6f939af 100644
  		FIELD_MODIFY(GMU_BX_MASK, &votes[i], bx);
  	}
  
-From f9ab755db3f76d25ac2361ddc3d9418e70a2a655 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Jie Zhang <jie.zhang@oss.qualcomm.com>
 Date: Sat, 24 Oct 2026 16:00:08 +0530
 Subject: [PATCH 2/8] drm/msm/a6xx: Fix GMU shutdown idle check
@@ -118,7 +118,7 @@ index b3082738c99d..786fd7d2f674 100644
  	</reg32>
  	<reg32 offset="0x23b0d" name="GPU_GMU_AO_GPU_CX_BUSY_STATUS2"/>
  	<reg32 offset="0x23b0e" name="GPU_GMU_AO_GPU_CX_BUSY_MASK"/>
-From 99b286b8ea9c72f2dd99db99e7290675fc57afc9 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Jie Zhang <jie.zhang@oss.qualcomm.com>
 Date: Sat, 24 Oct 2026 16:00:09 +0530
 Subject: [PATCH 3/8] drm/msm/a6xx: Fix stale boot up BW vote
@@ -221,7 +221,7 @@ index a9f9fa2adadf..5b4459826037 100644
  		a6xx_generate_bw_table(info, gmu, msg);
  	else if (adreno_is_a618(adreno_gpu))
  		a618_build_bw_table(msg);
-From a9e03a11a8f834229206ed44e6d217589a224829 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Jie Zhang <jie.zhang@oss.qualcomm.com>
 Date: Sat, 24 Oct 2026 16:00:10 +0530
 Subject: [PATCH 4/8] drm/msm/devfreq: Record idle_time at GPU idle onset
@@ -266,7 +266,7 @@ index 2e1d5c343272..f3c664b20a1b 100644
  	msm_hrtimer_queue_work(&df->idle_work, ms_to_ktime(1),
  			       HRTIMER_MODE_REL);
  }
-From 5954d49496ef9d5b697af91349bbb3f996badfc5 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Jie Zhang <jie.zhang@oss.qualcomm.com>
 Date: Sat, 24 Oct 2026 16:00:11 +0530
 Subject: [PATCH 5/8] drm/msm: Fix sched_prio inversion within a ring
@@ -355,7 +355,7 @@ index d307cdd17d90..8d550d281704 100644
  
  	/* We should have already validated that the requested priority is
  	 * valid by the time we get here.
-From 323363a70f320a860896595e20ea6ba2de48bc7d Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Akhil P Oommen <akhilpo@oss.qualcomm.com>
 Date: Sat, 24 Oct 2026 16:00:12 +0530
 Subject: [PATCH 6/8] drm/msm/a6xx: Reset preemption records across suspend
@@ -513,7 +513,7 @@ index 6cb53a071801..0e0503ed54a1 100644
  	}
  
  	/* Write a 0 to signal that we aren't switching pagetables */
-From f3a6c76dcdf663c484bd57ac91b67b3dbc39ad19 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Akhil P Oommen <akhilpo@oss.qualcomm.com>
 Date: Sat, 24 Oct 2026 16:00:13 +0530
 Subject: [PATCH 7/8] drm/msm/a6xx: Request CLX enable from secure world
@@ -555,7 +555,7 @@ index 991db3c9cd96..a1561ca41a5b 100644
  		if (ret) {
  			dev_warn_once(gpu->dev->dev,
  				"SCM call failed\n");
-From 97131f7b36b22a38df1ac74b6df49ceaedf2adca Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Akhil P Oommen <akhilpo@oss.qualcomm.com>
 Date: Sat, 24 Oct 2026 16:00:14 +0530
 Subject: [PATCH 8/8] drm/msm/a8xx: Add AQE firmware to Adreno X2-90 GPU

@@ -1,4 +1,4 @@
-From b00b230ebfa02f6aa232bba2c867a459810f4c35 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Burke Cates <burke.cates@gmail.com>
 Date: Tue, 3 Nov 2026 23:20:48 -0800
 Subject: [PATCH] drm/msm/dp: skip the link teardown after a failed enable
@@ -23,6 +23,7 @@ it.
 
 Fixes: 1bda647ce61b ("drm/msm/dp: move link-level teardown from display_disable to display_unprepare")
 Signed-off-by: Burke Cates <burke.cates@gmail.com>
+Link: https://lore.kernel.org/r/20261104072048.3486286-1-burke.cates@gmail.com
 ---
  drivers/gpu/drm/msm/dp/dp_display.c | 9 +++++++++
  1 file changed, 9 insertions(+)

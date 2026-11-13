@@ -1,4 +1,4 @@
-From caab03eda76605968fe890937b6a46e6e3597319 Mon Sep 17 00:00:00 2001
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Jianping Li <jianping.li@oss.qualcomm.com>
 Date: Thu, 15 Oct 2026 15:15:09 +0800
 Subject: [PATCH] arm64: dts: qcom: glymur: Make the ADSP remote heap no-map
@@ -23,7 +23,7 @@ Signed-off-by: Jianping Li <jianping.li@oss.qualcomm.com>
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/arch/arm64/boot/dts/qcom/glymur.dtsi b/arch/arm64/boot/dts/qcom/glymur.dtsi
-index d1a4a14c9ce3..b5047dcf9b4f 100644
+index 6bcd16381b68..7e1cc3935b37 100644
 --- a/arch/arm64/boot/dts/qcom/glymur.dtsi
 +++ b/arch/arm64/boot/dts/qcom/glymur.dtsi
 @@ -690,7 +690,7 @@ smem_mem: smem@ffe00000 {
