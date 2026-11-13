@@ -23,7 +23,7 @@ Working:
 - NPU, through ONNX Runtime's QNN execution provider ([NPU](#npu))
 - Battery status and charge limits (`charge_control_start_threshold` and `charge_control_end_threshold` on `qcom-battmgr-bat`)
 - CPU frequency scaling
-- Embedded controller (`hp-omnibook-ec`): fan speed, EC temperatures (hwmon and thermal zones `ec-therm1..3`), keyboard backlight level and timeout, mute LED state
+- Embedded controller (`hp-omnibook-ec`): fan speed, EC temperatures (hwmon and thermal zones `ec-therm1..3`), keyboard backlight level and timeout, mute LEDs
 - RTC with wake alarm (`rtc-qcom-tad`, usually `rtc1`)
 - s2idle suspend and resume, reaching CX collapse and DDR self-refresh
 
@@ -33,7 +33,7 @@ Known issues:
 - If the laptop is suspended with the lid open, closing and opening the lid doesn't wake it; press a key.
 - AV1 hardware decode output isn't bit-exact.
 - Suspending while audio plays keeps the audio DSP and speaker amplifiers awake.
-- Minimum display brightness is higher than on Windows: below about 17 % of the backlight range the panel doesn't get dimmer.
+- The keyboard backlight and the mute LEDs stay lit during suspend.
 
 ## Kernel
 
@@ -87,7 +87,7 @@ The speaker topology `qcom/glymur/GLYMUR-HP-OmniBook-Ultra-14-kg0xxx-tplg.bin` i
 
 1. Install the firmware above and start `adsprpcd`.
 2. Build and install the topology.
-3. With alsa-ucm-conf installed, copy the UCM files in: `sudo cp -a ucm2/. /usr/share/alsa/ucm2/`. This only adds files, plus one `conf.d` link.
+3. With alsa-ucm-conf installed, copy the UCM files in: `sudo cp -r --no-preserve=all ucm2/. /usr/share/alsa/ucm2/`. This only adds files, plus one `conf.d` link.
 
 With the full patch series and this device tree, the kernel takes the amplifier gain limit and the speakers' full scale from the device tree and makes those controls read-only. It won't play through the speakers unless the topology carries speaker protection with its feedback loop, a tweeter high-pass and a full scale that matches the device tree. If a DSP error leaves the protection state unknown, it switches the amplifiers off. The limits were measured on one unit. Speaker support is experimental: use the kernel, device tree, topology and UCM from this repo together.
 

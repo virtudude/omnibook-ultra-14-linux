@@ -1,25 +1,28 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Fri, 13 Nov 2026 00:00:00 +0000
-Subject: [PATCH 0/2] platform: arm64: HP OmniBook (Snapdragon X2) EC driver
+Subject: [PATCH 0/3] platform: arm64: HP OmniBook (Snapdragon X2) EC driver
 
 The binding and the driver for the embedded controller of the HP
 OmniBook Ultra 14-kg0xxx: fan speed, EC thermistors, keyboard
-backlight level and timeout, mute LED states, function-key lock and
+backlight level and timeout, the mute LEDs, function-key lock and
 the hotkeys only the EC reports. Based on Rahul Pon's HP OmniBook 5 16
 EC driver.
 
- 1/2 dt-bindings: embedded-controller: add HP OmniBook Ultra 14 EC
+ 1/3 dt-bindings: embedded-controller: add HP OmniBook Ultra 14 EC
      Author: virtudude <virtudude@protonmail.com>
      Not posted.
- 2/2 platform: arm64: add HP OmniBook (Snapdragon X2) EC driver
+ 2/3 platform: arm64: add HP OmniBook (Snapdragon X2) EC driver
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 3/3 platform: arm64: hp-omnibook-ec: drive the mute LEDs
      Author: virtudude <virtudude@protonmail.com>
      Not posted.
 
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Thu, 12 Nov 2026 23:24:37 -0500
-Subject: [PATCH 1/2] dt-bindings: embedded-controller: add HP OmniBook Ultra 14 EC
+Subject: [PATCH 1/3] dt-bindings: embedded-controller: add HP OmniBook Ultra 14 EC
 
 The Snapdragon X2-based HP OmniBook Ultra Laptop 14-kg0xxx has an
 embedded controller on I2C at address 0x76. It runs the fan and the
@@ -98,7 +101,7 @@ index 000000000000..d8fe710070ef
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: virtudude <virtudude@protonmail.com>
 Date: Fri, 13 Nov 2026 07:45:30 -0500
-Subject: [PATCH 2/2] platform: arm64: add HP OmniBook (Snapdragon X2) EC driver
+Subject: [PATCH 2/3] platform: arm64: add HP OmniBook (Snapdragon X2) EC driver
 
 The EC of the HP OmniBook Ultra 14 (Snapdragon X2) sits on I2C at 0x76
 and takes commands through the mailbox HP's ACPI method HQEX drives
@@ -777,3 +780,111 @@ index 000000000000..e786f99589c3
 +MODULE_AUTHOR("virtudude <virtudude@protonmail.com>");
 +MODULE_DESCRIPTION("HP OmniBook (Snapdragon X2) embedded controller");
 +MODULE_LICENSE("GPL");
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Fri, 13 Nov 2026 14:09:16 -0500
+Subject: [PATCH 3/3] platform: arm64: hp-omnibook-ec: drive the mute LEDs
+
+The EC lights the speaker mute and mic mute key LEDs only on command,
+so they keep whatever state the last OS left. Give the OS control of
+the LEDs, as HP's ACPI does, and set them with the EC's LED command.
+Default them to the audio-mute and audio-micmute triggers and select
+SND_CTL_LED, so they follow the ALSA mute switches.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ drivers/platform/arm64/Kconfig          |  5 +++--
+ drivers/platform/arm64/hp-omnibook-ec.c | 24 ++++++++++++++++++++++--
+ 2 files changed, 25 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/platform/arm64/Kconfig b/drivers/platform/arm64/Kconfig
+index 96ba20e6a027..ce767f0fb9c9 100644
+--- a/drivers/platform/arm64/Kconfig
++++ b/drivers/platform/arm64/Kconfig
+@@ -57,12 +57,13 @@ config EC_HP_OMNIBOOK
+ 	select INPUT_SPARSEKMAP
+ 	select LEDS_CLASS
+ 	select NEW_LEDS
++	select SND_CTL_LED if SND
+ 	help
+ 	  Driver for the Embedded Controller in the Snapdragon X2-based HP
+ 	  OmniBook Ultra 14. It reports the fan speed, the EC thermistor
+ 	  temperatures (also as thermal sensors), the keyboard backlight
+-	  level, the mute LED states, the function-key lock and the hotkeys
+-	  only the EC sees, and sets the keyboard backlight timeout.
++	  level, the function-key lock and the hotkeys only the EC sees,
++	  drives the mute LEDs and sets the keyboard backlight timeout.
+ 
+ 	  Say M or Y here to include this support. To compile this driver as
+ 	  a module, choose M here: the module will be called hp-omnibook-ec.
+diff --git a/drivers/platform/arm64/hp-omnibook-ec.c b/drivers/platform/arm64/hp-omnibook-ec.c
+index e786f99589c3..5df0452df24a 100644
+--- a/drivers/platform/arm64/hp-omnibook-ec.c
++++ b/drivers/platform/arm64/hp-omnibook-ec.c
+@@ -40,11 +40,15 @@
+ #define HPEC_POLL_TRIES		20
+ #define HPEC_POLL_US		5000
+ 
++#define HPEC_OS_FLAG		0x01
++#define HPEC_OS_FLAG_SET	BIT(7)
++#define HPEC_OS_FLAG_LEDS	0x04
+ #define HPEC_KBD		0x05
+ #define HPEC_KBD_TIMEOUT_GET	0xfe
+ #define HPEC_KBD_LEVEL_GET	0xff
+ #define HPEC_LED		0x06
+ #define HPEC_LED_GET		0xff
++#define HPEC_LED_ON		0x80
+ /* LED states in byte 1 of the HPEC_LED_GET reply, one bit per EC LED from LED 8 */
+ #define HPEC_LED_STATE(n)	BIT((n) - 0x08)
+ #define HPEC_THERMISTOR		0x26
+@@ -81,10 +85,11 @@ static const char * const hpec_kbd_timeouts[] = { "30s", "3min", "always" };
+ /* EC LEDs 8 and 9, which HP's mute LED WMI methods drive */
+ static const struct {
+ 	const char *name;
++	const char *trigger;
+ 	u8 index;
+ } hpec_leds[] = {
+-	{ "platform::mute", 0x08 },
+-	{ "platform::micmute", 0x09 },
++	{ "platform::mute", "audio-mute", 0x08 },
++	{ "platform::micmute", "audio-micmute", 0x09 },
+ };
+ 
+ /* HP's TZ31..TZ33; TZ34..TZ37 (thermistors 0x06, 0x04, 0x02, 0x01) are disabled */
+@@ -226,6 +231,14 @@ static enum led_brightness hpec_led_get(struct led_classdev *cdev)
+ 	return reply[1] & HPEC_LED_STATE(led->index) ? LED_ON : LED_OFF;
+ }
+ 
++static int hpec_led_set(struct led_classdev *cdev, enum led_brightness value)
++{
++	struct hpec_led *led = container_of(cdev, struct hpec_led, cdev);
++
++	return hpec_command(led->ec, HPEC_LED,
++			    led->index | (value ? HPEC_LED_ON : 0), NULL);
++}
++
+ /*
+  * Only the backlight key changes the level, inside the EC: HP's ACPI has
+  * no command that sets it, so the LED has no set callback.
+@@ -397,14 +410,21 @@ static int hpec_register_leds(struct hpec *ec)
+ 	unsigned int i;
+ 	int ret;
+ 
++	ret = hpec_command(ec, HPEC_OS_FLAG,
++			   HPEC_OS_FLAG_SET | HPEC_OS_FLAG_LEDS, NULL);
++	if (ret)
++		return ret;
++
+ 	for (i = 0; i < ARRAY_SIZE(hpec_leds); i++) {
+ 		struct hpec_led *led = &ec->leds[i];
+ 
+ 		led->ec = ec;
+ 		led->index = hpec_leds[i].index;
+ 		led->cdev.name = hpec_leds[i].name;
++		led->cdev.default_trigger = hpec_leds[i].trigger;
+ 		led->cdev.max_brightness = 1;
+ 		led->cdev.brightness_get = hpec_led_get;
++		led->cdev.brightness_set_blocking = hpec_led_set;
+ 
+ 		ret = devm_led_classdev_register(dev, &led->cdev);
+ 		if (ret)
