@@ -1,0 +1,357 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Sat, 14 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/4] soundwire, ASoC, pinctrl: force runtime suspend across system sleep
+
+The SoundWire controllers, WSA amplifiers, LPASS macros and LPI pin
+controller only have runtime PM ops, so those an open stream holds
+runtime-active stay up through system sleep and keep the SoC out of CX
+power collapse. Each now forces its runtime suspend; the controllers,
+amplifiers and macros skip it while a stream is still set up on them.
+Based on the Armada project's patches.
+
+ 1/4 soundwire: qcom: force runtime suspend across system sleep
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 2/4 ASoC: codecs: wsa884x: force runtime suspend across system sleep
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 3/4 ASoC: codecs: lpass-macro: force runtime suspend across system sleep
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 4/4 pinctrl: qcom: sm8650-lpass-lpi: force runtime suspend across system sleep
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Sat, 14 Nov 2026 00:47:05 -0500
+Subject: [PATCH 1/4] soundwire: qcom: force runtime suspend across system sleep
+
+The controller only has runtime PM ops. A started DAI holds a runtime PM
+reference until it shuts down, and a peripheral can hold one too, so a
+controller that is runtime-active at suspend stays up through system
+sleep with the LPASS clocks it uses, and keeps the SoC out of CX power
+collapse.
+
+Force the runtime suspend across system sleep, unless a stream is still
+set up on the bus: its ports would not survive the reset or clock stop.
+
+Based on the Armada project's patch, which limits this to buses with
+clock stop for the same reason.
+
+Link: https://github.com/armada-os/armada/blob/50361d799946d7568f47f3ae90aae06298c1141d/packages/kernel/patches/0564-soundwire-qcom-force-runtime-suspend-across-system-sleep.patch
+Assisted-by: Claude:claude-opus-5-5
+---
+ drivers/soundwire/qcom.c | 53 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 53 insertions(+)
+
+diff --git a/drivers/soundwire/qcom.c b/drivers/soundwire/qcom.c
+index 2c37391b464e..fe0b37ac9be6 100644
+--- a/drivers/soundwire/qcom.c
++++ b/drivers/soundwire/qcom.c
+@@ -226,6 +226,7 @@ struct qcom_swrm_ctrl {
+ 	u32 wr_fifo_depth;
+ 	bool clock_stop_not_supported;
+ 	bool clock_stop_unreliable;
++	bool sleep_forced;
+ 	/* Per-Slave SCP_ADDRPAGE1/2 shadow; -1 = unknown. */
+ 	s16 page1_cache[SDW_MAX_DEVICES + 1];
+ 	s16 page2_cache[SDW_MAX_DEVICES + 1];
+@@ -1914,7 +1915,59 @@ static int __maybe_unused swrm_runtime_suspend(struct device *dev)
+ 	return 0;
+ }
+ 
++static bool swrm_stream_set_up(struct qcom_swrm_ctrl *ctrl)
++{
++	struct sdw_master_runtime *m_rt;
++
++	guard(mutex)(&ctrl->bus.bus_lock);
++	list_for_each_entry(m_rt, &ctrl->bus.m_rt_list, bus_node) {
++		switch (m_rt->stream->state) {
++		case SDW_STREAM_PREPARED:
++		case SDW_STREAM_ENABLED:
++		case SDW_STREAM_DISABLED:
++			return true;
++		default:
++			break;
++		}
++	}
++
++	return false;
++}
++
++/*
++ * A peripheral or an open stream that holds the controller runtime-active
++ * would keep it, and the LPASS clocks it uses, up through system sleep.
++ * The ports of a stream still set up on the bus would not survive the
++ * controller's reset or clock stop.
++ */
++static int __maybe_unused swrm_suspend(struct device *dev)
++{
++	struct qcom_swrm_ctrl *ctrl = dev_get_drvdata(dev);
++	int ret;
++
++	if (swrm_stream_set_up(ctrl))
++		return 0;
++
++	ret = pm_runtime_force_suspend(dev);
++	ctrl->sleep_forced = !ret;
++
++	return ret;
++}
++
++static int __maybe_unused swrm_resume(struct device *dev)
++{
++	struct qcom_swrm_ctrl *ctrl = dev_get_drvdata(dev);
++
++	if (!ctrl->sleep_forced)
++		return 0;
++
++	ctrl->sleep_forced = false;
++
++	return pm_runtime_force_resume(dev);
++}
++
+ static const struct dev_pm_ops swrm_dev_pm_ops = {
++	SET_SYSTEM_SLEEP_PM_OPS(swrm_suspend, swrm_resume)
+ 	SET_RUNTIME_PM_OPS(swrm_runtime_suspend, swrm_runtime_resume, NULL)
+ };
+ 
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Sat, 14 Nov 2026 00:47:33 -0500
+Subject: [PATCH 2/4] ASoC: codecs: wsa884x: force runtime suspend across system
+ sleep
+
+The amplifier only has runtime PM ops, and an open stream holds it
+runtime-active through its component. It then stays out of reset
+through system sleep while its SoundWire bus suspends and resumes
+through a full reset, and it clashes on the bus after resume.
+
+Force the runtime suspend across system sleep, unless the amplifier is
+still in a prepared stream, whose ports would not survive the reset.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/codecs/wsa884x.c | 36 ++++++++++++++++++++++++++++++++++++
+ 1 file changed, 36 insertions(+)
+
+diff --git a/sound/soc/codecs/wsa884x.c b/sound/soc/codecs/wsa884x.c
+index bef08000aebb..dd4678591363 100644
+--- a/sound/soc/codecs/wsa884x.c
++++ b/sound/soc/codecs/wsa884x.c
+@@ -750,6 +750,7 @@ struct wsa884x_priv {
+ 	struct reset_control *sd_reset;
+ 	/* This amplifier holds sd_reset deasserted */
+ 	bool sd_held;
++	bool sleep_forced;
+ 	bool port_prepared[WSA884X_MAX_SWR_PORTS];
+ 	bool port_enable[WSA884X_MAX_SWR_PORTS];
+ 	int active_ports;
+@@ -2784,7 +2785,42 @@ static int wsa884x_runtime_resume(struct device *dev)
+ 	return ret;
+ }
+ 
++/*
++ * An open stream holds the amplifier runtime-active, and with it its bus.
++ * The reset would lose the ports of a stream still prepared.
++ */
++static int wsa884x_suspend(struct device *dev)
++{
++	struct wsa884x_priv *wsa884x = dev_get_drvdata(dev);
++	int ret;
++
++	scoped_guard(mutex, &wsa884x->vi_guard_lock) {
++		if (memchr_inv(wsa884x->port_prepared, 0, sizeof(wsa884x->port_prepared)))
++			return 0;
++	}
++
++	/* No PA-off retry over a bus that is going down */
++	cancel_delayed_work_sync(&wsa884x->vi_off_work);
++	ret = pm_runtime_force_suspend(dev);
++	wsa884x->sleep_forced = !ret;
++
++	return ret;
++}
++
++static int wsa884x_resume(struct device *dev)
++{
++	struct wsa884x_priv *wsa884x = dev_get_drvdata(dev);
++
++	if (!wsa884x->sleep_forced)
++		return 0;
++
++	wsa884x->sleep_forced = false;
++
++	return pm_runtime_force_resume(dev);
++}
++
+ static const struct dev_pm_ops wsa884x_pm_ops = {
++	SYSTEM_SLEEP_PM_OPS(wsa884x_suspend, wsa884x_resume)
+ 	RUNTIME_PM_OPS(wsa884x_runtime_suspend, wsa884x_runtime_resume, NULL)
+ };
+ 
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Sat, 14 Nov 2026 00:48:01 -0500
+Subject: [PATCH 3/4] ASoC: codecs: lpass-macro: force runtime suspend across
+ system sleep
+
+The WSA and VA macros only have runtime PM ops, and an open stream holds
+them runtime-active through their components, so they keep their clocks
+and the LPASS votes the ADSP holds for them through system sleep, and
+the SoC out of CX power collapse.
+
+Force the runtime suspend across system sleep, unless the clock the macro
+provides to its SoundWire controller or to the other macros is still
+running: a controller that stayed up for a stream still set up on it
+would lose its clock.
+
+Based on the Armada project's patch.
+
+Link: https://github.com/armada-os/armada/blob/98e87a10155988d4577d8e3397035bd698727196/packages/kernel/patches/0563-ASoC-codecs-lpass-macro-force-runtime-suspend-across-system-sleep.patch
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/codecs/lpass-va-macro.c  | 32 ++++++++++++++++++++++++++++++
+ sound/soc/codecs/lpass-wsa-macro.c | 32 ++++++++++++++++++++++++++++++
+ 2 files changed, 64 insertions(+)
+
+diff --git a/sound/soc/codecs/lpass-va-macro.c b/sound/soc/codecs/lpass-va-macro.c
+index 61b24a1e4dde..6c99d62bfefa 100644
+--- a/sound/soc/codecs/lpass-va-macro.c
++++ b/sound/soc/codecs/lpass-va-macro.c
+@@ -219,6 +219,7 @@ struct va_macro {
+ 	struct clk *dcodec;
+ 	struct clk *fsgen;
+ 	struct clk_hw hw;
++	bool sleep_forced;
+ 	struct lpass_macro *pds;
+ 
+ 	s32 dmic_0_1_clk_cnt;
+@@ -1764,7 +1765,38 @@ static int va_macro_runtime_resume(struct device *dev)
+ }
+ 
+ 
++/*
++ * An open stream holds the macro runtime-active through its component. A
++ * consumer of its clock output that is still running needs the clock.
++ */
++static int va_macro_suspend(struct device *dev)
++{
++	struct va_macro *va = dev_get_drvdata(dev);
++	int ret;
++
++	if (clk_hw_is_enabled(&va->hw))
++		return 0;
++
++	ret = pm_runtime_force_suspend(dev);
++	va->sleep_forced = !ret;
++
++	return ret;
++}
++
++static int va_macro_resume(struct device *dev)
++{
++	struct va_macro *va = dev_get_drvdata(dev);
++
++	if (!va->sleep_forced)
++		return 0;
++
++	va->sleep_forced = false;
++
++	return pm_runtime_force_resume(dev);
++}
++
+ static const struct dev_pm_ops va_macro_pm_ops = {
++	SYSTEM_SLEEP_PM_OPS(va_macro_suspend, va_macro_resume)
+ 	RUNTIME_PM_OPS(va_macro_runtime_suspend, va_macro_runtime_resume, NULL)
+ };
+ 
+diff --git a/sound/soc/codecs/lpass-wsa-macro.c b/sound/soc/codecs/lpass-wsa-macro.c
+index 2819b993eed2..fb61acf3715b 100644
+--- a/sound/soc/codecs/lpass-wsa-macro.c
++++ b/sound/soc/codecs/lpass-wsa-macro.c
+@@ -427,6 +427,7 @@ struct wsa_macro {
+ 	struct clk *dcodec;
+ 	struct clk *fsgen;
+ 	struct clk_hw hw;
++	bool sleep_forced;
+ };
+ #define to_wsa_macro(_hw) container_of(_hw, struct wsa_macro, hw)
+ 
+@@ -2917,7 +2918,38 @@ static int wsa_macro_runtime_resume(struct device *dev)
+ 	return 0;
+ }
+ 
++/*
++ * An open stream holds the macro runtime-active through its component. A
++ * consumer of its clock output that is still running needs the clock.
++ */
++static int wsa_macro_suspend(struct device *dev)
++{
++	struct wsa_macro *wsa = dev_get_drvdata(dev);
++	int ret;
++
++	if (clk_hw_is_enabled(&wsa->hw))
++		return 0;
++
++	ret = pm_runtime_force_suspend(dev);
++	wsa->sleep_forced = !ret;
++
++	return ret;
++}
++
++static int wsa_macro_resume(struct device *dev)
++{
++	struct wsa_macro *wsa = dev_get_drvdata(dev);
++
++	if (!wsa->sleep_forced)
++		return 0;
++
++	wsa->sleep_forced = false;
++
++	return pm_runtime_force_resume(dev);
++}
++
+ static const struct dev_pm_ops wsa_macro_pm_ops = {
++	SYSTEM_SLEEP_PM_OPS(wsa_macro_suspend, wsa_macro_resume)
+ 	RUNTIME_PM_OPS(wsa_macro_runtime_suspend, wsa_macro_runtime_resume, NULL)
+ };
+ 
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Sat, 14 Nov 2026 00:48:01 -0500
+Subject: [PATCH 4/4] pinctrl: qcom: sm8650-lpass-lpi: force runtime suspend across
+ system sleep
+
+The LPI pin controller only has runtime PM ops, and it is a device-link
+supplier of the SoundWire controllers and LPASS macros. Those that an
+open stream holds runtime-active keep their link references when they
+are force-suspended for system sleep, so the pin controller stays active
+with its LPASS votes through system sleep, and the SoC out of CX power
+collapse. Use DEFINE_RUNTIME_DEV_PM_OPS() to force its runtime suspend.
+
+Based on the Armada project's patch.
+
+Link: https://github.com/armada-os/armada/blob/98e87a10155988d4577d8e3397035bd698727196/packages/kernel/patches/0565-pinctrl-qcom-sm8650-lpass-lpi-force-runtime-suspend-across-system-sleep.patch
+Assisted-by: Claude:claude-opus-5-5
+---
+ drivers/pinctrl/qcom/pinctrl-sm8650-lpass-lpi.c | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/drivers/pinctrl/qcom/pinctrl-sm8650-lpass-lpi.c b/drivers/pinctrl/qcom/pinctrl-sm8650-lpass-lpi.c
+index bc7889c993d0..7e28909d43d6 100644
+--- a/drivers/pinctrl/qcom/pinctrl-sm8650-lpass-lpi.c
++++ b/drivers/pinctrl/qcom/pinctrl-sm8650-lpass-lpi.c
+@@ -219,9 +219,7 @@ static const struct of_device_id lpi_pinctrl_of_match[] = {
+ };
+ MODULE_DEVICE_TABLE(of, lpi_pinctrl_of_match);
+ 
+-static const struct dev_pm_ops lpi_pinctrl_pm_ops = {
+-	RUNTIME_PM_OPS(pm_clk_suspend, pm_clk_resume, NULL)
+-};
++static DEFINE_RUNTIME_DEV_PM_OPS(lpi_pinctrl_pm_ops, pm_clk_suspend, pm_clk_resume, NULL);
+ 
+ static struct platform_driver lpi_pinctrl_driver = {
+ 	.driver = {

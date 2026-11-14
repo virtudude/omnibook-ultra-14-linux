@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Sat, 14 Nov 2026 00:44:19 -0500
+Subject: [PATCH] ASoC: soc-core: leave trigger-muted DAIs muted on resume
+
+The card resume unmutes every DAI with an active playback stream. A DAI
+that sets mute_unmute_on_trigger is meant to be unmuted only while its
+stream runs, but after system resume the stream is suspended, prepared
+or paused, and a PCM without SNDRV_PCM_INFO_RESUME may not run again
+until userspace prepares it, if ever.
+
+Leave such DAIs muted at resume. The trigger unmutes them on RESUME or
+START.
+
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/soc-core.c | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/soc-core.c b/sound/soc/soc-core.c
+index eb878528fd2c..2ee43f57c459 100644
+--- a/sound/soc/soc-core.c
++++ b/sound/soc/soc-core.c
+@@ -483,8 +483,11 @@ static void soc_playback_digital_mute(struct snd_soc_card *card, int mute)
+ 			continue;
+ 
+ 		for_each_rtd_dais(rtd, i, dai) {
+-			if (snd_soc_dai_stream_active(dai, playback))
+-				snd_soc_dai_digital_mute(dai, mute, playback);
++			if (!snd_soc_dai_stream_active(dai, playback))
++				continue;
++			if (!mute && snd_soc_dai_mute_is_ctrled_at_trigger(dai))
++				continue;
++			snd_soc_dai_digital_mute(dai, mute, playback);
+ 		}
+ 	}
+ }

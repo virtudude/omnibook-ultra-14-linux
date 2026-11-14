@@ -791,11 +791,14 @@ the LEDs, as HP's ACPI does, and set them with the EC's LED command.
 Default them to the audio-mute and audio-micmute triggers and select
 SND_CTL_LED, so they follow the ALSA mute switches.
 
+The EC also keeps them lit in system sleep. Let the LED core turn them
+off on suspend and restore them on resume.
+
 Assisted-by: Claude:claude-opus-5-5
 ---
  drivers/platform/arm64/Kconfig          |  5 +++--
- drivers/platform/arm64/hp-omnibook-ec.c | 24 ++++++++++++++++++++++--
- 2 files changed, 25 insertions(+), 4 deletions(-)
+ drivers/platform/arm64/hp-omnibook-ec.c | 25 +++++++++++++++++++++++--
+ 2 files changed, 26 insertions(+), 4 deletions(-)
 
 diff --git a/drivers/platform/arm64/Kconfig b/drivers/platform/arm64/Kconfig
 index 96ba20e6a027..ce767f0fb9c9 100644
@@ -818,7 +821,7 @@ index 96ba20e6a027..ce767f0fb9c9 100644
  	  Say M or Y here to include this support. To compile this driver as
  	  a module, choose M here: the module will be called hp-omnibook-ec.
 diff --git a/drivers/platform/arm64/hp-omnibook-ec.c b/drivers/platform/arm64/hp-omnibook-ec.c
-index e786f99589c3..5df0452df24a 100644
+index e786f99589c3..1e6261426134 100644
 --- a/drivers/platform/arm64/hp-omnibook-ec.c
 +++ b/drivers/platform/arm64/hp-omnibook-ec.c
 @@ -40,11 +40,15 @@
@@ -866,7 +869,7 @@ index e786f99589c3..5df0452df24a 100644
  /*
   * Only the backlight key changes the level, inside the EC: HP's ACPI has
   * no command that sets it, so the LED has no set callback.
-@@ -397,14 +410,21 @@ static int hpec_register_leds(struct hpec *ec)
+@@ -397,14 +410,22 @@ static int hpec_register_leds(struct hpec *ec)
  	unsigned int i;
  	int ret;
  
@@ -883,6 +886,7 @@ index e786f99589c3..5df0452df24a 100644
  		led->cdev.name = hpec_leds[i].name;
 +		led->cdev.default_trigger = hpec_leds[i].trigger;
  		led->cdev.max_brightness = 1;
++		led->cdev.flags = LED_CORE_SUSPENDRESUME;
  		led->cdev.brightness_get = hpec_led_get;
 +		led->cdev.brightness_set_blocking = hpec_led_set;
  

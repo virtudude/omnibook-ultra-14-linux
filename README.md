@@ -32,8 +32,7 @@ Not working: headphone jack, EFI variable writes, TPM, external DisplayPort over
 Known issues:
 - If the laptop is suspended with the lid open, closing and opening the lid doesn't wake it; press a key.
 - AV1 hardware decode output isn't bit-exact.
-- Suspending while audio plays keeps the audio DSP and speaker amplifiers awake.
-- The keyboard backlight and the mute LEDs stay lit during suspend.
+- The keyboard backlight stays lit in suspend until its timeout (`kbd_backlight_timeout`, 30 s by default) expires.
 
 ## Kernel
 

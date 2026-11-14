@@ -1,0 +1,340 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Sat, 14 Nov 2026 00:00:00 +0000
+Subject: [PATCH 0/2] ASoC: qcom: release open streams across system suspend
+
+Releases the AudioReach graphs of open PCMs across system suspend,
+reopening playback graphs ahead of their port graphs at resume, and
+has the x1e80100 card suspend its PCMs and release their SoundWire
+streams. Based on the Armada project's SM8550/SM8750 and sc8280xp
+patches.
+
+ 1/2 ASoC: qdsp6: release AudioReach graphs across system suspend
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+ 2/2 ASoC: qcom: x1e80100: suspend the card and its streams
+     Author: virtudude <virtudude@protonmail.com>
+     Not posted.
+
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Sat, 14 Nov 2026 00:45:18 -0500
+Subject: [PATCH 1/2] ASoC: qdsp6: release AudioReach graphs across system suspend
+
+An open AudioReach graph keeps the ADSP out of power collapse, even when
+stopped, so a PCM left open at suspend keeps the ADSP awake all through
+the sleep.
+
+Release the stream graphs at device suspend and the port graphs at
+component suspend, for links that take part in system suspend, and drop
+SNDRV_PCM_INFO_RESUME so that userspace prepares the streams again.
+
+The DSP expects a source graph to be opened before its sink: a playback
+stream graph opened after its port graph is consumed at about 100 times
+real time. Reopen playback stream graphs at device resume, which the
+card's device links order before any prepare, and fail the prepare if
+that reopen failed. Capture stream graphs are sinks, reopened at prepare.
+As the release can follow a failed stop, have q6apm_read() refuse a
+graph whose buffers are gone.
+
+Based on the Armada project's patch for SM8550/SM8750.
+
+Link: https://github.com/armada-os/armada/blob/456a9afa94dea7d8c5362943572549e442602e91/packages/kernel/patches/0530-ASoC-qdsp6-release-AudioReach-graphs-across-system-suspend.patch
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/qdsp6/q6apm-dai.c        | 78 ++++++++++++++++++++++++-
+ sound/soc/qcom/qdsp6/q6apm-lpass-dais.c | 24 +++++++-
+ sound/soc/qcom/qdsp6/q6apm.c            |  5 ++
+ 3 files changed, 103 insertions(+), 4 deletions(-)
+
+diff --git a/sound/soc/qcom/qdsp6/q6apm-dai.c b/sound/soc/qcom/qdsp6/q6apm-dai.c
+index 032dfbab09aa..0fbb12f7fbbf 100644
+--- a/sound/soc/qcom/qdsp6/q6apm-dai.c
++++ b/sound/soc/qcom/qdsp6/q6apm-dai.c
+@@ -200,7 +200,7 @@ static void q6apm_dai_reserved_mem_release(void *data)
+ static const struct snd_pcm_hardware q6apm_dai_hardware_capture = {
+ 	.info =                 (SNDRV_PCM_INFO_MMAP | SNDRV_PCM_INFO_BLOCK_TRANSFER |
+ 				 SNDRV_PCM_INFO_MMAP_VALID | SNDRV_PCM_INFO_INTERLEAVED |
+-				 SNDRV_PCM_INFO_PAUSE | SNDRV_PCM_INFO_RESUME |
++				 SNDRV_PCM_INFO_PAUSE |
+ 				 SNDRV_PCM_INFO_NO_REWINDS | SNDRV_PCM_INFO_SYNC_APPLPTR |
+ 				 SNDRV_PCM_INFO_BATCH),
+ 	.formats =              (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE |
+@@ -221,7 +221,7 @@ static const struct snd_pcm_hardware q6apm_dai_hardware_capture = {
+ static const struct snd_pcm_hardware q6apm_dai_hardware_playback = {
+ 	.info =                 (SNDRV_PCM_INFO_MMAP | SNDRV_PCM_INFO_BLOCK_TRANSFER |
+ 				 SNDRV_PCM_INFO_MMAP_VALID | SNDRV_PCM_INFO_INTERLEAVED |
+-				 SNDRV_PCM_INFO_PAUSE | SNDRV_PCM_INFO_RESUME |
++				 SNDRV_PCM_INFO_PAUSE |
+ 				 SNDRV_PCM_INFO_NO_REWINDS | SNDRV_PCM_INFO_SYNC_APPLPTR |
+ 				 SNDRV_PCM_INFO_BATCH),
+ 	.formats =              (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE |
+@@ -344,7 +344,7 @@ static int q6apm_dai_reopen_graph(struct snd_soc_component *component,
+ 	graph = q6apm_graph_open(component->dev, event_handler, prtd, graph_id,
+ 				 substream->stream);
+ 	if (IS_ERR(graph)) {
+-		dev_err(component->dev, "graph %d: reopen after a failure: %ld\n",
++		dev_err(component->dev, "graph %d: reopen failed: %ld\n",
+ 			graph_id, PTR_ERR(graph));
+ 		return PTR_ERR(graph);
+ 	}
+@@ -379,6 +379,13 @@ static int q6apm_dai_prepare(struct snd_soc_component *component,
+ 	cfg.bit_width = prtd->bits_per_sample;
+ 	cfg.fmt = SND_AUDIOCODEC_PCM;
+ 	audioreach_set_default_channel_mapping(cfg.channel_map, runtime->channels);
++	/*
++	 * Not reopened at resume: opened now, after its port graph, it would
++	 * be consumed far faster than real time.
++	 */
++	if (!prtd->graph && substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
++		return -EIO;
++
+ 	if (prtd->graph && prtd->state) {
+ 		/* clear the previous setup if any  */
+ 		q6apm_graph_stop(prtd->graph);
+@@ -1246,6 +1253,70 @@ static int q6apm_dai_component_probe(struct snd_soc_component *component)
+ 	return audioreach_add_sp_telemetry_controls(component);
+ }
+ 
++static void q6apm_dai_sleep_substream(struct snd_soc_component *component,
++				      struct snd_pcm_substream *ss, bool suspend)
++{
++	struct q6apm_dai_rtd *prtd = ss->runtime ? ss->runtime->private_data : NULL;
++
++	if (!prtd)
++		return;
++
++	if (suspend && prtd->graph) {
++		if (prtd->state) {
++			/* No more capture buffers queued from the callbacks */
++			prtd->state = Q6APM_STREAM_STOPPED;
++			q6apm_graph_stop(prtd->graph);
++		}
++		q6apm_dai_drop_graph(ss, prtd);
++	} else if (!suspend && !prtd->graph && ss->stream == SNDRV_PCM_STREAM_PLAYBACK) {
++		q6apm_dai_reopen_graph(component, ss, prtd);
++	}
++}
++
++/*
++ * An open graph keeps the DSP out of power collapse, so release the graphs
++ * of open streams across system suspend; userspace prepares them again.
++ * The DSP wants a source graph opened before its sink: a playback graph
++ * comes back here, as the card's device links resume this device before
++ * the card, ahead of the prepare that opens the port graph. A capture
++ * graph is opened again by its prepare, after its port graph.
++ */
++static int q6apm_dai_sleep(struct device *dev, bool suspend)
++{
++	struct snd_soc_component *component = snd_soc_lookup_component(dev, NULL);
++	struct snd_soc_pcm_runtime *rtd;
++	struct snd_pcm_substream *ss;
++	int stream;
++
++	if (!component || !component->card)
++		return 0;
++
++	for_each_card_rtds(component->card, rtd) {
++		if (!rtd->pcm || rtd->dai_link->ignore_suspend ||
++		    snd_soc_rtdcom_lookup(rtd, component->driver->name) != component)
++			continue;
++
++		guard(mutex)(&rtd->pcm->open_mutex);
++		for_each_pcm_streams(stream)
++			for (ss = rtd->pcm->streams[stream].substream; ss; ss = ss->next)
++				q6apm_dai_sleep_substream(component, ss, suspend);
++	}
++
++	return 0;
++}
++
++static int q6apm_dai_suspend(struct device *dev)
++{
++	return q6apm_dai_sleep(dev, true);
++}
++
++static int q6apm_dai_resume(struct device *dev)
++{
++	return q6apm_dai_sleep(dev, false);
++}
++
++static DEFINE_SIMPLE_DEV_PM_OPS(q6apm_dai_pm_ops, q6apm_dai_suspend, q6apm_dai_resume);
++
+ static const struct snd_soc_component_driver q6apm_fe_dai_component = {
+ 	.name		= DRV_NAME,
+ 	.probe		= q6apm_dai_component_probe,
+@@ -1425,6 +1496,7 @@ static struct platform_driver q6apm_dai_platform_driver = {
+ 	.driver = {
+ 		.name = "q6apm-dai",
+ 		.of_match_table = of_match_ptr(q6apm_dai_device_id),
++		.pm = pm_sleep_ptr(&q6apm_dai_pm_ops),
+ 		/* Its out-of-band SET_CFG mappings must outlive DSP use */
+ 		.suppress_bind_attrs = true,
+ 	},
+diff --git a/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c b/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
+index ed1f92749d41..0a6d85d50e95 100644
+--- a/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
++++ b/sound/soc/qcom/qdsp6/q6apm-lpass-dais.c
+@@ -207,7 +207,8 @@ static int q6apm_lpass_dai_setup_graph(struct snd_pcm_substream *substream,
+ 	/**
+ 	 * It is recommend to load DSP with source graph first and then sink
+ 	 * graph, so sequence for playback and capture will be different. A
+-	 * capture graph is opened here only after a failed prepare closed it.
++	 * capture graph is opened here only after a failed prepare or system
++	 * suspend closed it.
+ 	 */
+ 	if (!graph) {
+ 		graph = q6apm_graph_open(dai->dev, NULL, dai->dev, graph_id, substream->stream);
+@@ -494,12 +495,33 @@ static const struct snd_soc_dai_ops q6tdm_ops = {
+ 	.trigger	= q6apm_lpass_dai_trigger,
+ };
+ 
++/* Like the stream graphs, set up again by the next prepare */
++static int q6apm_lpass_dai_suspend(struct snd_soc_component *component)
++{
++	struct q6apm_lpass_dai_data *dai_data = dev_get_drvdata(component->dev);
++	int i;
++
++	for (i = 0; i < APM_PORT_MAX; i++) {
++		if (dai_data->is_port_started[i]) {
++			q6apm_graph_stop(dai_data->graph[i]);
++			dai_data->is_port_started[i] = false;
++		}
++		if (dai_data->graph[i]) {
++			q6apm_graph_close(dai_data->graph[i]);
++			dai_data->graph[i] = NULL;
++		}
++	}
++
++	return 0;
++}
++
+ static const struct snd_soc_component_driver q6apm_lpass_dai_component = {
+ 	.name = "q6apm-be-dai-component",
+ 	.of_xlate_dai_name = q6dsp_audio_ports_of_xlate_dai_name,
+ 	.be_pcm_base = AUDIOREACH_BE_PCM_BASE,
+ 	.use_dai_pcm_id = true,
+ 	.remove_order   = SND_SOC_COMP_ORDER_FIRST,
++	.suspend = q6apm_lpass_dai_suspend,
+ };
+ 
+ static int of_q6apm_parse_dai_data(struct device *dev,
+diff --git a/sound/soc/qcom/qdsp6/q6apm.c b/sound/soc/qcom/qdsp6/q6apm.c
+index ad2e73defb1a..7dac46fc6af7 100644
+--- a/sound/soc/qcom/qdsp6/q6apm.c
++++ b/sound/soc/qcom/qdsp6/q6apm.c
+@@ -1227,6 +1227,11 @@ int q6apm_read(struct q6apm_graph *graph)
+ 
+ 	mutex_lock(&graph->lock);
+ 	port = &graph->tx_data;
++	/* A capture callback can race a teardown that follows a failed stop */
++	if (!port->buf) {
++		mutex_unlock(&graph->lock);
++		return -ENODEV;
++	}
+ 	ab = &port->buf[port->dsp_buf];
+ 
+ 	read_buffer->buf_addr_lsw = lower_32_bits(ab->phys);
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: virtudude <virtudude@protonmail.com>
+Date: Sat, 14 Nov 2026 00:45:38 -0500
+Subject: [PATCH 2/2] ASoC: qcom: x1e80100: suspend the card and its streams
+
+The card sets no PM ops, and qcom_snd_parse_of() marks every DPCM link
+ignore_suspend, so open PCMs are neither muted nor suspended at system
+sleep, and their DSP graphs, SoundWire streams and amplifiers stay up.
+Wire up snd_soc_pm_ops and clear ignore_suspend on the links: none of
+them has to run while the system sleeps.
+
+The WSA buses resume through a full reset that loses the port setup of
+a stream left enabled. Once the card is suspended, release the SoundWire
+streams of the open back ends as hw_free does, the speaker one only once
+its amplifiers' PAs read back off, and return a back end left prepared
+to its hw_params state, so that DPCM prepares it again after resume.
+
+Based on the Armada project's patch for sc8280xp.c.
+
+Link: https://github.com/armada-os/armada/blob/456a9afa94dea7d8c5362943572549e442602e91/packages/kernel/patches/0528-ASoC-qcom-sc8280xp-suspend-the-card-and-its-streams.patch
+Assisted-by: Claude:claude-opus-5-5
+---
+ sound/soc/qcom/x1e80100.c | 46 +++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 46 insertions(+)
+
+diff --git a/sound/soc/qcom/x1e80100.c b/sound/soc/qcom/x1e80100.c
+index 62e1016cd9bf..0669dcec09da 100644
+--- a/sound/soc/qcom/x1e80100.c
++++ b/sound/soc/qcom/x1e80100.c
+@@ -704,6 +704,47 @@ static int x1e80100_snd_hw_free(struct snd_pcm_substream *substream)
+ 	return qcom_snd_sdw_hw_free(substream, &data->stream_prepared[cpu_dai->id]);
+ }
+ 
++/*
++ * The SoundWire streams do not survive system suspend, so release them for
++ * the prepare after resume to set up again. DPCM skips a back end already
++ * marked prepared: return such a one to its hw_params state.
++ */
++static int x1e80100_snd_suspend_pre(struct snd_soc_card *card)
++{
++	struct x1e80100_snd_data *data = snd_soc_card_get_drvdata(card);
++	struct snd_soc_pcm_runtime *rtd;
++	int stream;
++
++	if (data->sp_fault_registered)
++		flush_work(&data->sp_fault_work);
++
++	snd_soc_dpcm_mutex_lock(card);
++	for_each_card_rtds(card, rtd) {
++		struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
++
++		if (!rtd->dai_link->no_pcm)
++			continue;
++
++		for_each_pcm_streams(stream) {
++			if (!snd_soc_dai_stream_active(cpu_dai, stream))
++				continue;
++
++			/* The V/I feedback goes only once every PA is known to be off */
++			if (rtd == data->sp_rtd && x1e80100_sp_amps_off(data)) {
++				dev_err(card->dev, "speaker PAs not confirmed off: speaker stream kept\n");
++				continue;
++			}
++
++			x1e80100_snd_hw_free(snd_soc_dpcm_get_substream(rtd, stream));
++			if (rtd->dpcm[stream].state == SND_SOC_DPCM_STATE_PREPARE)
++				rtd->dpcm[stream].state = SND_SOC_DPCM_STATE_HW_PARAMS;
++		}
++	}
++	snd_soc_dpcm_mutex_unlock(card);
++
++	return 0;
++}
++
+ static const struct snd_soc_ops x1e80100_be_ops = {
+ 	.startup = qcom_snd_sdw_startup,
+ 	.shutdown = qcom_snd_sdw_shutdown,
+@@ -730,6 +771,9 @@ static void x1e80100_add_be_ops(struct snd_soc_card *card)
+ 			link->multi_direction_params_fixup =
+ 				x1e80100_wsa_vi_params_fixup;
+ 		}
++
++		/* Nothing on these cards has to play across system suspend */
++		link->ignore_suspend = 0;
+ 	}
+ }
+ 
+@@ -761,6 +805,7 @@ static int x1e80100_platform_probe(struct platform_device *pdev)
+ 	card->driver_name = of_device_get_match_data(dev);
+ 	x1e80100_add_be_ops(card);
+ 	card->late_probe = x1e80100_snd_late_probe;
++	card->suspend_pre = x1e80100_snd_suspend_pre;
+ 	audioreach_sp_set_required(of_property_read_bool(dev->of_node,
+ 							 "qcom,speaker-protection-required"));
+ 	if (of_property_read_bool(dev->of_node, "qcom,uefi-speaker-calibration")) {
+@@ -789,6 +834,7 @@ static struct platform_driver snd_x1e80100_driver = {
+ 	.driver = {
+ 		.name = "snd-x1e80100",
+ 		.of_match_table = snd_x1e80100_dt_match,
++		.pm = &snd_soc_pm_ops,
+ 	},
+ };
+ module_platform_driver(snd_x1e80100_driver);
